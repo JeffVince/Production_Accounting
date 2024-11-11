@@ -1,0 +1,11 @@
+Flask
+dropbox
+python-dotenv
+Pillow
+pytesseract
+pdf2image
+PyPDF2
+requests
+schedule
+openai
+slack_sdk
