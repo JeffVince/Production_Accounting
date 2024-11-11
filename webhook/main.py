@@ -1,6 +1,8 @@
 # main.py
-
+import sys
 import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import logging
 import hmac
 import hashlib
@@ -8,6 +10,8 @@ from flask import Flask, request
 from dropbox_client import get_dropbox_client
 from database_util import initialize_database
 from dotenv import load_dotenv
+
+
 from processors.event_router import process_event_data  # Import the event processing function
 
 # Load environment variables from .env file
@@ -35,7 +39,7 @@ try:
         app_key=os.getenv('DROPBOX_APP_KEY'),
         app_secret=os.getenv('DROPBOX_APP_SECRET'),
         my_email=os.getenv('MY_EMAIL', 'jeff@ophelia.company'),
-        namespace_name=os.getenv('NAMESPACE_NAME', '2024')
+        namespace_name=os.getenv('NAMESPACE_NAME', '2024'),
     )
     logging.info("Dropbox client initialized successfully.")
 except Exception as e:

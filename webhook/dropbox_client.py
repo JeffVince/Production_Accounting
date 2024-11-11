@@ -312,4 +312,3 @@ def create_share_link(dbx, dropbox_path):
     except dropbox.exceptions.ApiError as e:
         logging.error(f"Error creating shared link for '{dropbox_path}': {e}")
         return None
-
