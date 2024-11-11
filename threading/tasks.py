@@ -1,9 +1,9 @@
 # tasks.py
 
 import celeryapp
-from database_util import update_event_in_db
+from webhook.database_util import update_event_in_db
 import logging
-from dropbox_client import DropboxClientSingleton
+from webhook.dropbox_client import DropboxClientSingleton
 from processors.file_util import (
     create_share_link,
     extract_text_from_file

@@ -32,7 +32,7 @@ class DropboxClientSingleton:
         self.DROPBOX_APP_SECRET = app_secret
         self.MY_EMAIL = my_email
         self.NAMESPACE_NAME = namespace_name
-        self.CURSOR_DIR = 'cursors'
+        self.CURSOR_DIR = '../cursors'
         os.makedirs(self.CURSOR_DIR, exist_ok=True)
         self._internal_lock = threading.Lock()
 
@@ -128,7 +128,7 @@ class DropboxClientSingleton:
         }
 
         # Save token data to a file securely
-        with open('token.json', 'w') as token_file:
+        with open('../token.json', 'w') as token_file:
             json.dump(token_data, token_file)
 
     def load_access_token(self):
@@ -136,7 +136,7 @@ class DropboxClientSingleton:
         Load the access token from storage.
         """
         try:
-            with open('token.json', 'r') as token_file:
+            with open('../token.json', 'r') as token_file:
                 token_data = json.load(token_file)
                 if time.time() < token_data['expires_at']:
                     self.token_expiry_time = token_data['expires_at']

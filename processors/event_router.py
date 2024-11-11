@@ -2,15 +2,17 @@
 
 import logging
 from dropbox import files
-from database_util import add_event_to_db
-from dropbox_client import DropboxClientSingleton
+from webhook.database_util import add_event_to_db
+from webhook.dropbox_client import DropboxClientSingleton
 from processors.file_util import (
     parse_filename,
     parse_folder_path,
     get_parent_path
 )
 
-# No need to import Celery tasks as we are not triggering them yet
+# Assuming Celery or similar is used for task queues
+# Uncomment and configure the following line based on your setup
+# from celery_tasks import process_file_task
 
 
 def process_event_data(event_data):
@@ -88,12 +90,12 @@ def process_event_data(event_data):
         for (old_path, del_timestamp), del_event in deletions_map.items():
             for (new_path, add_timestamp), add_event in additions_map.items():
                 if del_timestamp == add_timestamp:
-                    # Check if the event represents a rename (path has changed but parent is the same)
+                    # Check if the event represents a rename event (path has changed but parent is the same)
                     old_parent = get_parent_path(old_path)
                     new_parent = get_parent_path(new_path)
 
                     if old_parent == new_parent and del_event.name != add_event.name:
-                        # Detected a rename within the same directory
+                        # Detected a rename event within the same directory
                         rename_event = {
                             'file_id': getattr(add_event, 'id', None),
                             'file_name': add_event.name,
@@ -114,11 +116,20 @@ def process_event_data(event_data):
             try:
                 # Extract details from the path or filename using file_util functions
                 # For renames, path has changed, so we need to parse the new path
-                parsed_data = parse_filename(rename['file_name']) if 'file_' in rename['event_type'] else parse_folder_path(rename['path'])
+                if 'file_' in rename['event_type']:
+                    parsed_data = parse_filename(rename['file_name'])
+                else:
+                    parsed_data = parse_folder_path(rename['path'])
+
                 if parsed_data:
-                    project_id, po_number, invoice_receipt_number, vendor_name, file_type = parsed_data
+                    if 'file_' in rename['event_type']:
+                        project_id, po_number, invoice_receipt_number, vendor_name, file_type = parsed_data
+                    else:
+                        project_id, po_number, vendor_name, po_type = parsed_data
+                        file_type = None
                 else:
                     project_id, po_number, vendor_name, po_type = parse_folder_path(rename['path'])
+                    file_type = None
 
                 # Prepare data to add to the database
                 event_data = {
@@ -131,15 +142,21 @@ def process_event_data(event_data):
                     'po_number': po_number,
                     'vendor_name': vendor_name,
                     'vendor_type': po_type,
-                    'file_type': file_type if 'file_' in rename['event_type'] else None,
-                    'file_number': invoice_receipt_number,
+                    'file_type': file_type,
+                    'file_number': invoice_receipt_number if 'file_' in rename['event_type'] else None,
                     'dropbox_share_link': None,
                     'file_stream_link': None
                 }
 
                 # Add event to the database
-                event_id = add_event_to_db(**event_data)
-                logging.info(f"Processed rename event: {rename['old_path']} -> {rename['path']} (Event ID: {event_id})")
+                event_id, is_duplicate = add_event_to_db(**event_data)
+                if is_duplicate:
+                    logging.info(f"Processed and marked duplicate rename event: {rename['old_path']} -> {rename['path']} (Event ID: {event_id})")
+                else:
+                    logging.info(f"Processed rename event: {rename['old_path']} -> {rename['path']} (Event ID: {event_id})")
+                    # Enqueue the event for processing if it's not a duplicate
+                    # Uncomment the following line based on your Celery setup
+                    # process_file_task.delay(event_id)
             except Exception as e:
                 logging.error(f"Failed to process rename event for {rename['path']}: {e}", exc_info=True)
 
@@ -149,12 +166,10 @@ def process_event_data(event_data):
                 continue  # Already processed as rename
 
             try:
-                # Determine if it's a file or folder
+                # Process only if the event wasn't added as a rename event
                 if isinstance(add_event, files.FileMetadata):
                     # Process file event
                     parsed_data = parse_filename(add_event.name)
-                    parent_path = get_parent_path(add_event.path_display)
-                    project_id, po_number, vendor_name, po_type = parse_folder_path(parent_path)
                     if not parsed_data:
                         logging.error(f"Failed to parse filename for file: {add_event.path_display}")
                         continue
@@ -171,7 +186,7 @@ def process_event_data(event_data):
                         'project_id': project_id,
                         'po_number': po_number,
                         'vendor_name': vendor_name,
-                        'vendor_type': po_type,
+                        'vendor_type': 'vendor' if file_type == 'INVOICE' else 'cc',  # Adjust as needed
                         'file_type': file_type,
                         'file_number': invoice_receipt_number,
                         'dropbox_share_link': None,
@@ -179,8 +194,14 @@ def process_event_data(event_data):
                     }
 
                     # Add event to the database
-                    event_id = add_event_to_db(**event_data)
-                    logging.info(f"Processed and added file event: {add_event.path_display} (Event ID: {event_id})")
+                    event_id, is_duplicate = add_event_to_db(**event_data)
+                    if is_duplicate:
+                        logging.info(f"Processed and marked duplicate file event: {add_event.path_display} (Event ID: {event_id})")
+                    else:
+                        logging.info(f"Processed and added file event: {add_event.path_display} (Event ID: {event_id})")
+                        # Enqueue the event for processing if it's not a duplicate
+                        # Uncomment the following line based on your Celery setup
+                        # process_file_task.delay(event_id)
 
                 elif isinstance(add_event, files.FolderMetadata):
                     # Process folder event
@@ -209,8 +230,14 @@ def process_event_data(event_data):
                     }
 
                     # Add event to the database
-                    event_id = add_event_to_db(**event_data)
-                    logging.info(f"Processed and added folder event: {add_event.path_display} (Event ID: {event_id})")
+                    event_id, is_duplicate = add_event_to_db(**event_data)
+                    if is_duplicate:
+                        logging.info(f"Processed and marked duplicate folder event: {add_event.path_display} (Event ID: {event_id})")
+                    else:
+                        logging.info(f"Processed and added folder event: {add_event.path_display} (Event ID: {event_id})")
+                        # Enqueue the event for processing if it's not a duplicate
+                        # Uncomment the following line based on your Celery setup
+                        # process_file_task.delay(event_id)
 
             except Exception as e:
                 logging.error(f"Error processing event for {add_event.path_display}: {e}", exc_info=True)
@@ -238,8 +265,6 @@ def process_event_data(event_data):
                     if not parsed_data:
                         logging.error(f"Failed to parse filename for moved file: {new_path}")
                         continue
-                    parent_path = get_parent_path(new_path)
-                    project_id, po_number, vendor_name, po_type = parse_folder_path(parent_path)
                     project_id, po_number, invoice_receipt_number, vendor_name, file_type = parsed_data
 
                     # Prepare data to add to the database
@@ -252,7 +277,7 @@ def process_event_data(event_data):
                         'project_id': project_id,
                         'po_number': po_number,
                         'vendor_name': vendor_name,
-                        'vendor_type': po_type,
+                        'vendor_type': 'vendor' if file_type == 'INVOICE' else 'cc',  # Adjust as needed
                         'file_type': file_type,
                         'file_number': invoice_receipt_number,
                         'dropbox_share_link': None,
@@ -260,8 +285,14 @@ def process_event_data(event_data):
                     }
 
                     # Add event to the database
-                    event_id = add_event_to_db(**event_data)
-                    logging.info(f"Processed file move event: {old_path} -> {new_path} (Event ID: {event_id})")
+                    event_id, is_duplicate = add_event_to_db(**event_data)
+                    if is_duplicate:
+                        logging.info(f"Processed and marked duplicate file move event: {old_path} -> {new_path} (Event ID: {event_id})")
+                    else:
+                        logging.info(f"Processed file move event: {old_path} -> {new_path} (Event ID: {event_id})")
+                        # Enqueue the event for processing if it's not a duplicate
+                        # Uncomment the following line based on your Celery setup
+                        # process_file_task.delay(event_id)
 
                 elif isinstance(change, files.FolderMoveMetadata):
                     old_path = getattr(change, 'previous_path_display', None)
@@ -297,8 +328,14 @@ def process_event_data(event_data):
                     }
 
                     # Add event to the database
-                    event_id = add_event_to_db(**event_data)
-                    logging.info(f"Processed folder move event: {old_path} -> {new_path} (Event ID: {event_id})")
+                    event_id, is_duplicate = add_event_to_db(**event_data)
+                    if is_duplicate:
+                        logging.info(f"Processed and marked duplicate folder move event: {old_path} -> {new_path} (Event ID: {event_id})")
+                    else:
+                        logging.info(f"Processed folder move event: {old_path} -> {new_path} (Event ID: {event_id})")
+                        # Enqueue the event for processing if it's not a duplicate
+                        # Uncomment the following line based on your Celery setup
+                        # process_file_task.delay(event_id)
 
                 elif isinstance(change, files.FileRenameMetadata):
                     old_path = getattr(change, 'previous_path_display', None)
@@ -313,8 +350,6 @@ def process_event_data(event_data):
                     if not parsed_data:
                         logging.error(f"Failed to parse filename for renamed file: {new_path}")
                         continue
-                    parent_path = get_parent_path(new_path)
-                    project_id, po_number, vendor_name, po_type = parse_folder_path(parent_path)
                     project_id, po_number, invoice_receipt_number, vendor_name, file_type = parsed_data
 
                     # Prepare data to add to the database
@@ -327,7 +362,7 @@ def process_event_data(event_data):
                         'project_id': project_id,
                         'po_number': po_number,
                         'vendor_name': vendor_name,
-                        'vendor_type': po_type,
+                        'vendor_type': 'vendor' if file_type == 'INVOICE' else 'cc',  # Adjust as needed
                         'file_type': file_type,
                         'file_number': invoice_receipt_number,
                         'dropbox_share_link': None,
@@ -335,8 +370,14 @@ def process_event_data(event_data):
                     }
 
                     # Add event to the database
-                    event_id = add_event_to_db(**event_data)
-                    logging.info(f"Processed file rename event: {old_path} -> {new_path} (Event ID: {event_id})")
+                    event_id, is_duplicate = add_event_to_db(**event_data)
+                    if is_duplicate:
+                        logging.info(f"Processed and marked duplicate file rename event: {old_path} -> {new_path} (Event ID: {event_id})")
+                    else:
+                        logging.info(f"Processed file rename event: {old_path} -> {new_path} (Event ID: {event_id})")
+                        # Enqueue the event for processing if it's not a duplicate
+                        # Uncomment the following line based on your Celery setup
+                        # process_file_task.delay(event_id)
 
                 elif isinstance(change, files.FolderRenameMetadata):
                     old_path = getattr(change, 'previous_path_display', None)
@@ -372,8 +413,14 @@ def process_event_data(event_data):
                     }
 
                     # Add event to the database
-                    event_id = add_event_to_db(**event_data)
-                    logging.info(f"Processed folder rename event: {old_path} -> {new_path} (Event ID: {event_id})")
+                    event_id, is_duplicate = add_event_to_db(**event_data)
+                    if is_duplicate:
+                        logging.info(f"Processed and marked duplicate folder rename event: {old_path} -> {new_path} (Event ID: {event_id})")
+                    else:
+                        logging.info(f"Processed folder rename event: {old_path} -> {new_path} (Event ID: {event_id})")
+                        # Enqueue the event for processing if it's not a duplicate
+                        # Uncomment the following line based on your Celery setup
+                        # process_file_task.delay(event_id)
 
                 else:
                     logging.warning(f"Unhandled change type: {type(change)}")

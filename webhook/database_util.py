@@ -21,7 +21,7 @@ def initialize_database():
     """
     Initializes the SQLite database with the necessary schema.
     """
-    conn = sqlite3.connect('processed_files.db')
+    conn = sqlite3.connect('../processed_files.db')
     conn.row_factory = dict_factory  # Set row factory to dictionary
     cursor = conn.cursor()
 
@@ -46,7 +46,7 @@ def initialize_database():
             file_stream_link TEXT,
             ocr_data TEXT,
             openai_data TEXT,
-            UNIQUE(file_id, event_type, path, old_path)
+            UNIQUE(project_id, po_number, file_number, file_type)
         )
     ''')
 
@@ -76,15 +76,41 @@ def add_event_to_db(
 ):
     """
     Adds an event to the SQLite database while preventing duplicates.
-    Returns the ID of the inserted or existing event.
+    Returns a tuple (event_id, is_duplicate).
     """
     with db_lock:
-        conn = sqlite3.connect('processed_files.db', check_same_thread=False)
+        conn = sqlite3.connect('../processed_files.db', check_same_thread=False)
         conn.row_factory = dict_factory
         cursor = conn.cursor()
 
         try:
-            # Corrected INSERT statement with 13 placeholders
+            # Check for duplicate based on project_id, po_number, file_number, file_type
+            if project_id and po_number and file_number and file_type:
+                cursor.execute('''
+                    SELECT id, status FROM events
+                    WHERE project_id = ?
+                      AND po_number = ?
+                      AND file_number = ?
+                      AND file_type = ?
+                ''', (project_id, po_number, file_number, file_type))
+                result = cursor.fetchone()
+
+                if result:
+                    event_id = result['id']
+                    current_status = result['status']
+                    if current_status != 'duplicate':
+                        cursor.execute('''
+                            UPDATE events
+                            SET status = 'duplicate'
+                            WHERE id = ?
+                        ''', (event_id,))
+                        conn.commit()
+                        logging.info(f"Event ID {event_id} marked as 'duplicate'.")
+                    else:
+                        logging.info(f"Event ID {event_id} is already marked as 'duplicate'.")
+                    return event_id, True  # Is a duplicate
+
+            # If not a duplicate, insert the new event
             cursor.execute('''
                 INSERT INTO events (
                     file_id,
@@ -120,18 +146,13 @@ def add_event_to_db(
             event_id = cursor.lastrowid
             logging.info(
                 f"Event '{event_type}' for '{file_name}' at '{path}' added to the database with ID {event_id}.")
-            return event_id
-        except sqlite3.IntegrityError:
-            # This event is a duplicate and already exists in the database
-            logging.info(f"Duplicate event '{event_type}' for '{file_name}' at '{path}' detected. Skipping insertion.")
-            cursor.execute('SELECT id FROM events WHERE file_id=? AND event_type=? AND path=? AND old_path=?',
-                           (file_id, event_type, path, old_path))
-            result = cursor.fetchone()
-            event_id = result['id'] if result else None
-            return event_id
+            return event_id, False  # Not a duplicate
+        except sqlite3.IntegrityError as e:
+            logging.error(f"IntegrityError while adding event to database: {e}")
+            return None, False
         except sqlite3.Error as e:
             logging.error(f"Error adding event to database: {e}")
-            return None
+            return None, False
         finally:
             conn.close()
 
@@ -144,7 +165,7 @@ def fetch_pending_events():
         list of dicts: Each dict represents an event row.
     """
     with db_lock:
-        conn = sqlite3.connect('processed_files.db', check_same_thread=False)
+        conn = sqlite3.connect('../processed_files.db', check_same_thread=False)
         conn.row_factory = dict_factory
         cursor = conn.cursor()
         try:
@@ -168,7 +189,7 @@ def update_event_status(event_id, new_status):
         new_status (str): The new status ('processed', 'failed', etc.).
     """
     with db_lock:
-        conn = sqlite3.connect('processed_files.db', check_same_thread=False)
+        conn = sqlite3.connect('../processed_files.db', check_same_thread=False)
         conn.row_factory = dict_factory
         cursor = conn.cursor()
         try:

@@ -1,7 +1,6 @@
 # processors/file_util.py
 
 import pytesseract
-from PIL import Image
 from pdf2image import convert_from_path
 from datetime import datetime, timedelta
 
@@ -9,14 +8,13 @@ import PyPDF2
 import re
 import os
 import logging
-import dropbox
 
 from processors.openai_util import (
     extract_receipt_info_with_openai,
     extract_info_with_openai
 )
 
-from database_util import update_event_status
+from webhook.database_util import update_event_status
 from processors.monday_util import (
     find_item_by_project_and_po,
     find_contact_item_by_name,
@@ -28,11 +26,10 @@ from processors.monday_util import (
     update_item_columns,
     find_subitem_by_invoice_or_receipt_number,
     create_subitem,
-    update_vendor_description_in_monday,
-    update_subitem_columns
+    update_vendor_description_in_monday
 )
 
-from dropbox_client import create_share_link, get_dropbox_client
+from webhook.dropbox_client import create_share_link, get_dropbox_client
 
 
 def extract_text_from_file(dropbox_path):
@@ -69,7 +66,7 @@ def extract_text_from_file(dropbox_path):
         return text
     except Exception as e:
         logging.error(f"Error extracting text from '{dropbox_path}': {e}", exc_info=True)
-        return ""
+        raise  # Propagate exception to be handled by the caller
 
 
 def extract_text_from_pdf(file_path):
@@ -92,7 +89,7 @@ def extract_text_from_pdf(file_path):
         return text
     except Exception as e:
         logging.error(f"Error extracting text from PDF '{file_path}': {e}", exc_info=True)
-        return ""
+        raise  # Propagate exception to be handled by the caller
 
 
 def extract_text_with_ocr(file_path):
@@ -114,10 +111,9 @@ def extract_text_with_ocr(file_path):
         return text
     except Exception as e:
         logging.error(f"Error extracting text with OCR from '{file_path}': {e}", exc_info=True)
-        return ""
+        raise  # Propagate exception to be handled by the caller
 
 
-# VERIFY FOLDER IS VALID
 def is_po_folder(local_path):
     """
     Determines if the specified folder path is a valid PO folder within the correct project structure.
@@ -180,7 +176,6 @@ def is_po_folder(local_path):
     return True
 
 
-# PARSE FOLDER PATH
 def parse_folder_path(local_path):
     """
     Parses the folder path to extract the Project ID, PO Number, Vendor Name,
@@ -245,7 +240,6 @@ def parse_folder_path(local_path):
         return None, None, None, None
 
 
-# PARSE FILE NAME
 def parse_filename(filename):
     """
     Parses the filename to extract project_id, po_number, receipt_number (optional), vendor_name, file_type, and invoice_number.
@@ -268,7 +262,7 @@ def parse_filename(filename):
         logging.debug(f"Parsed Filename '{filename}':")
         logging.debug(f"  Project ID: {project_id}")
         logging.debug(f"  PO Number: {po_number}")
-        logging.debug(f"  Receipt Number: {invoice_receipt_number}")
+        logging.debug(f"  Receipt/Invoice Number: {invoice_receipt_number}")
         logging.debug(f"  Vendor Name: {vendor_name}")
         logging.debug(f"  File Type: {file_type}")
         logging.debug(f"  Invoice Number: {invoice_number}")
@@ -279,7 +273,6 @@ def parse_filename(filename):
         return None
 
 
-# ADD TAX FORM TO ITEM
 def add_tax_form_to_invoice(po_item_id, dropbox_path, tax_file_type, dbx):
     share_link = create_share_link(dbx, dropbox_path)
     column_values = column_values_formatter(tax_file_link=share_link, status="Needs Verification",
@@ -287,7 +280,6 @@ def add_tax_form_to_invoice(po_item_id, dropbox_path, tax_file_type, dbx):
     update_item_columns(po_item_id, column_values)
 
 
-# GET PARENT PATH
 def get_parent_path(path_display):
     """
     Extracts the parent directory path from a given Dropbox path.
@@ -319,121 +311,125 @@ def get_parent_path(path_display):
     return parent_path
 
 
-# PROCESS FOLDER #
-def process_folder(file_id, file_name, dropbox_path, project_id, po_number, vendor_name, vendor_type):
+def process_folder(project_id, po_number, vendor_name, vendor_type, dropbox_path):
     """
     Processes a newly created folder to manage PO records and related tasks.
 
     Args:
-        file_id (str): The ID of the file/folder.
-        file_name (str): The name of the file/folder.
-        dropbox_path (str): The Dropbox path to the folder.
         project_id (str): The project ID.
         po_number (str): The PO number.
         vendor_name (str): The vendor's name.
         vendor_type (str): The type of vendor ('vendor' or 'cc').
-    """
+        dropbox_path (str): The Dropbox path to the folder.
 
+    Returns:
+        str: The created PO item ID in Monday.com.
+
+    Raises:
+        Exception: If any step fails during folder processing.
+    """
     logging.info(f"Starting processing of folder: {dropbox_path}")
 
-    try:
-        dbx_client = get_dropbox_client()
-        dbx = dbx_client.dbx
+    dbx_client = get_dropbox_client()
+    dbx = dbx_client.dbx
 
-        # Check if a PO item already exists in Monday.com for this folder
-        existing_item_id = find_item_by_project_and_po(project_id, po_number)
-        if existing_item_id:
-            logging.info(f"PO item already exists in Monday.com for Project ID {project_id} and PO Number {po_number}.")
-            return  # Item already exists; no further action needed
+    # Check if a PO item already exists in Monday.com for this folder
+    existing_item_id = find_item_by_project_and_po(project_id, po_number)
+    if existing_item_id:
+        logging.info(f"PO item already exists in Monday.com for Project ID {project_id} and PO Number {po_number}.")
+        return existing_item_id  # Item already exists; return its ID
 
-        logging.info(f"Creating new PO item in Monday.com for Project ID {project_id} and PO Number {po_number}.")
+    logging.info(f"Creating new PO item in Monday.com for Project ID {project_id} and PO Number {po_number}.")
 
-        # Generate a Dropbox folder link for this folder
-        folder_link = create_share_link(dbx, dropbox_path)
-        if not folder_link:
-            logging.error(f"Could not generate Dropbox link for {dropbox_path}")
-            return
+    # Generate a Dropbox folder link for this folder
+    folder_link = create_share_link(dbx, dropbox_path)
+    if not folder_link:
+        logging.error(f"Could not generate Dropbox link for {dropbox_path}.")
+        raise Exception(f"Failed to create share link for {dropbox_path}.")
 
-        logging.info(f"Generated Dropbox folder link: {folder_link}")
+    logging.debug(f"Generated Dropbox folder link: {folder_link}")
 
-        # Set status based on contact data and PO type
-        if vendor_type == "cc":
-            status = "CC / PC"
-            column_values = column_values_formatter(
-                project_id=project_id,
-                po_number=po_number,
-                vendor_name=vendor_name,
-                folder_link=folder_link,
-                status=status
-            )
+    # Set status based on contact data and PO type
+    if vendor_type == "cc":
+        status = "CC / PC"
+        column_values = column_values_formatter(
+            project_id=project_id,
+            po_number=po_number,
+            vendor_name=vendor_name,
+            folder_link=folder_link,
+            status=status
+        )
+    else:
+        # Attempt to find the contact associated with the vendor
+        contact_info = find_contact_item_by_name(vendor_name)
+        if contact_info:
+            contact_id = contact_info['item_id']
+            contact_columns = contact_info['column_values']
+            logging.debug(f"Found contact ID for Vendor: {vendor_name}. Contact ID: {contact_id}")
         else:
-            # Attempt to find the contact associated with the vendor
-            contact_info = find_contact_item_by_name(vendor_name)
-            if contact_info:
-                contact_id = contact_info['item_id']
-                contact_columns = contact_info['column_values']
-                logging.info(f"Found contact ID for Vendor: {vendor_name}. Contact ID: {contact_id}")
-            else:
-                contact_id = None
-                contact_columns = {}
-                logging.info(f"No contact found for Vendor: {vendor_name}. Proceeding without contact ID.")
+            contact_id = None
+            contact_columns = {}
+            logging.debug(f"No contact found for Vendor: {vendor_name}. Proceeding without contact ID.")
 
-            if contact_id and is_contact_info_complete(contact_columns):
-                status = "Approved"
-            else:
-                status = "Tax Form Needed"
+        if contact_id and is_contact_info_complete(contact_columns):
+            status = "Approved"
+        else:
+            status = "Tax Form Needed"
 
-            logging.info(f"Set PO status to '{status}' based on PO type and contact data completeness.")
+        logging.debug(f"Set PO status to '{status}' based on PO type and contact data completeness.")
 
-            column_values = column_values_formatter(
-                project_id=project_id,
-                po_number=po_number,
-                vendor_name=vendor_name,
-                folder_link=folder_link,
-                status=status,
-                contact_id=contact_id
-            )
+        column_values = column_values_formatter(
+            project_id=project_id,
+            po_number=po_number,
+            vendor_name=vendor_name,
+            folder_link=folder_link,
+            status=status,
+            contact_id=contact_id
+        )
 
-        # Get the group ID for the project and create the new item in Monday.com
-        group_id = get_group_id_by_project_id(project_id)
-        if not group_id:
-            logging.error(f"Could not find group for Project ID {project_id}")
-            return
+    # Get the group ID for the project and create the new item in Monday.com
+    group_id = get_group_id_by_project_id(project_id)
+    if not group_id:
+        logging.error(f"Could not find group for Project ID {project_id}.")
+        raise Exception(f"Group not found for Project ID {project_id}.")
 
-        item_name = f"{vendor_name}"
+    item_name = f"{vendor_name}"
 
-        item_id = create_item(group_id, item_name, column_values)
-        if not item_id:
-            logging.error(f"Failed to create item in Monday.com for {item_name}")
-            return
+    item_id = create_item(group_id, item_name, column_values)
+    if not item_id:
+        logging.error(f"Failed to create item in Monday.com for {item_name}.")
+        raise Exception(f"Failed to create PO item for {vendor_name}.")
 
-        logging.info(f"Created new item in Monday.com with ID {item_id} and status '{status}'.")
-
-    except Exception as e:
-        logging.error(f"Failed to process folder {dropbox_path}: {e}", exc_info=True)
+    logging.debug(f"Created new item in Monday.com with ID {item_id} and status '{status}'.")
+    return item_id
 
 
-# PROCESS FILE #
 def process_file(file_id, file_name, dropbox_path, project_id, po_number, vendor_name, vendor_type, file_type,
                  file_number):
     """
     Processes a file by validating the file path, parsing the filename, matching PO numbers,
     identifying or creating a PO item in Monday.com, determining file type, processing invoice
     or receipt data, generating item descriptions, and adding subitems to Monday.com.
+
+    Args:
+        file_id (str): The ID of the file/event.
+        file_name (str): The name of the file.
+        dropbox_path (str): The Dropbox path to the file.
+        project_id (str): The project ID.
+        po_number (str): The PO number.
+        vendor_name (str): The vendor's name.
+        vendor_type (str): The type of vendor ('vendor' or 'cc').
+        file_type (str): The type of the file (e.g., 'INVOICE', 'RECEIPT').
+        file_number (str): The invoice/receipt number.
     """
-    # Start processing
     logging.info(f"Starting processing of file: {dropbox_path}")
 
     try:
-        # Access the singleton via get_dropbox_client()
-        dbx_client = get_dropbox_client()
-        dbx = dbx_client.dbx
-
         # Parse the filename to extract required information
         parsed_data = parse_filename(file_name)
         if not parsed_data:
             logging.error(f"Failed to parse filename for file: {dropbox_path}")
-            update_event_status(file_id, 'failed')  # Update status if applicable
+            update_event_status(file_id, 'failed')  # Report failure to the database
             return
 
         project_id_parsed, file_po_number, invoice_receipt_number, vendor_name_parsed, file_type_parsed = parsed_data
@@ -442,37 +438,40 @@ def process_file(file_id, file_name, dropbox_path, project_id, po_number, vendor
         if file_po_number != po_number:
             logging.error(
                 f"PO number mismatch: File PO number ({file_po_number}) does not match Database PO number ({po_number}).")
-            update_event_status(file_id, 'failed')  # Update status if applicable
+            update_event_status(file_id, 'failed')  # Report failure to the database
             return
 
-        logging.info(f"File PO number matches Database PO number: {file_po_number}")
+        logging.debug(f"File PO number matches Database PO number: {file_po_number}")
 
-        # Find the PO item in Monday.com
+        # Find or create the PO item in Monday.com
         po_item_id = find_item_by_project_and_po(project_id, po_number)
         if not po_item_id:
             logging.info(
                 f"PO item not found in Monday.com for Project ID {project_id} and PO number {po_number}. Initiating creation.")
             # If the PO item doesn't exist, call process_folder to create it
-            process_folder(file_id, vendor_name, os.path.dirname(dropbox_path), project_id, po_number, vendor_name,
-                           vendor_type)
-            # After processing the folder, try to find the PO item again
-            po_item_id = find_item_by_project_and_po(project_id, po_number)
+            po_item_id = process_folder(project_id, po_number, vendor_name, vendor_type, os.path.dirname(dropbox_path))
             if not po_item_id:
                 logging.error(
                     f"Failed to create or find PO item after processing folder for Project ID {project_id} and PO number {po_number}.")
-                update_event_status(file_id, 'failed')  # Update status if applicable
+                update_event_status(file_id, 'failed')  # Report failure to the database
                 return
-            logging.info(f"Successfully created PO item in Monday.com with ID {po_item_id}.")
+            logging.debug(f"Successfully created PO item in Monday.com with ID {po_item_id}.")
 
         else:
-            logging.info(f"Found PO item in Monday.com: {po_item_id}")
+            logging.debug(f"Found PO item in Monday.com: {po_item_id}")
+
+        # Access the Dropbox client
+        dbx_client = get_dropbox_client()
+        dbx = dbx_client.dbx
 
         # Determine File Type and Process Accordingly
         if file_type_parsed in ['W9', 'W8-BEN', 'W8-BEN-E']:
             logging.info(f"File is a {file_type_parsed}. Linking to PO item.")
             # Link tax form to the PO item as a reference
             add_tax_form_to_invoice(po_item_id, dropbox_path, file_type_parsed, dbx)
-            logging.info(f"Successfully linked {file_type_parsed} to PO item ID {po_item_id}.")
+            logging.debug(f"Successfully linked {file_type_parsed} to PO item ID {po_item_id}.")
+            # Mark as processed since linking is complete
+            update_event_status(file_id, 'processed')
             return  # Tax form processing is complete here
 
         elif file_type_parsed == 'INVOICE' and vendor_type == 'vendor':
@@ -480,7 +479,7 @@ def process_file(file_id, file_name, dropbox_path, project_id, po_number, vendor
             logging.info(f"File is an Invoice. Checking if it has already been logged.")
             if find_subitem_by_invoice_or_receipt_number(po_item_id, invoice_receipt_number=invoice_receipt_number):
                 logging.info(f"Invoice already logged -- Skipping processing.")
-                update_event_status(file_id, 'processed')  # Mark as processed since it's already logged
+                update_event_status(file_id, 'duplicate')  # Report duplicate to the database
                 return
 
             # Process invoice data and line items
@@ -488,7 +487,7 @@ def process_file(file_id, file_name, dropbox_path, project_id, po_number, vendor
             line_items, vendor_description = extract_invoice_data_from_file(dropbox_path)
             if not line_items:
                 logging.error(f"Failed to extract invoice data from file: {dropbox_path}")
-                update_event_status(file_id, 'failed')
+                update_event_status(file_id, 'failed')  # Report failure to the database
                 return
 
             # Update vendor description if necessary
@@ -499,7 +498,7 @@ def process_file(file_id, file_name, dropbox_path, project_id, po_number, vendor
             share_link = create_share_link(dbx, dropbox_path)
             if not share_link:
                 logging.error(f"Failed to create share link for {dropbox_path}")
-                update_event_status(file_id, 'failed')
+                update_event_status(file_id, 'failed')  # Report failure to the database
                 return
 
             # Create line items in Monday.com
@@ -509,37 +508,99 @@ def process_file(file_id, file_name, dropbox_path, project_id, po_number, vendor
                 if 'description' not in item:
                     logging.warning(f"'description' key missing in item: {item}")
 
-                line_item_column_values = subitem_column_values_formatter(
-                    date=item['date'],
-                    description=description,  # Correct key usage
-                    rate=item['rate'],
-                    quantity=item['quantity'],
-                    status=None,
-                    file_id=invoice_receipt_number,
-                    account_number=item['account_number'],
-                    link=share_link,
-                    due_date=item['due_date']
-                )
-                create_subitem(po_item_id, vendor_name, line_item_column_values)
+                try:
+                    line_item_column_values = subitem_column_values_formatter(
+                        date=item['date'],
+                        description=description,  # Correct key usage
+                        rate=item['rate'],
+                        quantity=item['quantity'],
+                        status=None,
+                        file_id=invoice_receipt_number,
+                        account_number=item['account_number'],
+                        link=share_link,
+                        due_date=item['due_date']
+                    )
+                    created_subitem_id = create_subitem(po_item_id, vendor_name, line_item_column_values)
+                    if not created_subitem_id:
+                        logging.error(f"Failed to create subitem for invoice line item: {item}")
+                        raise Exception(f"Failed to create subitem for invoice line item: {item}")
+                except Exception as e:
+                    logging.error(f"Exception during subitem creation: {e}")
+                    raise  # Propagate exception to be handled by the caller
 
             logging.info(f"Successfully processed Invoice: {file_name}")
+            # Mark as processed after successful invoice processing
+            update_event_status(file_id, 'processed')
+            return
 
         elif file_type_parsed == 'RECEIPT' and vendor_type == 'cc':
-            # Similar processing for receipts
-            pass  # Implement as needed
+            # Check if the receipt has already been logged
+            logging.info(f"File is a receipt. Checking if it has already been logged.")
+            if find_subitem_by_invoice_or_receipt_number(po_item_id, invoice_receipt_number=invoice_receipt_number):
+                logging.info(f"Receipt already logged -- Skipping processing.")
+                update_event_status(file_id, 'duplicate')  # Report duplicate to the database
+                return
+
+            # Process receipt data
+            logging.info(f"Processing receipt: {file_name}")
+            receipt_data = extract_receipt_data_from_file(dropbox_path)
+            if not receipt_data:
+                logging.error(f"Failed to extract receipt data from file: {dropbox_path}")
+                update_event_status(file_id, 'failed')  # Report failure to the database
+                return
+
+            # Extract receipt details
+            total_amount = receipt_data.get('total_amount')
+            date_of_purchase = receipt_data.get('date')
+            description = receipt_data.get('description', 'Receipt')
+
+            if total_amount is None or date_of_purchase is None:
+                logging.error(f"Essential receipt data missing in file: {dropbox_path}")
+                update_event_status(file_id, 'failed')  # Report failure to the database
+                return
+
+            # Get Dropbox file link
+            share_link = create_share_link(dbx, dropbox_path)
+            if not share_link:
+                logging.error(f"Failed to create share link for {dropbox_path}")
+                update_event_status(file_id, 'failed')  # Report failure to the database
+                return
+
+            # Create a single subitem for the receipt with total amount
+            try:
+                column_values = subitem_column_values_formatter(
+                    date=date_of_purchase,
+                    description=description,  # Description from receipt
+                    rate=total_amount,  # Total amount as rate
+                    quantity=1,  # Quantity is 1 for total
+                    status='Paid',  # No specific status required
+                    file_id=invoice_receipt_number,
+                    account_number="5000",  # Always Cost of Goods Sold
+                    link=share_link,
+                    due_date=date_of_purchase  # Due date same as purchase date
+                )
+                created_subitem_id = create_subitem(po_item_id, vendor_name, column_values)
+                if not created_subitem_id:
+                    logging.error(f"Failed to create subitem for receipt: {receipt_data}")
+                    raise Exception(f"Failed to create subitem for receipt: {receipt_data}")
+            except Exception as e:
+                logging.error(f"Exception during receipt subitem creation: {e}")
+                raise  # Propagate exception to be handled by the caller
+                raise  # Propagate exception to be handled by the caller
+
+            logging.info(f"Successfully processed Receipt: {file_name}")
+            # Mark as processed after successful receipt processing
+            update_event_status(file_id, 'processed')
+            return
 
         else:
             logging.error(f"Unknown file type '{file_type_parsed}' for file: {dropbox_path}")
-            update_event_status(file_id, 'failed')
+            update_event_status(file_id, 'failed')  # Report failure to the database
             return
-
-        # If all processing is successful, mark the event as 'processed'
-        update_event_status(file_id, 'processed')
-        logging.info(f"Successfully processed file: {file_name}")
 
     except Exception as e:
         logging.error(f"Failed to process file {dropbox_path}: {e}", exc_info=True)
-        update_event_status(file_id, 'failed')
+        update_event_status(file_id, 'failed')  # Report failure to the database
 
 
 def extract_receipt_info_with_openai_from_file(dropbox_path):
@@ -606,8 +667,8 @@ def extract_invoice_data_from_file(dropbox_path):
             quantity = item.get("quantity", 1)
             rate = float(item.get("rate", 0.0))
             date = item.get("date", "")
-            due_date = item.get("due_date", "") or (datetime.strptime(date, '%Y-%m-%d') + timedelta(days=30)).strftime(
-                '%Y-%m-%d') if date else ""
+            due_date = item.get("due_date", "") or (
+                datetime.strptime(date, '%Y-%m-%d') + timedelta(days=30)).strftime('%Y-%m-%d') if date else ""
             account_number = item.get("account_number", "5000")  # Default account number if not provided
 
             # Append the dictionary to line_items
@@ -625,3 +686,60 @@ def extract_invoice_data_from_file(dropbox_path):
     except Exception as e:
         logging.error(f"Error structuring invoice data: {e}")
         return [], "Failed to structure invoice data."
+
+
+def extract_receipt_data_from_file(dropbox_path):
+    """
+    Extracts receipt data from a given file and returns total amount, date, and description.
+
+    Args:
+        dropbox_path (str): The path to the receipt file.
+
+    Returns:
+        dict or None: A dictionary containing 'total_amount', 'date', and 'description' or None if extraction fails.
+    """
+    # Step 1: Extract text from the file (supports PDFs and images)
+    text = extract_text_from_file(dropbox_path)
+    if not text:
+        logging.error("Failed to extract text from the receipt file.")
+        return None
+
+    # Step 2: Use OpenAI to process the text and extract receipt data
+    try:
+        receipt_data = extract_receipt_info_with_openai_from_file(dropbox_path)
+        if not receipt_data:
+            logging.error("OpenAI failed to extract receipt data.")
+            return None
+    except Exception as e:
+        logging.error(f"OpenAI processing failed: {e}")
+        return None
+
+    # Step 3: Validate and return receipt data
+    try:
+        total_amount = receipt_data.get('total_amount')
+        date_of_purchase = receipt_data.get('date')
+        description = receipt_data.get('description', 'Receipt')
+
+        if total_amount is None or date_of_purchase is None:
+            logging.error("Essential receipt data missing.")
+            return None
+
+        # Ensure total_amount is a float
+        total_amount = float(total_amount)
+
+        # Validate date format
+        try:
+            datetime.strptime(date_of_purchase, '%Y-%m-%d')
+        except ValueError:
+            logging.error(f"Invalid date format: {date_of_purchase}. Expected YYYY-MM-DD.")
+            return None
+
+        return {
+            'total_amount': total_amount,
+            'date': date_of_purchase,
+            'description': description
+        }
+
+    except Exception as e:
+        logging.error(f"Error validating receipt data: {e}")
+        return None

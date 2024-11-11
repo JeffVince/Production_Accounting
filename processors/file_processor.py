@@ -4,11 +4,9 @@ import logging
 import sys
 import time
 import schedule
-import os
-from database_util import fetch_pending_events, update_event_status
+from webhook.database_util import fetch_pending_events, update_event_status
 from processors.file_util import process_file, process_folder
 from dotenv import load_dotenv
-from notification_util import send_slack_message  # Optional: For sending notifications
 
 # Load environment variables from .env file
 load_dotenv()
@@ -18,7 +16,7 @@ logging.basicConfig(
     level=logging.INFO,  # Set to DEBUG for more detailed logs
     format='%(asctime)s [%(levelname)s] %(message)s',
     handlers=[
-        logging.FileHandler("event_processor.log"),
+        logging.FileHandler("../event_processor.log"),
         logging.StreamHandler(sys.stdout)
     ]
 )

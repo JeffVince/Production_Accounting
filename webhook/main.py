@@ -4,11 +4,11 @@ import os
 import logging
 import hmac
 import hashlib
-from flask import Flask, request, Response
-from dropbox_client import DropboxClientSingleton, get_dropbox_client
+from flask import Flask, request
+from dropbox_client import get_dropbox_client
 from database_util import initialize_database
 from dotenv import load_dotenv
-from event_router import process_event_data  # Import the event processing function
+from processors.event_router import process_event_data  # Import the event processing function
 
 # Load environment variables from .env file
 load_dotenv()
@@ -18,7 +18,7 @@ logging.basicConfig(
     level=logging.INFO,  # Set to DEBUG for detailed logs during troubleshooting
     format='%(asctime)s [%(levelname)s] %(message)s',
     handlers=[
-        logging.FileHandler("dropbox_server.log"),
+        logging.FileHandler("../dropbox_server.log"),
         logging.StreamHandler()
     ]
 )
