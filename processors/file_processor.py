@@ -1,4 +1,4 @@
-# event_processor.py
+# file_processor.py
 
 import logging
 import sys
