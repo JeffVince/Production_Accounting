@@ -1,5 +1,3 @@
-# dropbox_client.py
-
 import os
 import json
 import time
@@ -21,8 +19,15 @@ class DropboxClientSingleton:
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
-                    cls._instance = super(DropboxClientSingleton, cls).__new__(cls)
-                    cls._instance.initialize(*args, **kwargs)
+                    instance = super(DropboxClientSingleton, cls).__new__(cls)
+                    try:
+                        instance.initialize(*args, **kwargs)
+                    except Exception as e:
+                        logging.error(f"Failed to initialize DropboxClientSingleton: {e}", exc_info=True)
+                        # Do not set cls._instance
+                        raise  # Re-raise the exception
+                    else:
+                        cls._instance = instance
         return cls._instance
 
     def initialize(self, refresh_token, app_key, app_secret, my_email, namespace_name):
@@ -275,29 +280,37 @@ dropbox_client_instance = None
 
 
 def get_dropbox_client(refresh_token=None, app_key=None, app_secret=None, my_email=None, namespace_name=None):
-    """
-    Retrieves the singleton instance of DropboxClientSingleton.
-    Initializes it if it hasn't been already.
-    """
     global dropbox_client_instance
     if not dropbox_client_instance:
-        dropbox_client_instance = DropboxClientSingleton(
-            refresh_token=os.getenv('DROPBOX_REFRESH_TOKEN'),
-            app_key=os.getenv('DROPBOX_APP_KEY'),
-            app_secret=os.getenv('DROPBOX_APP_SECRET'),
-            my_email=os.getenv('MY_EMAIL', 'jeff@ophelia.company'),
-            namespace_name=os.getenv('NAMESPACE_NAME', '2024')
-        )
+        try:
+            dropbox_client_instance = DropboxClientSingleton(
+                refresh_token=refresh_token or os.getenv('DROPBOX_REFRESH_TOKEN'),
+                app_key=app_key or os.getenv('DROPBOX_APP_KEY'),
+                app_secret=app_secret or os.getenv('DROPBOX_APP_SECRET'),
+                my_email=my_email or os.getenv('MY_EMAIL', 'jeff@ophelia.company'),
+                namespace_name=namespace_name or os.getenv('NAMESPACE_NAME', '2024')
+            )
+        except Exception as e:
+            logging.error(f"Failed to initialize Dropbox client: {e}", exc_info=True)
+            dropbox_client_instance = None  # Ensure the instance is not set
+            raise e  # Re-raise the exception to handle it appropriately
     return dropbox_client_instance
 
 
-def create_share_link(dbx, dropbox_path):
+def create_share_link(dbx_client, dropbox_path):
     """
     Creates a shared link for the specified Dropbox path.
     """
     try:
+        # Add namespace ID if applicable and ensure path format
+        if dbx_client.namespace_id:
+            dropbox_path = f"ns:{dbx_client.namespace_id}/{dropbox_path.lstrip('/')}"
+
+        # Use the same path root for sharing endpoints
+        dbx_sharing = dbx_client.dbx.with_path_root(common.PathRoot.namespace_id(dbx_client.namespace_id))
+
         # Check for existing shared links
-        links = dbx.sharing_list_shared_links(path=dropbox_path, direct_only=True).links
+        links = dbx_sharing.sharing_list_shared_links(path=dropbox_path, direct_only=True).links
         if links:
             logging.info(f"Existing shared link found for '{dropbox_path}': {links[0].url}")
             return links[0].url
@@ -306,7 +319,7 @@ def create_share_link(dbx, dropbox_path):
             settings = dropbox.sharing.SharedLinkSettings(
                 requested_visibility=dropbox.sharing.RequestedVisibility.public
             )
-            shared_link = dbx.sharing_create_shared_link_with_settings(dropbox_path, settings)
+            shared_link = dbx_sharing.sharing_create_shared_link_with_settings(dropbox_path, settings)
             logging.info(f"Created new shared link for '{dropbox_path}': {shared_link.url}")
             return shared_link.url
     except dropbox.exceptions.ApiError as e:

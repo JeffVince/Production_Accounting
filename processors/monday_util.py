@@ -73,7 +73,7 @@ MONDAY_API_URL = 'https://api.monday.com/v2'
 BOARD_ID = "2562607316"  # Ensure this is a string
 SUBITEM_BOARD_ID = get_subitem_board_id(BOARD_ID)
 CONTACT_BOARD_ID = '2738875399'
-
+MONDAY_API_TOKEN = os.getenv("MONDAY_API_TOKEN")
 
 PO_PROJECT_ID_COLUMN = 'project_id'  # Monday.com Project ID column ID
 PO_NUMBER_COLUMN = 'numbers08'  # Monday.com PO Number column ID
@@ -98,8 +98,7 @@ SUBITEM_LINK_COLUMN_ID ='link' # link column ID
 CONTACT_PHONE = 'phone'
 CONTACT_EMAIL = 'email'
 CONTACT_ADDRESS_LINE_1 = 'text1'
-CONTACT_ADDRESS_LINE_2 = 'text7'
-CONTACT_ADDRESS_REGION = 'text19'
+CONTACT_ADDRESS_CITY = 'text3'
 CONTACT_ADDRESS_ZIP = 'text84'
 CONTACT_ADDRESS_COUNTRY = 'text6'
 CONTACT_ADDRESS_TAX_TYPE = 'text14'
@@ -327,6 +326,68 @@ def find_subitem_by_invoice_or_receipt_number(parent_item_id, invoice_receipt_nu
         raise Exception(f"HTTP Error {response.status_code}")
 
 
+# FIND ALL PO SUB-ITEMS
+def find_all_po_subitems(parent_item_id):
+    """
+    Finds a subitem under a parent item in Monday.com based on the provided invoice number or receipt number.
+
+    Args:
+        parent_item_id (int): The ID of the parent item (PO item).
+        invoice_number (str, optional): The invoice number to search for.
+        receipt_number (str, optional): The receipt number to search for.
+
+    Returns:
+        str: The ID of the matched subitem if found, otherwise None.
+
+    Raises:
+        Exception: If the GraphQL query fails or if there's an HTTP error.
+    """
+
+    # GraphQL query to retrieve subitems under the parent item
+    query = f'''
+    query {{
+        items(ids: {parent_item_id}) {{
+            subitems {{
+                id
+                name
+                column_values {{
+                    id
+                    text
+                }}
+            }}
+        }}
+    }}
+    '''
+
+    # Headers for authorization and content type
+    headers = {
+        'Authorization': os.getenv("MONDAY_API_TOKEN"),
+        'Content-Type': 'application/json',
+        'API-Version': '2023-10'
+    }
+
+    # Send the GraphQL request to the Monday.com API
+    response = requests.post(MONDAY_API_URL, headers=headers, json={'query': query})
+    data = response.json()
+
+    # Check if the request was successful
+    if response.status_code == 200:
+        if 'data' in data and 'items' in data['data'] and data['data']['items']:
+            # Extract subitems from the response
+            subitems = data['data']['items'][0].get('subitems', [])
+            logging.debug(f"Retrieved subitems: {json.dumps(subitems, indent=2)}")
+            return subitems
+        elif 'errors' in data:
+            logging.error(f"Error fetching subitems from Monday.com: {data['errors']}")
+            raise Exception("GraphQL query error")
+        else:
+            logging.error(f"Unexpected response structure: {data}")
+            raise Exception("Unexpected GraphQL response")
+    else:
+        logging.error(f"HTTP Error {response.status_code}: {response.text}")
+        raise Exception(f"HTTP Error {response.status_code}")
+
+
 #  FIND CONTACT
 def find_contact_item_by_name(contact_name):
     """
@@ -365,8 +426,7 @@ def find_contact_item_by_name(contact_name):
                     "{CONTACT_PHONE}",
                     "{CONTACT_EMAIL}",
                     "{CONTACT_ADDRESS_LINE_1}",
-                    "{CONTACT_ADDRESS_LINE_2}",
-                    "{CONTACT_ADDRESS_REGION}",
+                    "{CONTACT_ADDRESS_CITY}",
                     "{CONTACT_ADDRESS_ZIP}",
                     "{CONTACT_ADDRESS_COUNTRY}",
                     "{CONTACT_ADDRESS_TAX_TYPE}",
@@ -611,6 +671,7 @@ def subitem_column_values_formatter(notes=None, status=None, file_id=None, descr
 
     return column_values
 
+
 # CREATE SUB-ITEM IN MONDAY
 def create_subitem(parent_item_id, subitem_name, column_values):
     """
@@ -737,10 +798,8 @@ def is_contact_info_complete(column_values):
         CONTACT_PHONE,
         CONTACT_EMAIL,
         CONTACT_ADDRESS_LINE_1,
-        CONTACT_ADDRESS_REGION,
+        CONTACT_ADDRESS_CITY,
         CONTACT_ADDRESS_ZIP,
-        CONTACT_ADDRESS_COUNTRY,
-        CONTACT_ADDRESS_TAX_TYPE,
         CONTACT_ADDRESS_TAX_NUMBER
     ]
     for field in required_fields:
