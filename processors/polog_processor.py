@@ -14,11 +14,12 @@ from processors.monday_util import (
     SUBITEM_RATE_COLUMN_ID,
     SUBITEM_QUANTITY_COLUMN_ID,
     SUBITEM_STATUS_COLUMN_ID,
+    BOARD_ID
 )
 from webhook.dropbox_client import get_dropbox_client
 
 # Constants
-BOARD_ID = "2562607316"  # Ensure this matches your Monday.com Board ID
+BOARD_ID = BOARD_ID  # Ensure this matches your Monday.com Board ID
 SUBITEM_BOARD_ID = get_group_id_by_project_id  # Adjusted based on actual usage
 RTP_STATUS = "RTP"
 PO_LOG_MISMATCH_STATUS = "PO Log Mismatch"
@@ -292,7 +293,7 @@ if __name__ == "__main__":
         format='%(levelname)s:%(name)s:%(message)s',
         handlers=[
             logging.StreamHandler(),
-            logging.FileHandler("polog_processor.log")  # Log to a file for persistent storage
+            logging.FileHandler("../logs/polog_processor.log")  # Log to a file for persistent storage
         ]
     )
 
