@@ -4,7 +4,6 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import logging
-import sys
 import time
 import schedule
 from webhook.database_util import fetch_pending_events, update_event_status
@@ -55,11 +54,26 @@ def process_event(event):
 
         if event_type == 'file_added':
             # Process file events
-            process_file(file_id, file_name, path, project_id, po_number, vendor_name, vendor_type, file_type,
-                         file_number)
+            process_file(
+                file_id=file_id,
+                file_name=file_name,
+                dropbox_path=path,
+                project_id=project_id,
+                po_number=po_number,
+                vendor_name=vendor_name,
+                vendor_type=vendor_type,
+                file_type=file_type,
+                file_number=file_number
+            )
         elif event_type == 'folder_added':
             # Process folder events
-            process_folder(file_id, file_name, path, project_id, po_number, vendor_name, vendor_type)
+            process_folder(
+                project_id=project_id,
+                po_number=po_number,
+                vendor_name=vendor_name,
+                vendor_type=vendor_type,
+                dropbox_path=path
+            )
         else:
             logging.warning(f"Unknown event type '{event_type}' for event ID {event_id}. Skipping.")
             update_event_status(event_id, 'skipped')
@@ -96,7 +110,7 @@ def main():
     """
     Sets up the scheduler to run the event processor periodically.
     """
-    # Schedule the processor to run every 5 minutes
+    # Schedule the processor to run every 5 seconds
     schedule.every(5).seconds.do(run_event_processor)
 
     logging.info("Event processor started. Waiting for scheduled runs...")

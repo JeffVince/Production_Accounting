@@ -1,5 +1,3 @@
-# processors/file_util.py
-
 import pytesseract
 from pdf2image import convert_from_path
 from datetime import datetime, timedelta
@@ -182,13 +180,15 @@ def parse_folder_path(local_path):
     and PO Type (vendor or cc).
 
     Expected folder structure: .../2024/Project Folder/Purchase Order Folder/...
-    Example: '/Users/.../2024/2416 - Whop Keynote/1. Purchase Orders/2416_02 AMEX 8738/
+    Example CC: '/2416 - Whop Keynote/1. Purchase Orders/2416_02 AMEX 8738/
+    Example Vendor: '/2416 - Whop Keynote/1. Purchase Orders/2416_02 Jordan Sakai/
+
 
     Returns:
         Tuple (project_id, po_number, vendor_name, po_type) if found, else (None, None, None, None)
     """
     # Split the path into parts
-    path_parts = local_path.split(os.sep)
+    path_parts = local_path.strip(os.sep).split(os.sep)
     logging.debug(f"Path parts for parsing: {path_parts}")
     # Reverse to start searching from the deepest directory
     path_parts_reversed = path_parts[::-1]
@@ -201,28 +201,40 @@ def parse_folder_path(local_path):
     logging.debug(f"Parsing folder path: {local_path}")
 
     for part in path_parts_reversed:
+        if not part:
+            continue  # Skip empty parts resulting from leading/trailing slashes
         logging.debug(f"Checking folder part: '{part}'")
 
-        # Match PO folder: e.g., '2416_02 AMEX 8738' or '2416-02 AMEX 8738'
-        po_match = re.match(r'^(\d+)[_-](\d+)\s+(.*?)(\d{4})?$', part)
+        # Updated regex to ensure four digits are preceded by a space
+        po_match = re.match(r'^(\d+)[_-](\d+)\s+([A-Za-z\s]+?)(?:\s+(\d{4}))?$', part)
         if po_match:
-            po_number = po_match.group(2)
+            project_id_matched = po_match.group(1)
+            po_number_matched = po_match.group(2)
+            vendor_name_matched = po_match.group(3).strip()
             credit_card_digits = po_match.group(4)
-            vendor_name = po_match.group(3).strip()
+
+            # Debug logs for matched groups
+            logging.debug(f"Regex Groups - Project ID: {project_id_matched}, PO Number: {po_number_matched}, Vendor Name: {vendor_name_matched}, CC Digits: {credit_card_digits}")
 
             # Check if the last four digits are present, indicating a credit card folder
             if credit_card_digits:
                 po_type = "cc"
-                vendor_name += " " + credit_card_digits
+                vendor_name_matched += f" {credit_card_digits}"
+                logging.debug(f"Identified as CC Vendor. PO Type set to '{po_type}'. Vendor Name updated to '{vendor_name_matched}'.")
+            else:
+                logging.debug(f"Identified as Vendor. PO Type remains '{po_type}'. Vendor Name is '{vendor_name_matched}'.")
 
-            logging.debug(
-                f"Found PO Number: '{po_number}', Vendor Name: '{vendor_name}', PO Type: '{po_type}' in folder part: '{part}'")
+            project_id = project_id_matched
+            po_number = po_number_matched
+            vendor_name = vendor_name_matched
+
             continue
 
         # Match Project folder: e.g., '2416 - Whop Keynote' or '2416_Whop Keynote'
         project_match = re.match(r'^(\d+)\s*[-_]\s*.*', part)
         if project_match:
-            project_id = project_match.group(1)
+            project_id_matched = project_match.group(1)
+            project_id = project_id_matched
             logging.debug(f"Found Project ID: '{project_id}' in folder part: '{part}'")
             continue
 
@@ -230,7 +242,7 @@ def parse_folder_path(local_path):
         if project_id and po_number:
             break
 
-    if project_id and po_number:
+    if project_id and po_number and vendor_name:
         logging.debug(
             f"Successfully parsed Project ID: '{project_id}', PO Number: '{po_number}', Vendor Name: '{vendor_name}', PO Type: '{po_type}'")
         return project_id, po_number, vendor_name, po_type
@@ -273,10 +285,30 @@ def parse_filename(filename):
         return None
 
 
-def add_tax_form_to_invoice(po_item_id, dropbox_path, tax_file_type, dbx):
-    share_link = create_share_link(dbx, dropbox_path)
-    column_values = column_values_formatter(tax_file_link=share_link, status="Needs Verification",
-                                            tax_file_type=tax_file_type)
+def add_tax_form_to_invoice(po_item_id, dropbox_path, tax_file_type, dbx_client, vendor_name):
+    share_link = create_share_link(dbx_client, dropbox_path)
+
+    # Attempt to find the contact associated with the vendor
+    contact_info = find_contact_item_by_name(vendor_name)
+
+    if contact_info:
+        contact_id = contact_info['item_id']
+        contact_columns = contact_info['column_values']
+        logging.debug(f"Found contact ID for Vendor: {vendor_name}. Contact ID: {contact_id}")
+    else:
+        contact_id = None
+        contact_columns = {}
+        logging.debug(f"No contact found for Vendor: {vendor_name}. Proceeding without contact ID.")
+
+    if contact_id and is_contact_info_complete(contact_columns):
+        status = "Approved"
+    else:
+        status = "Needs Verification"
+
+    logging.debug(f"Set PO status to '{status}' based on PO type and contact data completeness.")
+
+    column_values = column_values_formatter(tax_file_link=share_link, status=status, tax_file_type=tax_file_type, contact_id=contact_id
+)
     update_item_columns(po_item_id, column_values)
 
 
@@ -342,7 +374,7 @@ def process_folder(project_id, po_number, vendor_name, vendor_type, dropbox_path
     logging.info(f"Creating new PO item in Monday.com for Project ID {project_id} and PO Number {po_number}.")
 
     # Generate a Dropbox folder link for this folder
-    folder_link = create_share_link(dbx, dropbox_path)
+    folder_link = create_share_link(dbx_client, dropbox_path)
     if not folder_link:
         logging.error(f"Could not generate Dropbox link for {dropbox_path}.")
         raise Exception(f"Failed to create share link for {dropbox_path}.")
@@ -425,6 +457,19 @@ def process_file(file_id, file_name, dropbox_path, project_id, po_number, vendor
     logging.info(f"Starting processing of file: {dropbox_path}")
 
     try:
+
+        # Verify that the project_id and po_number from the path match those provided
+        folder_path = os.path.dirname(dropbox_path)
+        folder_project_id, folder_po_number, folder_vendor_name, folder_vendor_type = parse_folder_path(folder_path)
+        if folder_project_id != project_id or folder_po_number != po_number:
+            logging.error(f"Project ID or PO Number mismatch between file and folder for file: {dropbox_path}")
+            update_event_status(file_id, 'failed')
+            return
+
+        # Continue with existing processing logic...
+        # Ensure that 'vendor_type' is used from the event data or re-assign it if necessary
+        vendor_type = folder_vendor_type
+
         # Parse the filename to extract required information
         parsed_data = parse_filename(file_name)
         if not parsed_data:
@@ -468,7 +513,7 @@ def process_file(file_id, file_name, dropbox_path, project_id, po_number, vendor
         if file_type_parsed in ['W9', 'W8-BEN', 'W8-BEN-E']:
             logging.info(f"File is a {file_type_parsed}. Linking to PO item.")
             # Link tax form to the PO item as a reference
-            add_tax_form_to_invoice(po_item_id, dropbox_path, file_type_parsed, dbx)
+            add_tax_form_to_invoice(po_item_id, dropbox_path, file_type_parsed, dbx_client, vendor_name)
             logging.debug(f"Successfully linked {file_type_parsed} to PO item ID {po_item_id}.")
             # Mark as processed since linking is complete
             update_event_status(file_id, 'processed')
@@ -495,7 +540,7 @@ def process_file(file_id, file_name, dropbox_path, project_id, po_number, vendor
                 update_vendor_description_in_monday(po_item_id, vendor_description)
 
             # Get Dropbox file link
-            share_link = create_share_link(dbx, dropbox_path)
+            share_link = create_share_link(dbx_client, dropbox_path)
             if not share_link:
                 logging.error(f"Failed to create share link for {dropbox_path}")
                 update_event_status(file_id, 'failed')  # Report failure to the database
@@ -560,7 +605,7 @@ def process_file(file_id, file_name, dropbox_path, project_id, po_number, vendor
                 return
 
             # Get Dropbox file link
-            share_link = create_share_link(dbx, dropbox_path)
+            share_link = create_share_link(dbx_client, dropbox_path)
             if not share_link:
                 logging.error(f"Failed to create share link for {dropbox_path}")
                 update_event_status(file_id, 'failed')  # Report failure to the database
@@ -585,7 +630,6 @@ def process_file(file_id, file_name, dropbox_path, project_id, po_number, vendor
                     raise Exception(f"Failed to create subitem for receipt: {receipt_data}")
             except Exception as e:
                 logging.error(f"Exception during receipt subitem creation: {e}")
-                raise  # Propagate exception to be handled by the caller
                 raise  # Propagate exception to be handled by the caller
 
             logging.info(f"Successfully processed Receipt: {file_name}")
