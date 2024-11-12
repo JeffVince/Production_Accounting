@@ -22,7 +22,7 @@ logging.basicConfig(
     level=logging.INFO,  # Set to DEBUG for detailed logs during troubleshooting
     format='%(asctime)s [%(levelname)s] %(message)s',
     handlers=[
-        logging.FileHandler("../dropbox_server.log"),
+        logging.FileHandler("../Dropbox Listener/logs/dropbox_server.log"),
         logging.StreamHandler()
     ]
 )

@@ -18,7 +18,7 @@ logging.basicConfig(
     level=logging.INFO,  # Set to DEBUG for more detailed logs
     format='%(asctime)s [%(levelname)s] %(message)s',
     handlers=[
-        logging.FileHandler("../event_processor.log"),
+        logging.FileHandler("../Dropbox Listener/logs/event_processor.log"),
         logging.StreamHandler(sys.stdout)
     ]
 )
