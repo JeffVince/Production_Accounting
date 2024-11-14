@@ -54,7 +54,7 @@ def process_event(event):
 
         if event_type == 'file_added':
             # Process file events
-            process_file(
+            success = process_file(
                 file_id=file_id,
                 file_name=file_name,
                 dropbox_path=path,
@@ -67,7 +67,7 @@ def process_event(event):
             )
         elif event_type == 'folder_added':
             # Process folder events
-            process_folder(
+            success = process_folder(
                 project_id=project_id,
                 po_number=po_number,
                 vendor_name=vendor_name,
@@ -80,8 +80,9 @@ def process_event(event):
             return
 
         # If processing is successful, update the event status to 'processed'
-        update_event_status(event_id, 'processed')
-        logging.info(f"Successfully processed event ID {event_id}.")
+        if success:
+            update_event_status(event_id, 'processed')
+            logging.info(f"Successfully processed event ID {event_id}.")
 
     except Exception as e:
         logging.error(f"Error processing event ID {event_id}: {e}", exc_info=True)
