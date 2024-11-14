@@ -464,7 +464,7 @@ def process_file(file_id, file_name, dropbox_path, project_id, po_number, vendor
         if folder_project_id != project_id or folder_po_number != po_number:
             logging.error(f"Project ID or PO Number mismatch between file and folder for file: {dropbox_path}")
             update_event_status(file_id, 'failed')
-            return
+            return False
 
         # Continue with existing processing logic...
         # Ensure that 'vendor_type' is used from the event data or re-assign it if necessary
@@ -475,7 +475,7 @@ def process_file(file_id, file_name, dropbox_path, project_id, po_number, vendor
         if not parsed_data:
             logging.error(f"Failed to parse filename for file: {dropbox_path}")
             update_event_status(file_id, 'failed')  # Report failure to the database
-            return
+            return False
 
         project_id_parsed, file_po_number, invoice_receipt_number, vendor_name_parsed, file_type_parsed = parsed_data
 
@@ -484,22 +484,21 @@ def process_file(file_id, file_name, dropbox_path, project_id, po_number, vendor
             logging.error(
                 f"PO number mismatch: File PO number ({file_po_number}) does not match Database PO number ({po_number}).")
             update_event_status(file_id, 'failed')  # Report failure to the database
-            return
+            return False
 
         logging.debug(f"File PO number matches Database PO number: {file_po_number}")
 
         # Find or create the PO item in Monday.com
         po_item_id = find_item_by_project_and_po(project_id, po_number)
         if not po_item_id:
-            logging.info(
-                f"PO item not found in Monday.com for Project ID {project_id} and PO number {po_number}. Initiating creation.")
+            logging.info( f"PO item not found in Monday.com for Project ID {project_id} and PO number {po_number}. Initiating creation.")
             # If the PO item doesn't exist, call process_folder to create it
-            po_item_id = process_folder(project_id, po_number, vendor_name, vendor_type, os.path.dirname(dropbox_path))
+            po_item_id = process_folder(project_id, po_number, folder_vendor_name, vendor_type, os.path.dirname(dropbox_path))
             if not po_item_id:
                 logging.error(
                     f"Failed to create or find PO item after processing folder for Project ID {project_id} and PO number {po_number}.")
                 update_event_status(file_id, 'failed')  # Report failure to the database
-                return
+                return False
             logging.debug(f"Successfully created PO item in Monday.com with ID {po_item_id}.")
 
         else:
@@ -517,7 +516,7 @@ def process_file(file_id, file_name, dropbox_path, project_id, po_number, vendor
             logging.debug(f"Successfully linked {file_type_parsed} to PO item ID {po_item_id}.")
             # Mark as processed since linking is complete
             update_event_status(file_id, 'processed')
-            return  # Tax form processing is complete here
+            return True # Tax form processing is complete here
 
         elif file_type_parsed == 'INVOICE' and vendor_type == 'vendor':
             # Check if the invoice has already been logged
@@ -525,7 +524,7 @@ def process_file(file_id, file_name, dropbox_path, project_id, po_number, vendor
             if find_subitem_by_invoice_or_receipt_number(po_item_id, invoice_receipt_number=invoice_receipt_number):
                 logging.info(f"Invoice already logged -- Skipping processing.")
                 update_event_status(file_id, 'duplicate')  # Report duplicate to the database
-                return
+                return False
 
             # Process invoice data and line items
             logging.info(f"Processing Invoice: {file_name}")
@@ -533,7 +532,7 @@ def process_file(file_id, file_name, dropbox_path, project_id, po_number, vendor
             if not line_items:
                 logging.error(f"Failed to extract invoice data from file: {dropbox_path}")
                 update_event_status(file_id, 'failed')  # Report failure to the database
-                return
+                return False
 
             # Update vendor description if necessary
             if vendor_description:
@@ -544,7 +543,7 @@ def process_file(file_id, file_name, dropbox_path, project_id, po_number, vendor
             if not share_link:
                 logging.error(f"Failed to create share link for {dropbox_path}")
                 update_event_status(file_id, 'failed')  # Report failure to the database
-                return
+                return False
 
             # Create line items in Monday.com
             for item in line_items:
@@ -576,7 +575,7 @@ def process_file(file_id, file_name, dropbox_path, project_id, po_number, vendor
             logging.info(f"Successfully processed Invoice: {file_name}")
             # Mark as processed after successful invoice processing
             update_event_status(file_id, 'processed')
-            return
+            return True
 
         elif file_type_parsed == 'RECEIPT' and vendor_type == 'cc':
             # Check if the receipt has already been logged
@@ -584,32 +583,31 @@ def process_file(file_id, file_name, dropbox_path, project_id, po_number, vendor
             if find_subitem_by_invoice_or_receipt_number(po_item_id, invoice_receipt_number=invoice_receipt_number):
                 logging.info(f"Receipt already logged -- Skipping processing.")
                 update_event_status(file_id, 'duplicate')  # Report duplicate to the database
-                return
-
+                return False
             # Process receipt data
             logging.info(f"Processing receipt: {file_name}")
             receipt_data = extract_receipt_data_from_file(dropbox_path)
+            status = 'Paid'
             if not receipt_data:
                 logging.error(f"Failed to extract receipt data from file: {dropbox_path}")
-                update_event_status(file_id, 'failed')  # Report failure to the database
-                return
+                status = 'To Review'
 
             # Extract receipt details
             total_amount = receipt_data.get('total_amount')
             date_of_purchase = receipt_data.get('date')
-            description = receipt_data.get('description', 'Receipt')
+            description = receipt_data.get('description', '')
 
-            if total_amount is None or date_of_purchase is None:
+            print(receipt_data)
+
+            if total_amount is None or date_of_purchase is None or description is None:
                 logging.error(f"Essential receipt data missing in file: {dropbox_path}")
-                update_event_status(file_id, 'failed')  # Report failure to the database
-                return
+                status = 'To Review'
 
             # Get Dropbox file link
             share_link = create_share_link(dbx_client, dropbox_path)
             if not share_link:
                 logging.error(f"Failed to create share link for {dropbox_path}")
-                update_event_status(file_id, 'failed')  # Report failure to the database
-                return
+                status = 'To Review'
 
             # Create a single subitem for the receipt with total amount
             try:
@@ -618,7 +616,7 @@ def process_file(file_id, file_name, dropbox_path, project_id, po_number, vendor
                     description=description,  # Description from receipt
                     rate=total_amount,  # Total amount as rate
                     quantity=1,  # Quantity is 1 for total
-                    status='Paid',  # No specific status required
+                    status=status,  # No specific status required
                     file_id=invoice_receipt_number,
                     account_number="5000",  # Always Cost of Goods Sold
                     link=share_link,
@@ -635,12 +633,12 @@ def process_file(file_id, file_name, dropbox_path, project_id, po_number, vendor
             logging.info(f"Successfully processed Receipt: {file_name}")
             # Mark as processed after successful receipt processing
             update_event_status(file_id, 'processed')
-            return
+            return True
 
         else:
             logging.error(f"Unknown file type '{file_type_parsed}' for file: {dropbox_path}")
             update_event_status(file_id, 'failed')  # Report failure to the database
-            return
+            return False
 
     except Exception as e:
         logging.error(f"Failed to process file {dropbox_path}: {e}", exc_info=True)
@@ -711,9 +709,11 @@ def extract_invoice_data_from_file(dropbox_path):
             quantity = item.get("quantity", 1)
             rate = float(item.get("rate", 0.0))
             date = item.get("date", "")
-            due_date = item.get("due_date", "") or (
-                datetime.strptime(date, '%Y-%m-%d') + timedelta(days=30)).strftime('%Y-%m-%d') if date else ""
-            account_number = item.get("account_number", "5000")  # Default account number if not provided
+            if date:
+                due_date = item.get("due_date", "") or (datetime.strptime(date, '%Y-%m-%d') + timedelta(days=30)).strftime('%Y-%m-%d') if date else ""
+            else:
+                due_date = ""
+            account_number = item.get("account_number", "5000")
 
             # Append the dictionary to line_items
             line_items.append({
@@ -746,17 +746,29 @@ def extract_receipt_data_from_file(dropbox_path):
     text = extract_text_from_file(dropbox_path)
     if not text:
         logging.error("Failed to extract text from the receipt file.")
-        return None
+        return {
+            'total_amount': "",
+            'date': "",
+            'description': ""
+        }
 
     # Step 2: Use OpenAI to process the text and extract receipt data
     try:
         receipt_data = extract_receipt_info_with_openai_from_file(dropbox_path)
         if not receipt_data:
             logging.error("OpenAI failed to extract receipt data.")
-            return None
+            return {
+                'total_amount': "",
+                'date': "",
+                'description': ""
+            }
     except Exception as e:
         logging.error(f"OpenAI processing failed: {e}")
-        return None
+        return {
+            'total_amount': "",
+            'date': "",
+            'description': ""
+        }
 
     # Step 3: Validate and return receipt data
     try:
@@ -764,19 +776,20 @@ def extract_receipt_data_from_file(dropbox_path):
         date_of_purchase = receipt_data.get('date')
         description = receipt_data.get('description', 'Receipt')
 
-        if total_amount is None or date_of_purchase is None:
-            logging.error("Essential receipt data missing.")
-            return None
+        # Validate Total
+        try:
+            # Ensure total_amount is a float
+            total_amount = float(total_amount)
+        except ValueError or TypeError:
+            logging.error(f"Invalid total amount: {total_amount}.")
+            total_amount = ""
 
-        # Ensure total_amount is a float
-        total_amount = float(total_amount)
-
-        # Validate date format
+        # Validate Date
         try:
             datetime.strptime(date_of_purchase, '%Y-%m-%d')
-        except ValueError:
+        except ValueError or TypeError:
             logging.error(f"Invalid date format: {date_of_purchase}. Expected YYYY-MM-DD.")
-            return None
+            date_of_purchase = ""
 
         return {
             'total_amount': total_amount,
@@ -786,4 +799,8 @@ def extract_receipt_data_from_file(dropbox_path):
 
     except Exception as e:
         logging.error(f"Error validating receipt data: {e}")
-        return None
+        return {
+            'total_amount': total_amount,
+            'date': date_of_purchase,
+            'description': description
+        }

@@ -50,6 +50,7 @@ def extract_info_with_openai(text):
 
 
 def extract_receipt_info_with_openai(text):
+
     messages = [
         {
             "role": "system",
