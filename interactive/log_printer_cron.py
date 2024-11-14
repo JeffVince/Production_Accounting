@@ -1,16 +1,31 @@
-# log_printer.py
+# log_printer_cron.py
 
 import os
 import subprocess
 import time
 import logging
+import re
+import requests
 
+import dropbox
 import psutil
 import pyautogui
 from AppKit import NSWorkspace
 
 import cv2
 import numpy as np
+
+# Import Monday_util and file_util modules
+from processors.monday_util import (
+    MONDAY_API_URL,
+    BOARD_ID,
+    MONDAY_API_TOKEN
+)
+
+from webhook.dropbox_client import (
+    get_dropbox_client
+)
+
 
 # Configure logging
 logging.basicConfig(
@@ -21,12 +36,6 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
-
-
-# PO LOG SAVE AS TEXT
-file_name_text = "REPLACE WITH PROJECT ID"
-FILE_PATH = "REPLACE WITH FILE PATH"
-
 
 # Constants
 PROGRAM_NAME = "Showbiz Budgeting"
@@ -63,9 +72,7 @@ SLEEP_TIME_AFTER_KEYSTROKE = 1  # Seconds to wait after sending keystroke
 SLEEP_TIME_AFTER_CLICK = 2  # Seconds to wait after clicking the button
 RETRY_LIMIT = 3  # Maximum number of retry attempts
 
-
 # Define the size of the region to capture around each checkbox (width, height)
-# Since the checkboxes are 13x13 pixels, we'll set a small buffer
 REGION_SIZE = (20, 20)  # Adjust as needed
 
 # OpenCV Template Matching Parameters
@@ -75,25 +82,19 @@ MATCHING_THRESHOLD = 0.7
 pyautogui.FAILSAFE = True
 pyautogui.PAUSE = 0.5
 
-
 def convert_templates_to_grayscale():
     """
     Convert all checkbox template images to grayscale and save them.
     """
-    for checkbox_name, image_path in CHECKBOX_IMAGES.items():
-        # Load the original image
-        image = cv2.imread(image_path)
-        if image is None:
-            logging.error(f"Failed to load template image from '{image_path}'.")
-            continue
-
-        # Convert to grayscale
-        gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
-        # Save the grayscale image, overwriting the original
-        cv2.imwrite(image_path, gray_image)
-        logging.info(f"Converted '{image_path}' to grayscale.")
-
+    for checkbox_name, images in CHECKBOX_IMAGES.items():
+        for state, image_path in images.items():
+            image = cv2.imread(image_path)
+            if image is None:
+                logging.error(f"Failed to load template image from '{image_path}'.")
+                continue
+            gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            cv2.imwrite(image_path, gray_image)
+            logging.info(f"Converted '{image_path}' to grayscale.")
 
 def is_program_running(program_name):
     """
@@ -112,7 +113,6 @@ def is_program_running(program_name):
     except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess) as e:
         logging.error(f"Error checking if program is running: {e}")
         return False
-
 
 def click_button(image_path):
     """
@@ -135,7 +135,6 @@ def click_button(image_path):
     else:
         logging.error(f"Button image '{image_path}' not found.")
         return False
-
 
 def type_in_field(text):
     """
@@ -160,7 +159,6 @@ def type_in_field(text):
         logging.error(f"Failed to type text '{text}' into the field: {e}")
         return False
 
-
 def bring_to_front(app_name):
     """
     Bring the specified application to the foreground.
@@ -178,7 +176,6 @@ def bring_to_front(app_name):
         time.sleep(1)  # Ensure the app is in focus
     else:
         logging.warning(f"Application '{app_name}' not found.")
-
 
 def is_file_open_by_window_title(file_name, retries=3, delay=1):
     """
@@ -223,20 +220,22 @@ def is_file_open_by_window_title(file_name, retries=3, delay=1):
     logging.info(f"File '{file_name}' not detected as open after {retries} attempts.")
     return False
 
-
 def open_file(file_path):
     """
     Open the specified file using the default application.
 
     Args:
         file_path (str): The path to the file to open.
+        /Users/haske107/Library/CloudStorage/Dropbox-OpheliaLLC/2024
     """
     try:
-        subprocess.run(['open', file_path], check=True)
+        # Remove leading slash from file_path if it exists
+        file_path = file_path.lstrip("/")
+        full_path = os.path.join("/Users/haske107/Library/CloudStorage/Dropbox-OpheliaLLC/2024", file_path)
+        subprocess.run(['open', full_path], check=True)
         logging.info(f"Opened file '{file_path}'.")
     except subprocess.CalledProcessError as e:
-        logging.error(f"Failed to open file '{file_path}': {e}")
-
+        logging.error(f"Failed to open file '{full_path}': {e}")
 
 def send_keystroke(command, modifier):
     """
@@ -257,7 +256,6 @@ def send_keystroke(command, modifier):
     except subprocess.CalledProcessError as e:
         logging.error(f"Failed to send keystroke: {e}")
 
-
 def adjust_coordinates_for_retina(x, y):
     """
     Adjust coordinates for Retina displays.
@@ -272,7 +270,6 @@ def adjust_coordinates_for_retina(x, y):
     adjusted_x = x / 2
     adjusted_y = y / 2
     return adjusted_x, adjusted_y
-
 
 def is_print_window_open(window_title):
     """
@@ -303,7 +300,6 @@ def is_print_window_open(window_title):
     except subprocess.CalledProcessError as e:
         logging.error(f"Failed to check window status: {e}")
         return False
-
 
 def click_other_reports_button(image_path):
     """
@@ -338,7 +334,6 @@ def click_other_reports_button(image_path):
     else:
         logging.error(f"'Other Reports' button image not found on the screen.")
         return None
-
 
 def check_checkbox(checkbox_name, checked_image_path, retry=RETRY_LIMIT):
     """
@@ -396,14 +391,12 @@ def check_checkbox(checkbox_name, checked_image_path, retry=RETRY_LIMIT):
     logging.critical(f"Failed to ensure checkbox '{checkbox_name}' is checked after {retry} attempts.")
     return False
 
-
 def press_enter():
     """
     Press the Enter key to confirm alert dialogs.
     """
     pyautogui.press('enter')
     logging.info("Pressed Enter key.")
-
 
 def verify_and_check_all_checkboxes():
     """
@@ -426,12 +419,20 @@ def verify_and_check_all_checkboxes():
             all_checked = False
     return all_checked
 
+def process_budget_file(file_path, project_id):
+    """
+    Process the budget file by interacting with the Showbiz Budgeting application.
 
-def main():
+    Args:
+        file_path (str): Path to the .mbb budget file.
+        project_id (str): The Project ID extracted from the group name.
     """
-    Main function to manage the Showbiz Budgeting application and perform actions.
-    """
-    logging.info("Script started.")
+    logging.info(f"Starting processing for Project ID {project_id} with file {file_path}.")
+
+    # Set the global variables dynamically
+    global FILE_PATH, file_name_text
+    FILE_PATH = file_path
+    file_name_text = project_id  # Assuming the file name text is the Project ID
 
     running = is_program_running(PROGRAM_NAME)
 
@@ -483,7 +484,7 @@ def main():
     # Step 3: Click on the Okay button
     press_enter()
 
-    # Step 4: Click on the Save As Form field and type "TEST"
+    # Step 4: Click on the Save As Form field and type the Project ID
     type_in_field(file_name_text)
 
     # Step 5: Click on the Save button
@@ -499,6 +500,253 @@ def main():
 
     logging.info("Script finished.")
 
+def list_all_groups(board_id):
+    """
+    Retrieves all groups in the specified Monday.com board.
+
+    Args:
+        board_id (int): The ID of the board to query.
+
+    Returns:
+        list: A list of dictionaries containing group 'id' and 'title'.
+    """
+    query = f'''
+    query {{
+        boards(ids: {board_id}) {{
+            groups {{
+                id
+                title
+            }}
+        }}
+    }}
+    '''
+    headers = {
+        'Authorization': MONDAY_API_TOKEN,
+        'Content-Type': 'application/json',
+        'API-Version': '2023-10'
+    }
+    response = requests.post(MONDAY_API_URL, headers=headers, json={'query': query})
+    data = response.json()
+
+    if response.status_code == 200:
+        if 'data' in data and 'boards' in data['data']:
+            groups = data['data']['boards'][0]['groups']
+            logging.info(f"Retrieved {len(groups)} groups from board ID {board_id}.")
+            return groups
+        elif 'errors' in data:
+            logging.error(f"Error fetching groups from Monday.com: {data['errors']}")
+            return []
+        else:
+            logging.error(f"Unexpected response structure: {data}")
+            return []
+    else:
+        logging.error(f"HTTP Error {response.status_code}: {response.text}")
+        return []
+
+def get_items_in_group(group_id):
+    """
+    Retrieves all items within a specified group.
+
+    Args:
+        group_id (str): The ID of the group to query.
+
+    Returns:
+        list: A list of dictionaries containing item details.
+    """
+    query = f'''
+    query {{
+          boards(ids: {BOARD_ID}) {{
+            groups(ids: "{group_id}") {{
+                  items_page {{
+                items {{
+                    id
+                    name
+                    column_values {{
+                        id
+                        text
+                        value
+                        }}
+                    }}
+                }}
+            }} 
+        }}
+    }}
+    '''
+    headers = {
+        'Authorization': MONDAY_API_TOKEN,
+        'Content-Type': 'application/json',
+        'API-Version': '2023-10'
+    }
+    response = requests.post(MONDAY_API_URL, headers=headers, json={'query': query})
+    data = response.json()
+
+    if response.status_code == 200:
+        if 'data' in data and 'boards' in data['data']:
+            try:
+                items = data['data']['boards'][0]['groups'][0]['items_page']['items']
+                logging.info(f"Retrieved {len(items)} items from group ID {group_id}.")
+                return items
+            except KeyError:
+                logging.error(f"Unexpected response structure: {data}")
+                return []
+        elif 'errors' in data:
+            logging.error(f"Error fetching items from Monday.com: {data['errors']}")
+            return []
+    else:
+        logging.error(f"HTTP Error {response.status_code}: {response.text}")
+        return []
+
+def get_column_value(item, column_id):
+    """
+    Retrieves the value of a specified column for an item.
+
+    Args:
+        item (dict): The item dictionary from Monday.com.
+        column_id (str): The ID of the column to retrieve.
+
+    Returns:
+        str: The text value of the column, or None if not found.
+    """
+    for column in item['column_values']:
+        if column['id'] == column_id:
+            return column['text']  # or 'value' depending on data
+    return None
+
+def extract_project_id_from_group_title(title):
+    """
+    Extracts the four-digit Project ID from the group title.
+
+    Args:
+        title (str): The title of the group.
+
+    Returns:
+        str: The extracted Project ID, or None if not found.
+    """
+    match = re.search(r'\b(\d{4})\b', title)
+    if match:
+        return match.group(1)
+    return None
+
+def extract_project_name_from_group_title(title):
+    """
+    Extracts the project name from the group title.
+
+    Args:
+        title (str): The title of the group.
+
+    Returns:
+        str: The extracted project name, or "Unknown Project" if not found.
+    """
+    match = re.search(r'\d{4}\s*[-_]\s*(.*)', title)
+    if match:
+        return match.group(1).strip()
+    return "Unknown Project"
+
+def construct_dropbox_path(project_id, project_name):
+    """
+    Constructs the Dropbox path for the working budget file based on Project ID and name.
+
+    Args:
+        project_id (str): The Project ID.
+        project_name (str): The Project Name.
+
+    Returns:
+        str: The constructed Dropbox path.
+    """
+    # Updated to point to '1.2 Working Budget' folder
+    dropbox_path = f"/{project_id} - {project_name}/5. Budget/1.2 Working/"
+    return dropbox_path
+
+def find_mbb_files(project_folder_path):
+    """
+    Locate all .mbb files within the specified project budget folder.
+
+    Args:
+        dbx_client (DropboxClientSingleton): The Dropbox client instance.
+        project_folder_path (str): Path to the project's budget folder in Dropbox.
+
+    Returns:
+        list: List of full paths to the located .mbb files. Empty list if none found.
+    """
+    try:
+        # List all files in the directory
+        dbx_client = get_dropbox_client()
+        result = dbx_client.dbx.files_list_folder(project_folder_path)
+        mbb_files = [entry.path_display for entry in result.entries if isinstance(entry, dropbox.files.FileMetadata) and entry.name.lower().endswith('.mbb')]
+        logging.info(f"Found {len(mbb_files)} .mbb file(s) in '{project_folder_path}'.")
+        return mbb_files
+    except dropbox.exceptions.ApiError as e:
+        if isinstance(e.error, dropbox.files.ListFolderError) and e.error.is_path() and e.error.get_path().is_not_found():
+            logging.error(f"Directory '{project_folder_path}' not found in Dropbox.")
+        else:
+            logging.error(f"Error accessing Dropbox folder '{project_folder_path}': {e}")
+        return []
+
+def check_monday_and_print():
+    """
+    Checks Monday.com for groups in the PO Log Board, processes them, and invokes the printing workflow.
+    """
+    logging.info("Starting Monday.com check.")
+    try:
+        # Retrieve all groups from the PO Log Board
+        groups = list_all_groups(BOARD_ID)
+
+        for group in groups:
+            group_id = group['id']
+            group_title = group['title']
+            logging.info(f"Processing group '{group_title}' with ID {group_id}.")
+
+            # Retrieve all items in the current group
+            items = get_items_in_group(group_id)
+
+            if not items:
+                logging.info(f"No items found in group '{group_title}'. Skipping.")
+                continue
+
+            # Check if all items have status "PAID"
+            all_paid = True
+            for item in items:
+                status = get_column_value(item, 'status__1')  # Replace 'status__1' with actual column ID if different
+                if status != "Paid":
+                    all_paid = False
+                    break
+
+            if all_paid:
+                logging.info(f"All items in group '{group_title}' are PAID. Ignoring this group.")
+                continue  # Skip processing for this group if all items are PAID
+
+            # Extract Project ID from group title (four-digit number)
+            project_id = extract_project_id_from_group_title(group_title)
+            if not project_id:
+                logging.error(f"Failed to extract Project ID from group title '{group_title}'. Skipping.")
+                continue
+
+            # Extract Project Name from group title
+            project_name = extract_project_name_from_group_title(group_title)
+
+            # Construct Dropbox path for the working budget file
+            dropbox_path = construct_dropbox_path(project_id, project_name)
+
+            # Verify that the .mbb file exists in Dropbox
+            mbb_files = find_mbb_files(dropbox_path)
+            if not mbb_files:
+                logging.error(f".mbb file not found at '{dropbox_path}'. Skipping.")
+                continue
+            else:
+                process_budget_file(mbb_files[0], project_id)
+
+    except Exception as e:
+        logging.error(f"An error occurred during Monday.com check: {e}", exc_info=True)
+
+def main_loop():
+    """
+    Main loop that runs the Monday.com check every 30 minutes.
+    """
+    while True:
+        check_monday_and_print()
+        logging.info("Sleeping for 30 minutes.")
+        time.sleep(1800)  # Sleep for 30 minutes
 
 if __name__ == "__main__":
-    main()
+    logging.info("Script started. Beginning main loop.")
+    main_loop()
