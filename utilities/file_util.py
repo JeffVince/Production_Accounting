@@ -9,13 +9,13 @@ import re
 import os
 import logging
 
-from processors.openai_util import (
+from utilities.openai_util import (
     extract_receipt_info_with_openai,
     extract_info_with_openai
 )
 
 from database.dropbox_database_util import update_event_status
-from processors.monday_util import (
+from utilities.monday_util import (
     find_item_by_project_and_po,
     find_contact_item_by_name,
     is_contact_info_complete,
@@ -29,44 +29,9 @@ from processors.monday_util import (
     update_vendor_description_in_monday
 )
 
-from webhook.dropbox_client import create_share_link, get_dropbox_client
 
 
-def extract_text_from_file(dropbox_path):
-    """
-    Extracts text from a file in Dropbox using OCR or direct text extraction.
 
-    Args:
-        dropbox_path (str): The Dropbox path to the file.
-
-    Returns:
-        str: Extracted text from the file.
-    """
-    dbx_client = get_dropbox_client()
-    dbx = dbx_client.dbx
-
-    try:
-        # Download the file content
-        metadata, res = dbx.files_download(dropbox_path)
-        file_content = res.content
-
-        # Save the file temporarily
-        temp_file_path = f"temp_{os.path.basename(dropbox_path)}"
-        with open(temp_file_path, 'wb') as f:
-            f.write(file_content)
-
-        # Extract text based on file type
-        text = extract_text_from_pdf(temp_file_path)
-        if not text:
-            logging.info(f"No text extracted from '{dropbox_path}' using direct extraction. Attempting OCR.")
-            text = extract_text_with_ocr(temp_file_path)
-
-        # Remove the temporary file
-        os.remove(temp_file_path)
-        return text
-    except Exception as e:
-        logging.error(f"Error extracting text from '{dropbox_path}': {e}", exc_info=True)
-        raise  # Propagate exception to be handled by the caller
 
 
 def extract_text_from_pdf(file_path):
@@ -287,8 +252,7 @@ def parse_filename(filename):
         return None
 
 
-def add_tax_form_to_invoice(po_item_id, dropbox_path, tax_file_type, dbx_client, vendor_name):
-    share_link = create_share_link(dbx_client, dropbox_path)
+def add_tax_form_to_invoice(po_item_id, share_link, tax_file_type, vendor_name):
 
     # Attempt to find the contact associated with the vendor
     contact_info = find_contact_item_by_name(vendor_name)

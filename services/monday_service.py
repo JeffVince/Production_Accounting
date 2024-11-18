@@ -1,5 +1,5 @@
-import utils.monday_util as monday
-import database.po_database_util as db
+import utilities.monday_util as monday
+import database.monday_database_util as db
 import logging
 
 # Configure logging

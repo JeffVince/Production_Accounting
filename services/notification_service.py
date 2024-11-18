@@ -1,4 +1,4 @@
-# notification_util.py
+# notification_service.py
 
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError

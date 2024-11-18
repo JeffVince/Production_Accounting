@@ -1,15 +1,15 @@
-# po_log_processor.py
+# actuals_service.py
 
 import os
 import logging
 import csv
-from utils.monday_util import (
+from utilities.monday_util import (
     find_item_by_project_and_po,
     update_item_columns,
     update_subitem_columns,
     get_group_id_by_project_id,
     get_subitem_board_id,
-    ACTUALS_BOARD_ID
+    ACTUALS_BOARD_ID, find_subitem_by_invoice_or_receipt_number, create_item
 )
 from webhook.dropbox_client import get_dropbox_client
 
@@ -162,18 +162,3 @@ def process_po_log(dropbox_path):
     # Clean up the downloaded file
     os.remove(output_path)
     return True
-
-
-if __name__ == "__main__":
-    # Provide the Dropbox file path to the PO log file
-    dropbox_po_log_path = '/2416 - Whop Keynote/5. Budget/1.3 Actuals/PO Logs/2416 PO Log.txt'  # Replace with actual Dropbox path
-
-    # Set up logging
-    logging.basicConfig(level=logging.INFO, format='%(levelname)s:%(message)s')
-
-    # Step 1: Process the PO log
-    success = process_po_log(dropbox_po_log_path)
-    if success:
-        logging.info("PO log processed successfully.")
-    else:
-        logging.error("Failed to process PO log.")

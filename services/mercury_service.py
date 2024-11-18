@@ -1,6 +1,6 @@
 import requests
 import logging
-import database.po_database_util as db
+import database.monday_database_util as db
 import os
 
 # Configure logging

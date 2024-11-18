@@ -1,4 +1,4 @@
-# processors/openai_util.py
+# utilities/openai_util.py
 
 import json
 import logging

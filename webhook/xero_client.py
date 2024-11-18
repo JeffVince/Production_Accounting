@@ -75,9 +75,9 @@ def load_tokens():
     Returns:
         Tuple of (access_token, refresh_token, tenant_id)
     """
-    access_token = os.getenv('ACCESS_TOKEN')
-    refresh_token = os.getenv('REFRESH_TOKEN')
-    tenant_id = os.getenv('TENANT_ID')
+    access_token = os.getenv('XERO_ACCESS_TOKEN')
+    refresh_token = os.getenv('XERO_REFRESH_TOKEN')
+    tenant_id = os.getenv('XERO_TENANT_ID')
 
     if access_token and refresh_token and tenant_id:
         logging.info("Tokens and Tenant ID loaded successfully from .env file.")
@@ -91,9 +91,9 @@ def save_tokens(access_token, refresh_token, tenant_id):
     """
     Saves access tokens, refresh tokens, and tenant ID to the .env file.
     """
-    set_key(dotenv_path, 'ACCESS_TOKEN', access_token)
-    set_key(dotenv_path, 'REFRESH_TOKEN', refresh_token)
-    set_key(dotenv_path, 'TENANT_ID', tenant_id)
+    set_key(dotenv_path, 'XERO_ACCESS_TOKEN', access_token)
+    set_key(dotenv_path, 'XERO_REFRESH_TOKEN', refresh_token)
+    set_key(dotenv_path, 'XERO_TENANT_ID', tenant_id)
     logging.info("Tokens and Tenant ID saved successfully to .env file.")
 
 

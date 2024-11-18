@@ -1,14 +1,16 @@
-# file_processor.py
+# dropbox_service.py
 import sys
 import os
+
+from utilities.file_util import extract_text_from_pdf, extract_text_with_ocr
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import logging
-import time
-import schedule
 from database.dropbox_database_util import fetch_pending_events, update_event_status
-from utils.file_util import process_file, process_folder
+from utilities.file_util import process_file, process_folder
 from dotenv import load_dotenv
+from webhook.dropbox_client import get_dropbox_client
 
 # Load environment variables from .env file
 load_dotenv()
@@ -22,6 +24,8 @@ logging.basicConfig(
         logging.StreamHandler(sys.stdout)
     ]
 )
+
+dbx_client = get_dropbox_client()
 
 
 def process_event(event):
@@ -107,19 +111,38 @@ def run_event_processor():
     logging.info("Event processing cycle completed.")
 
 
-def main():
+def extract_text_from_file(dropbox_path):
     """
-    Sets up the scheduler to run the event processor periodically.
+    Extracts text from a file in Dropbox using OCR or direct text extraction.
+
+    Args:
+        dropbox_path (str): The Dropbox path to the file.
+
+    Returns:
+        str: Extracted text from the file.
     """
-    # Schedule the processor to run every 5 seconds
-    schedule.every(5).seconds.do(run_event_processor)
+    dbx = dbx_client.dbx
 
-    logging.info("Event processor started. Waiting for scheduled runs...")
+    try:
+        # Download the file content
+        metadata, res = dbx.files_download(dropbox_path)
+        file_content = res.content
 
-    while True:
-        schedule.run_pending()
-        time.sleep(1)
+        # Save the file temporarily
+        temp_file_path = f"temp_{os.path.basename(dropbox_path)}"
+        with open(temp_file_path, 'wb') as f:
+            f.write(file_content)
 
+        # Extract text based on file type
+        text = extract_text_from_pdf(temp_file_path)
+        if not text:
+            logging.info(f"No text extracted from '{dropbox_path}' using direct extraction. Attempting OCR.")
+            text = extract_text_with_ocr(temp_file_path)
 
-if __name__ == "__main__":
-    main()
+        # Remove the temporary file
+        os.remove(temp_file_path)
+        return text
+    except Exception as e:
+        logging.error(f"Error extracting text from '{dropbox_path}': {e}", exc_info=True)
+        raise  # Propagate exception to be handled by the caller
+

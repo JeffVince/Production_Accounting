@@ -1,4 +1,4 @@
-# database_util.py
+# dropbox_database_util.py
 
 import sqlite3
 import logging
@@ -21,15 +21,20 @@ def dict_factory(cursor, row):
 
 
 def get_db_path():
-    """
-    Computes the absolute path to the database file relative to this script.
-    """
-    # Get the absolute path to the directory containing this script
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    # Construct the path to 'processed_files.db' one level up from script_dir
-    db_path = os.path.join(script_dir, '..', 'processed_files.db')
-    # Ensure the path is absolute
-    db_path = os.path.abspath(db_path)
+    project_root = os.path.abspath(os.path.join(script_dir, '..'))
+    db_dir = os.path.join(project_root, 'database')
+    db_path = os.path.join(db_dir, 'database/processed_files.db')
+
+    # Log all intermediate paths for debugging
+    logging.info(f"Script directory: {script_dir}")
+    logging.info(f"Project root: {project_root}")
+    logging.info(f"Database directory: {db_dir}")
+    logging.info(f"Final database path: {db_path}")
+
+    if not os.path.exists(db_dir):
+        os.makedirs(db_dir, exist_ok=True)
+    
     return db_path
 
 
@@ -92,7 +97,7 @@ def initialize_database():
         logging.info("Database initialized successfully with updated schema.")
     except Exception as e:
         logging.error(f"Error initializing database: {e}", exc_info=True)
-        raise  # Re-raise the exception to handle it in main.py
+        raise  # Re-raise the exception to handle it in app.py
     finally:
         conn.close()
 
