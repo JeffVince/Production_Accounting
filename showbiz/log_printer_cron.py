@@ -13,17 +13,17 @@ import pyautogui
 from AppKit import NSWorkspace
 
 import cv2
-import numpy as np
 
 # Import Monday_util and file_util modules
-from processors.monday_util import (
+from utilities.monday_util import (
     MONDAY_API_URL,
-    BOARD_ID,
+    PO_BOARD_ID,
     MONDAY_API_TOKEN
 )
 
 from webhook.dropbox_client import (
-    get_dropbox_client
+    get_dropbox_client,
+    create_share_link
 )
 
 
@@ -555,7 +555,7 @@ def get_items_in_group(group_id):
     """
     query = f'''
     query {{
-          boards(ids: {BOARD_ID}) {{
+          boards(ids: {PO_BOARD_ID}) {{
             groups(ids: "{group_id}") {{
                   items_page {{
                 items {{
@@ -689,7 +689,7 @@ def check_monday_and_print():
     logging.info("Starting Monday.com check.")
     try:
         # Retrieve all groups from the PO Log Board
-        groups = list_all_groups(BOARD_ID)
+        groups = list_all_groups(PO_BOARD_ID)
 
         for group in groups:
             group_id = group['id']

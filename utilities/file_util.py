@@ -14,7 +14,7 @@ from processors.openai_util import (
     extract_info_with_openai
 )
 
-from webhook.database_util import update_event_status
+from database.dropbox_database_util import update_event_status
 from processors.monday_util import (
     find_item_by_project_and_po,
     find_contact_item_by_name,

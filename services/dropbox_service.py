@@ -6,8 +6,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import logging
 import time
 import schedule
-from webhook.database_util import fetch_pending_events, update_event_status
-from processors.file_util import process_file, process_folder
+from database.dropbox_database_util import fetch_pending_events, update_event_status
+from utils.file_util import process_file, process_folder
 from dotenv import load_dotenv
 
 # Load environment variables from .env file

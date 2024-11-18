@@ -70,8 +70,9 @@ def get_subitem_board_id(parent_board_id):
 
 MONDAY_API_URL = 'https://api.monday.com/v2'
 
-BOARD_ID = "2562607316"  # Ensure this is a string
-SUBITEM_BOARD_ID = get_subitem_board_id(BOARD_ID)
+ACTUALS_BOARD_ID = "7858669780"
+PO_BOARD_ID = "2562607316"  # Ensure this is a string
+SUBITEM_BOARD_ID = get_subitem_board_id(PO_BOARD_ID)
 CONTACT_BOARD_ID = '2738875399'
 MONDAY_API_TOKEN = os.getenv("MONDAY_API_TOKEN")
 
@@ -112,7 +113,7 @@ def get_group_id_by_project_id(project_id):
     """
     query = f'''
     query {{
-        boards(ids: {BOARD_ID}) {{
+        boards(ids: {PO_BOARD_ID}) {{
             groups {{
                 id
                 title
@@ -179,7 +180,7 @@ def find_item_by_project_and_po(project_id, po_number):
     query = f'''
     query {{
         items_page_by_column_values(
-            board_id: {BOARD_ID},
+            board_id: {PO_BOARD_ID},
             columns: {columns_arg},
             limit: 100
         ) {{
@@ -544,7 +545,7 @@ def create_item(group_id, item_name, column_values):
     serialized_column_values = json.dumps(column_values)
 
     variables = {
-        'board_id': BOARD_ID,
+        'board_id': PO_BOARD_ID,
         'group_id': group_id,
         'item_name': item_name,
         'column_values': serialized_column_values  # Pass serialized values here
@@ -584,7 +585,7 @@ def update_item_columns(item_id, column_values):
     query = f'''
     mutation {{
         change_multiple_column_values(
-            board_id: {BOARD_ID},
+            board_id: {PO_BOARD_ID},
             item_id: {item_id},
             column_values: "{column_values_json}"
         ) {{
@@ -714,7 +715,6 @@ def create_subitem(parent_item_id, subitem_name, column_values):
     # Execute the request and handle the response
     response = requests.post(MONDAY_API_URL, headers=headers, json={'query': query})
     data = response.json()
-    print(query)
 
     # Process response
     if response.status_code == 200:
@@ -849,7 +849,7 @@ def link_contact_to_po_item(po_item_id, contact_item_id):
     mutation = f'''
     mutation {{
         change_column_value(
-            board_id: {BOARD_ID},
+            board_id: {PO_BOARD_ID},
             item_id: {po_item_id},
             column_id: "{connect_boards_column_id}",
             value: "{column_value_json}"
@@ -885,3 +885,211 @@ def link_contact_to_po_item(po_item_id, contact_item_id):
         logging.error(f"HTTP Error {response.status_code}: {response.text}")
         return False
 
+
+def get_items_by_column_values(board_id, column_filters):
+    """
+    Retrieves all items from a board that match specified column values.
+
+    Args:
+        board_id (int): The ID of the board.
+        column_filters (list): A list of dictionaries, each containing 'column_id' and 'column_values' keys.
+
+    Returns:
+        list: A list of dictionaries, each representing an item with its details.
+    """
+    query = '''
+    query ($board_id: Int!, $columns: [ItemsPageByColumnValuesQuery!]!, $cursor: String) {
+        items_page_by_column_values(board_id: $board_id, columns: $columns, cursor: $cursor, limit: 100) {
+            cursor
+            items {
+                id
+                name
+                column_values {
+                    id
+                    text
+                }
+            }
+        }
+    }
+    '''
+
+    headers = {
+        'Authorization': os.getenv("MONDAY_API_TOKEN"),
+        'Content-Type': 'application/json',
+        'API-Version': '2023-10'
+    }
+
+    items = []
+    cursor = None
+
+    while True:
+        variables = {'board_id': board_id, 'columns': column_filters, 'cursor': cursor}
+        response = requests.post(MONDAY_API_URL, headers=headers, json={'query': query, 'variables': variables})
+        data = response.json()
+
+        if response.status_code == 200 and 'data' in data:
+            items_page = data['data']['items_page_by_column_values']
+            items.extend(items_page['items'])
+            cursor = items_page['cursor']
+            if not cursor:
+                break
+        else:
+            logging.error(f"Error fetching items: {response.text}")
+            break
+
+    return items
+
+
+def get_all_groups_from_board(board_id):
+    """
+    Retrieves all groups from a specified board.
+
+    Args:
+        board_id (int): The ID of the board.
+
+    Returns:
+        list: A list of dictionaries, each representing a group with its details.
+    """
+    query = '''
+    query ($board_id: Int!) {
+        boards(ids: [$board_id]) {
+            groups {
+                id
+                title
+            }
+        }
+    }
+    '''
+
+    headers = {
+        'Authorization': os.getenv("MONDAY_API_TOKEN"),
+        'Content-Type': 'application/json',
+        'API-Version': '2023-10'
+    }
+
+    variables = {'board_id': board_id}
+    response = requests.post(MONDAY_API_URL, headers=headers, json={'query': query, 'variables': variables})
+    data = response.json()
+
+    if response.status_code == 200 and 'data' in data:
+        return data['data']['boards'][0]['groups']
+    else:
+        logging.error(f"Error fetching groups: {response.text}")
+        return []
+
+
+def get_all_subitems_for_item(parent_item_id):
+    """
+    Retrieves all subitems for a specified parent item.
+
+    Args:
+        parent_item_id (str): The ID of the parent item (as a string).
+
+    Returns:
+        list: A list of dictionaries, each representing a subitem with its details.
+    """
+    query = '''
+    query ($parent_item_id: [ID!]) {
+        items(ids: $parent_item_id) {
+            subitems {
+                id
+                name
+                column_values {
+                    id
+                    text
+                }
+            }
+        }
+    }
+    '''
+
+    headers = {
+        'Authorization': os.getenv("MONDAY_API_TOKEN"),
+        'Content-Type': 'application/json',
+        'API-Version': '2023-10'
+    }
+
+    # Ensure parent_item_id is passed as a list of strings
+    variables = {'parent_item_id': [parent_item_id]}
+    response = requests.post(MONDAY_API_URL, headers=headers, json={'query': query, 'variables': variables})
+    data = response.json()
+
+    if response.status_code == 200 and 'data' in data:
+        return data['data']['items'][0].get('subitems', [])
+    else:
+        logging.error(f"Error fetching subitems: {response.text}")
+        return []
+
+
+def process_monday_update(event_data):
+    print("SUCCESS")
+
+
+def validate_monday_request(request):
+    """
+    Validate incoming webhook requests from Monday.com using the API token.
+    """
+    token = request.headers.get('Authorization')
+    if not token:
+        logging.warning("Missing 'Authorization' header.")
+        return False
+    # Assuming the token is sent as 'Bearer YOUR_TOKEN'
+    if token.split()[1] != MONDAY_API_TOKEN:
+        logging.warning("Invalid API token.")
+        return False
+    return True
+
+
+def get_all_items_from_board(board_id):
+    """
+    Retrieves all items from a specified board using pagination.
+
+    Args:
+        board_id (str): The ID of the board (as a string).
+
+    Returns:
+        list: A list of dictionaries, each representing an item with its details.
+    """
+    query = '''
+    query ($board_id: [ID!], $cursor: String) {
+        boards(ids: $board_id) {
+            items_page(cursor: $cursor) {
+                cursor
+                items {
+                    id
+                    name
+                    column_values {
+                        id
+                        text
+                    }
+                }
+            }
+        }
+    }
+    '''
+
+    headers = {
+        'Authorization': os.getenv("MONDAY_API_TOKEN"),
+        'Content-Type': 'application/json',
+        'API-Version': '2023-10'
+    }
+
+    items = []
+    cursor = None
+
+    while True:
+        variables = {'board_id': [board_id], 'cursor': cursor}  # Ensure board_id is passed as a list of strings
+        response = requests.post(MONDAY_API_URL, headers=headers, json={'query': query, 'variables': variables})
+        data = response.json()
+
+        if response.status_code == 200 and 'data' in data:
+            items_page = data['data']['boards'][0]['items_page']
+            items.extend(items_page['items'])
+            cursor = items_page['cursor']
+            if not cursor:
+                break
+        else:
+            logging.error(f"Error fetching items: {response.text}")
+            break
+
+    return items

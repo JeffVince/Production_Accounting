@@ -7,12 +7,9 @@ import logging
 import hmac
 import hashlib
 from flask import Flask, request
-from dropbox_client import get_dropbox_client
-from database_util import initialize_database
+from webhook.dropbox_client import get_dropbox_client, process_event_data
+from database.dropbox_database_util import initialize_database
 from dotenv import load_dotenv
-
-
-from webhook.event_router import process_event_data  # Import the event processing function
 
 # Load environment variables from .env file
 load_dotenv()
@@ -65,6 +62,45 @@ def validate_request(request):
     return is_valid
 
 
+@app.route('/monday-subitem-change', methods=['POST'])
+def monday_webhook():
+    """
+    Endpoint to handle Monday.com webhook events, including URL verification and event payloads.
+    """
+    logging.info("POST request received from Monday.com.")
+
+    # Parse the incoming JSON body
+    event_data = request.get_json()
+
+    if not event_data:
+        logging.warning("No JSON body received in POST request.")
+        return 'No JSON body', 400
+
+    # Check if it's a challenge verification request
+    challenge = event_data.get("challenge")
+    if challenge:
+        logging.info("Responding to Monday.com webhook challenge.")
+        return {"challenge": challenge}, 200
+
+    # Log and process event data
+    if "event" in event_data:
+        logging.info(f"Received Monday.com event: {event_data['event']}")
+
+        # Process the event here
+        # For example:
+        # - Log the event type and relevant details
+        event_type = event_data["event"].get("type")
+        logging.info(f"Event type: {event_type}")
+
+        # Add custom logic to handle different event types if needed
+        # Example: Handle 'create_item' or 'update_column_value' events
+
+        return '', 200  # Acknowledge receipt of the event
+
+    logging.warning("No event field found in POST request.")
+    return 'No event field in payload', 400
+
+
 @app.route('/dropbox-webhook', methods=['GET', 'POST'])
 def dropbox_webhook():
     """
@@ -103,4 +139,4 @@ def health():
 
 if __name__ == '__main__':
     # Run Flask app on all interfaces to be accessible externally
-    app.run(host='0.0.0.0', port=5001)
+    app.run(host='0.0.0.0', port=5022)
