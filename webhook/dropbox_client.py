@@ -45,7 +45,7 @@ class DropboxClientSingleton:
         self.DROPBOX_APP_SECRET = app_secret
         self.MY_EMAIL = my_email
         self.NAMESPACE_NAME = namespace_name
-        self.CURSOR_DIR = '../cursors'
+        self.CURSOR_DIR = '../utilities/cursors'
         os.makedirs(self.CURSOR_DIR, exist_ok=True)
         self._internal_lock = threading.Lock()
 
@@ -281,6 +281,7 @@ class DropboxClientSingleton:
                     logging.error(f"Failed to refresh access token: {e}", exc_info=True)
                     # Implement retry logic or alerting as needed
                     time.sleep(60)  # Wait before retrying
+
 
 # Initialize a single instance of DropboxClientSingleton
 dropbox_client_instance = None
