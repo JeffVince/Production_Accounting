@@ -7,6 +7,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 def add_or_update_po(po_data):
     """
     Adds a new PO or updates an existing one.
@@ -28,6 +29,7 @@ def add_or_update_po(po_data):
         logger.error(f"Error adding or updating PO: {e}")
         raise e
 
+
 def get_po_by_number(po_number):
     """
     Retrieves a PO by its number.
@@ -36,6 +38,16 @@ def get_po_by_number(po_number):
         with get_db_session() as session:
             po = session.query(PO).filter_by(po_number=po_number).first()
             return po
+    except SQLAlchemyError as e:
+        logger.error(f"Error retrieving PO: {e}")
+        raise e
+
+
+def get_pos_by_status(state):
+    """Fetch all POs with the given status."""
+    try:
+        with get_db_session() as session:
+            return session.query(PO).filter_by(state=state).all()
     except SQLAlchemyError as e:
         logger.error(f"Error retrieving PO: {e}")
         raise e

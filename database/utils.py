@@ -7,6 +7,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 def update_po_status(po_number, status):
     """
     Updates the status of a PO.
@@ -23,6 +24,7 @@ def update_po_status(po_number, status):
     except SQLAlchemyError as e:
         logger.error(f"Error updating PO status: {e}")
         raise e
+
 
 def get_po_state(po_number):
     """

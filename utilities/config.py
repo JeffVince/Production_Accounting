@@ -8,6 +8,13 @@ load_dotenv()
 
 # Configuration settings
 class Config:
+
+    # WEBHOOK PORTS
+    DROPBOX_WEBHOOK_PORT = 5001
+    MONDAY_WEBHOOK_PORT = 5002
+    XERO_WEBHOOK_PORT = 5003
+    MERCURY_WEBHOOK_PORT = 5004
+
     # Celery
     CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL")
     CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND")

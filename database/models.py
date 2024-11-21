@@ -71,6 +71,7 @@ class PO(Base):
     state = Column(Enum(POState), default=POState.PENDING)
     amount = Column(Float)
     description = Column(Text)
+    status = Column(Text)
 
     project = relationship('Project', back_populates='pos')
     vendor = relationship('Vendor', back_populates='pos', foreign_keys=[vendor_id])
@@ -244,6 +245,7 @@ class MainItem(Base):
         cascade='all, delete-orphan'
     )
 
+
 # SubItem Model
 class SubItem(Base):
     __tablename__ = 'sub_items'
@@ -262,3 +264,4 @@ class SubItem(Base):
     creation_log = Column(Text)
 
     main_item = relationship('MainItem', back_populates='sub_items')
+

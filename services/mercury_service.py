@@ -1,79 +1,89 @@
+# services/mercury_service.py
+
 import requests
-import logging
-import database.monday_database_util as db
-import os
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("../utilities/logs/create_bills_for_approval.log"),  # Logs to a file
-        logging.StreamHandler()  # Also logs to the console
-    ]
+from database.models import PO, Transaction, TransactionState, POState
+from database.db_util import get_db_session
+from database.mercury_repository import (
+    add_or_update_transaction,
+    update_transaction_status,
 )
+from utilities.config import Config
+import logging
 
-# Mercury API configuration
-MERCURY_API_URL = "https://api.mercury.com/api/v1"
-API_TOKEN = os.getenv('MERCURY_API_TOKEN')
-ACCOUNT_ID = os.getenv('ACCOUNT_ID')
+logger = logging.getLogger(__name__)
 
+class MercuryService:
+    def __init__(self):
+        self.api_token = Config.MERCURY_API_TOKEN
+        self.api_url = 'https://backend.mercury.com/api/v1'
 
-# Function to create a bill for approval
-def create_bill_for_approval(main_item, total_amount):
-    """
-    Creates a bill for approval in Mercury for the given main item and total amount.
-
-    Args:
-        main_item (dict): The main item data.
-        total_amount (float): The total amount to be paid.
-    """
-    # Prepare the payload for the API request
-    payload = {
-        "amount": int(total_amount * 100),  # Amount in cents
-        "currency": "USD",
-        "description": f"Payment for {main_item['name']}",
-        "external_id": main_item['item_id'],
-        "receiving_account": {
-            "account_number": main_item['account_number'],  # Ensure this field exists in your database
-            "routing_number": main_item['routing_number'],  # Ensure this field exists in your database
-            "account_type": "checking",
-            "account_holder_name": main_item['name']
+    def initiate_payment(self, po_number: str, payment_data: dict):
+        """Initiate a payment through Mercury Bank."""
+        headers = {'Authorization': f'Bearer {self.api_token}'}
+        payload = {
+            # Construct the payment payload according to Mercury API
+            'amount': payment_data['amount'],
+            'recipient': payment_data['recipient'],
+            'memo': payment_data.get('memo', ''),
         }
-    }
+        try:
+            response = requests.post(f'{self.api_url}/payments', json=payload, headers=headers)
+            response.raise_for_status()
+            payment_info = response.json()
+            transaction_data = {
+                'po_id': self.get_po_id(po_number),
+                'transaction_id': payment_info['id'],
+                'state': TransactionState.PENDING,
+                'amount': payment_info['amount'],
+            }
+            add_or_update_transaction(transaction_data)
+            logger.debug(f"Payment initiated for PO {po_number}")
+        except Exception as e:
+            logger.error(f"Error initiating payment for PO {po_number}: {e}")
 
-    # Make the API request to queue the payment
-    response = requests.post(
-        f"{MERCURY_API_URL}/account/{ACCOUNT_ID}/request-send-money",
-        json=payload,
-        auth=(API_TOKEN, '')
-    )
+    def monitor_payment_status(self, po_number: str):
+        """Monitor the status of a payment."""
+        with get_db_session() as session:
+            transaction = self.get_transaction_by_po(po_number)
+            if not transaction:
+                logger.warning(f"No transaction found for PO {po_number}")
+                return
+            headers = {'Authorization': f'Bearer {self.api_token}'}
+            try:
+                response = requests.get(f'{self.api_url}/payments/{transaction.transaction_id}', headers=headers)
+                response.raise_for_status()
+                payment_info = response.json()
+                new_state = payment_info['status'].upper()
+                update_transaction_status(transaction.transaction_id, new_state)
+                logger.debug(f"Payment status for PO {po_number} updated to {new_state}")
+            except Exception as e:
+                logger.error(f"Error monitoring payment status for PO {po_number}: {e}")
 
-    if response.status_code == 200:
-        logging.info(f"Successfully created bill for approval for main item {main_item['item_id']}.")
-    else:
-        logging.error(f"Failed to create bill for main item {main_item['item_id']}. Status code: {response.status_code}, Response: {response.text}")
+    def confirm_payment_execution(self, po_number: str):
+        """Confirm that a payment has been executed."""
+        self.monitor_payment_status(po_number)
+        with get_db_session() as session:
+            transaction = self.get_transaction_by_po(po_number)
+            if transaction and transaction.state == TransactionState.PAID:
+                # Update PO state to PAID
+                po = session.query(PO).filter_by(id=transaction.po_id).first()
+                po.state = POState.PAID
+                session.commit()
+                logger.debug(f"Payment confirmed for PO {po_number}, PO state updated to PAID")
 
+    def get_po_id(self, po_number: str) -> int:
+        with get_db_session() as session:
+            po = session.query(PO).filter_by(po_number=po_number).first()
+            if po:
+                return po.id
+            else:
+                raise ValueError(f"PO {po_number} not found")
 
-# Main function to process approved items and create bills
-def process_approved_items():
-    """
-    Processes all approved main items and creates bills for approval based on their RTP subitems.
-    """
-    # Fetch all main items with status 'Approved'
-    main_items = db.fetch_main_items_by_status('Approved')
-    logging.info(f"Found {len(main_items)} approved main items.")
-
-    for main_item in main_items:
-        # Fetch subitems with status 'RTP' for the current main item
-        subitems = db.fetch_subitems_by_main_item_and_status(main_item['item_id'], 'RTP')
-        total_amount = sum(subitem['amount'] for subitem in subitems if subitem['amount'] is not None)
-        logging.info(f"Main item {main_item['item_id']} has {len(subitems)} RTP subitems with a total amount of ${total_amount:.2f}.")
-
-        if total_amount > 0:
-            create_bill_for_approval(main_item, total_amount)
-        else:
-            logging.info(f"No RTP subitems with a positive amount found for main item {main_item['item_id']}.")
-
-if __name__ == "__main__":
-    process_approved_items()
+    def get_transaction_by_po(self, po_number: str) -> Transaction:
+        with get_db_session() as session:
+            po = session.query(PO).filter_by(po_number=po_number).first()
+            if po:
+                transaction = session.query(Transaction).filter_by(po_id=po.id).first()
+                return transaction
+            else:
+                return None

@@ -1,117 +1,78 @@
-import utilities.monday_util as monday
-import database.monday_database_util as db
+# services/monday_service.py
+
+import requests
+from utilities.config import Config
+from database.monday_repository import (
+    add_or_update_monday_po,
+    update_monday_po_status,
+    link_contact_to_po,
+)
 import logging
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("../utilities/logs/monday_po_service.log"),  # Logs to a file
-        logging.StreamHandler()  # Also logs to the console
-    ]
-)
+logger = logging.getLogger(__name__)
 
-# Initialize the database
-logging.info("Initializing database...")
-db.initialize_database()
-logging.info("Database initialized successfully.")
+class MondayService:
+    def __init__(self):
+        self.api_token = Config.MONDAY_API_TOKEN
+        self.api_url = 'https://api.monday.com/v2/'
 
-# Fetch data from Monday.com and store in the database
-def sync_monday_data_to_db():
-    """
-    Syncs data from Monday.com to the local SQLite database using existing `Monday_util` functions.
-    """
-    logging.info("Starting sync process for Monday.com data...")
-    try:
-        # Fetch all main items from the Monday.com PO board
-        main_items = monday.get_all_items_from_board(monday.PO_BOARD_ID)
-        logging.info(f"Fetched {len(main_items)} main items from Monday.com.")
-
-        for item in main_items:
-            # Map item data for insertion into the main_items table
-            item_data = {
-                "item_id": item['id'],
-                "name": item['name'],
-                "project_id": next((col['text'] for col in item['column_values'] if col['id'] == monday.PO_PROJECT_ID_COLUMN), None),
-                "numbers": next((col['text'] for col in item['column_values'] if col['id'] == monday.PO_NUMBER_COLUMN), None),
-                "description": next((col['text'] for col in item['column_values'] if col['id'] == monday.PO_DESCRIPTION_COLUMN_ID), None),
-                "tax_form": next((col['text'] for col in item['column_values'] if col['id'] == monday.PO_TAX_COLUMN_ID), None),
-                "folder": next((col['text'] for col in item['column_values'] if col['id'] == monday.PO_FOLDER_LINK_COLUMN_ID), None),
-                "amount": next((col['text'] for col in item['column_values'] if col['id'] == "subitems_sub_total"), None),
-                "po_status": next((col['text'] for col in item['column_values'] if col['id'] == monday.PO_STATUS_COLUMN_ID), None),
-                "producer_pm": next((col['text'] for col in item['column_values'] if col['id'] == "people"), None),
-                "updated_date": next((col['text'] for col in item['column_values'] if col['id'] == "date01"), None),
+    def update_po_status(self, po_number: str, status: str):
+        """Update the status of a PO in Monday.com."""
+        query = '''
+        mutation ($po_number: String!, $status: String!) {
+            change_column_value(
+                board_id: YOUR_BOARD_ID,
+                item_id: $po_number,
+                column_id: "status",
+                value: $status
+            ) {
+                id
             }
-            db.insert_main_item(item_data)
-            logging.info(f"Inserted main item: {item_data['item_id']} - {item_data['name']}")
+        }
+        '''
+        variables = {'po_number': po_number, 'status': status}
+        self._make_request(query, variables)
+        # Update local database
+        update_monday_po_status(po_number, status)
 
-            # Fetch subitems for the current main item
-            subitems = monday.get_all_subitems_for_item(item['id'])
-            logging.info(f"Fetched {len(subitems)} subitems for main item {item['id']}.")
+    def verify_po_tax_compliance(self, po_number: str) -> bool:
+        """Verify tax compliance for a PO."""
+        # Implementation logic, possibly interacting with tax_form_service
+        return True
 
-            for subitem in subitems:
-                # Map subitem data for insertion into the sub_items table
-                subitem_data = {
-                    "subitem_id": subitem['id'],
-                    "main_item_id": item['id'],
-                    "status": next((col['text'] for col in subitem['column_values'] if col['id'] == monday.SUBITEM_STATUS_COLUMN_ID), None),
-                    "invoice_number": next((col['text'] for col in subitem['column_values'] if col['id'] == monday.SUBITEM_ID_COLUMN_ID), None),
-                    "description": next((col['text'] for col in subitem['column_values'] if col['id'] == monday.SUBITEM_DESCRIPTION_COLUMN_ID), None),
-                    "amount": next((col['text'] for col in subitem['column_values'] if col['id'] == monday.SUBITEM_RATE_COLUMN_ID), None),
-                    "quantity": next((col['text'] for col in subitem['column_values'] if col['id'] == monday.SUBITEM_QUANTITY_COLUMN_ID), None),
-                    "account_number": next((col['text'] for col in subitem['column_values'] if col['id'] == monday.SUBITEM_ACCOUNT_NUMBER_COLUMN_ID), None),
-                    "invoice_date": next((col['text'] for col in subitem['column_values'] if col['id'] == monday.SUBITEM_DATE_COLUMN_ID), None),
-                    "link": next((col['text'] for col in subitem['column_values'] if col['id'] == monday.SUBITEM_LINK_COLUMN_ID), None),
-                    "due_date": next((col['text'] for col in subitem['column_values'] if col['id'] == monday.SUBITEM_DUE_DATE_COLUMN_ID), None),
-                    "creation_log": next((col['text'] for col in subitem['column_values'] if col['id'] == "creation_log__1"), None),
-                }
-                db.insert_subitem(subitem_data)
-                logging.info(f"Inserted subitem: {subitem_data['subitem_id']} - {subitem_data['description']}")
+    def match_or_create_contact(self, vendor_name: str, po_number: str) -> int:
+        """Match or create a contact for a vendor."""
+        # Simulate querying Monday.com for existing contacts
+        # If not found, create a new contact
+        # Then, link contact to PO in local database
+        contact_data = {
+            'contact_id': 'new_contact_id',
+            'name': vendor_name,
+            'email': 'vendor@example.com',
+            'phone': '123-456-7890',
+        }
+        link_contact_to_po(po_number, contact_data)  # Now po_number is passed in
+        return contact_data['contact_id']
 
-        logging.info("Data successfully synced from Monday.com to the database.")
-    except Exception as e:
-        logging.error(f"Error syncing data: {e}")
+    def validate_po_detail_items(self, po_number: str) -> bool:
+        """Validate the detail items of a PO."""
+        # Implementation logic
+        return True
 
-# Retrieve data from the database
-def get_all_data():
-    """
-    Retrieves all data from the database, including main items and their subitems.
+    def notify_business_manager(self, po_number: str):
+        """Notify the business manager about a PO."""
+        # Send a notification via Slack or email
+        pass
 
-    Returns:
-        dict: A dictionary with main items and their subitems.
-    """
-    all_data = {}
-    try:
-        main_items = db.fetch_all_main_items()
-        logging.info(f"Retrieved {len(main_items)} main items from the database.")
+    def compare_receipt_with_po(self, po_number: str, receipt_data: dict) -> bool:
+        """Compare receipt data with PO details."""
+        # Implementation logic
+        return True
 
-        for main_item in main_items:
-            main_item_id = main_item['item_id']
-            subitems = db.fetch_subitems_for_main_item(main_item_id)
-            logging.info(f"Retrieved {len(subitems)} subitems for main item {main_item_id}.")
-            all_data[main_item_id] = {
-                "main_item": main_item,
-                "subitems": subitems
-            }
-
-        logging.info("Data retrieved successfully from the database.")
-    except Exception as e:
-        logging.error(f"Error retrieving data from the database: {e}")
-    return all_data
-
-# Example: Sync and retrieve data
-if __name__ == "__main__":
-    # Sync Monday.com data to the database
-    sync_monday_data_to_db()
-
-    # Retrieve and print all data from the database
-    data = get_all_data()
-    for main_item_id, details in data.items():
-        print(f"Main Item ID: {main_item_id}")
-        print("Main Item Details:")
-        print(details["main_item"])
-        print("Subitems:")
-        for subitem in details["subitems"]:
-            print(subitem)
-        print("\n")
+    def _make_request(self, query: str, variables: dict):
+        headers = {"Authorization": self.api_token}
+        response = requests.post(self.api_url, json={'query': query, 'variables': variables}, headers=headers)
+        if response.status_code != 200:
+            logger.error(f"Monday API error: {response.text}")
+            raise Exception(f"Monday API error: {response.text}")
+        return response.json()
