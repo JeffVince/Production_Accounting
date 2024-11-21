@@ -11,7 +11,7 @@ from utilities.monday_util import (
     get_subitem_board_id,
     ACTUALS_BOARD_ID, find_subitem_by_invoice_or_receipt_number, create_item
 )
-from webhook.dropbox_client import get_dropbox_client
+from webhook.dropbox_webhook_handler import get_dropbox_client
 
 # Constants
 BOARD_ID = ACTUALS_BOARD_ID

@@ -7,7 +7,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler("../logs/monday_po_service.log"),  # Logs to a file
+        logging.FileHandler("../utilities/logs/monday_po_service.log"),  # Logs to a file
         logging.StreamHandler()  # Also logs to the console
     ]
 )

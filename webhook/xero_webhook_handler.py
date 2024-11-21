@@ -354,4 +354,4 @@ def test_service():
 
 if __name__ == '__main__':
     logging.info("Starting Xero Bill Service...")
-    app.run(debug=True, host='0.0.0.0', port=5022)
+    app.run(debug=True, host='0.0.0.0', port=5023)

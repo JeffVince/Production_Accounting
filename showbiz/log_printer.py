@@ -17,7 +17,7 @@ logging.basicConfig(
     level=logging.INFO,  # Change to DEBUG for more detailed logs
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler("../logs/showbiz_budgeting.log"),
+        logging.FileHandler("../utilities/logs/showbiz_budgeting.log"),
         logging.StreamHandler()
     ]
 )

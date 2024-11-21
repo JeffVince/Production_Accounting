@@ -7,7 +7,7 @@ import logging
 import hmac
 import hashlib
 from flask import Flask, request
-from webhook.dropbox_client import get_dropbox_client, process_event_data
+from webhook.dropbox_webhook_handler import get_dropbox_client, process_event_data
 from database.dropbox_database_util import initialize_database
 from dotenv import load_dotenv
 
@@ -19,7 +19,7 @@ logging.basicConfig(
     level=logging.INFO,  # Set to DEBUG for detailed logs during troubleshooting
     format='%(asctime)s [%(levelname)s] %(message)s',
     handlers=[
-        logging.FileHandler("../Dropbox Listener/logs/dropbox_server.log"),
+        logging.FileHandler("utilities/logs/dropbox_server.log"),
         logging.StreamHandler()
     ]
 )

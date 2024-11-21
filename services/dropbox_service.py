@@ -10,7 +10,7 @@ import logging
 from database.dropbox_database_util import fetch_pending_events, update_event_status
 from utilities.file_util import process_file, process_folder
 from dotenv import load_dotenv
-from webhook.dropbox_client import get_dropbox_client
+from webhook.dropbox_webhook_handler import get_dropbox_client
 
 # Load environment variables from .env file
 load_dotenv()

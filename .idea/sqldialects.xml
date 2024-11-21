@@ -3,5 +3,6 @@
   <component name="SqlDialectMappings">
     <file url="file://$PROJECT_DIR$/app.py" dialect="SQLite" />
     <file url="file://$PROJECT_DIR$/database/dropbox_database_util.py" dialect="SQLite" />
+    <file url="file://$PROJECT_DIR$/database/monday_database_util.py" dialect="GenericSQL" />
   </component>
 </project>

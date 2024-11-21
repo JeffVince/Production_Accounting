@@ -10,12 +10,15 @@ import tempfile
 import threading
 import logging
 from dropbox import files
+from dotenv import load_dotenv, set_key
 from database.dropbox_database_util import add_event_to_db
 from utilities.file_util import (
     parse_filename,
     parse_folder_path
 )
 import os
+
+load_dotenv(dotenv_path="../.env")
 
 
 class DropboxClientSingleton:
@@ -132,34 +135,27 @@ class DropboxClientSingleton:
 
     def save_access_token(self, access_token, expires_in):
         """
-        Store the access token and its expiration time.
+        Store the access token and its expiration time in the .env file.
         """
-        self.token_expiry_time = time.time() + expires_in  # Token expiration time
-        token_data = {
-            "access_token": access_token,
-            "expires_at": self.token_expiry_time
-        }
-
-        # Save token data to a file securely
-        with open('../token.json', 'w') as token_file:
-            json.dump(token_data, token_file)
+        self.token_expiry_time = time.time() + expires_in
+        set_key("../.env", "ACCESS_TOKEN", access_token)
+        set_key("../.env", "TOKEN_EXPIRY_TIME", str(self.token_expiry_time))
 
     def load_access_token(self):
         """
-        Load the access token from storage.
+        Load the access token from the .env file.
         """
-        try:
-            with open('../token.json', 'r') as token_file:
-                token_data = json.load(token_file)
-                if time.time() < token_data['expires_at']:
-                    self.token_expiry_time = token_data['expires_at']
-                    return token_data['access_token']
-                else:
-                    logging.info("Access token expired.")
-                    return None  # Token expired
-        except FileNotFoundError:
-            logging.info("Access token file not found.")
-            return None
+        access_token = os.getenv("ACCESS_TOKEN")
+        token_expiry_time = os.getenv("TOKEN_EXPIRY_TIME")
+        if access_token and token_expiry_time:
+            if time.time() < float(token_expiry_time):
+                self.token_expiry_time = float(token_expiry_time)
+                return access_token
+            else:
+                logging.info("Access token expired.")
+                return None  # Token expired
+        logging.info("Access token not found in .env.")
+        return None
 
     def get_access_token(self):
         """

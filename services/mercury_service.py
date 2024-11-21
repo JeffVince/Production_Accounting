@@ -8,7 +8,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler("../logs/create_bills_for_approval.log"),  # Logs to a file
+        logging.FileHandler("../utilities/logs/create_bills_for_approval.log"),  # Logs to a file
         logging.StreamHandler()  # Also logs to the console
     ]
 )

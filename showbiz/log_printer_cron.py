@@ -21,7 +21,7 @@ from utilities.monday_util import (
     MONDAY_API_TOKEN
 )
 
-from webhook.dropbox_client import (
+from webhook.dropbox_webhook_handler import (
     get_dropbox_client,
     create_share_link
 )
@@ -32,7 +32,7 @@ logging.basicConfig(
     level=logging.INFO,  # Change to DEBUG for more detailed logs
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler("../logs/showbiz_budgeting.log"),
+        logging.FileHandler("../utilities/logs/showbiz_budgeting.log"),
         logging.StreamHandler()
     ]
 )

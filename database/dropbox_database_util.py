@@ -3,10 +3,12 @@
 import sqlite3
 import logging
 import threading
-import os  # Import os module to handle file paths
+import os
 
+# Thread safety for database operations
 db_lock = threading.Lock()
 
+# Environment variables and defaults
 TARGET_PURCHASE_ORDERS_FOLDER = os.getenv('TARGET_PURCHASE_ORDERS_FOLDER', '1. Purchase Orders')
 
 
@@ -14,127 +16,102 @@ def dict_factory(cursor, row):
     """
     Converts SQLite row to a dictionary.
     """
-    d = {}
-    for idx, col in enumerate(cursor.description):
-        d[col[0]] = row[idx]
-    return d
+    return {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
 
 
 def get_db_path():
+    """
+    Generates the database path dynamically, ensuring the directory exists.
+    """
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.abspath(os.path.join(script_dir, '..'))
-    db_dir = os.path.join(project_root, 'database')
-    db_path = os.path.join(db_dir, 'database/processed_files.db')
+    db_dir = os.path.join(project_root, 'database/database')
+    db_path = os.path.join(db_dir, 'processed_files.db')
 
-    # Log all intermediate paths for debugging
-    logging.info(f"Script directory: {script_dir}")
-    logging.info(f"Project root: {project_root}")
-    logging.info(f"Database directory: {db_dir}")
-    logging.info(f"Final database path: {db_path}")
-
-    if not os.path.exists(db_dir):
-        os.makedirs(db_dir, exist_ok=True)
-    
+    # Ensure database directory exists
+    os.makedirs(db_dir, exist_ok=True)
     return db_path
 
 
 def initialize_database():
     """
-    Initializes the SQLite database with the necessary schema.
+    Initializes the SQLite database schema and ensures required tables are created.
     """
     db_path = get_db_path()
     logging.info(f"Initializing database at {db_path}")
 
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = dict_factory  # Set row factory to dictionary
-    cursor = conn.cursor()
-
-    try:
-        # Create events table with additional columns and a unique constraint to prevent duplicates
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                file_id TEXT,
-                file_name TEXT NOT NULL,
-                path TEXT NOT NULL,
-                old_path TEXT,
-                event_type TEXT NOT NULL,
-                timestamp DATETIME DEFAULT (strftime('%Y-%m-%d %H:%M', 'now')),
-                status TEXT DEFAULT 'pending',
-                project_id TEXT,
-                po_number TEXT,
-                vendor_name TEXT,
-                vendor_type TEXT,
-                file_type TEXT,
-                file_number TEXT,
-                dropbox_share_link TEXT,
-                file_stream_link TEXT,
-                ocr_data TEXT,
-                openai_data TEXT,
-                UNIQUE(project_id, po_number, file_number, timestamp, event_type, path)
-            )
-        ''')
-
-        # Create po_logs table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS po_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                file_name TEXT NOT NULL,
-                project_id TEXT NOT NULL,
-                dropbox_file_path TEXT NOT NULL,
-                file_format TEXT NOT NULL CHECK(file_format IN ('txt', 'csv', 'tsv')),
-                status TEXT DEFAULT 'unprocessed',
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-
-        # Create indexes for faster lookups
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_file_id ON events (file_id)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_status ON events (status)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_po_logs_status ON po_logs (status)')
-
-        conn.commit()
-        logging.info("Database initialized successfully with updated schema.")
-    except Exception as e:
-        logging.error(f"Error initializing database: {e}", exc_info=True)
-        raise  # Re-raise the exception to handle it in app.py
-    finally:
-        conn.close()
-
-
-
-def add_event_to_db(
-        file_id,
-        file_name,
-        path,
-        old_path=None,
-        event_type=None,
-        project_id=None,
-        po_number=None,
-        vendor_name=None,
-        vendor_type=None,
-        file_type=None,
-        file_number=None,
-        dropbox_share_link=None,
-        file_stream_link=None
-):
-    """
-    Adds an event to the SQLite database while preventing duplicates and ensuring it's within the target Purchase Orders folder.
-    Returns a tuple (event_id, is_duplicate).
-    """
-    db_path = get_db_path()
-    with db_lock:
-        conn = sqlite3.connect(db_path, check_same_thread=False)
+    with sqlite3.connect(db_path) as conn:
         conn.row_factory = dict_factory
         cursor = conn.cursor()
 
         try:
-            # Check if the path is within the TARGET_PURCHASE_ORDERS_FOLDER
-            if TARGET_PURCHASE_ORDERS_FOLDER not in path:
-                logging.info(f"Skipping event for '{file_name}' as it's not within '{TARGET_PURCHASE_ORDERS_FOLDER}' folder.")
-                return None, False  # Do not add to the database
+            # Create events table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    file_id TEXT,
+                    file_name TEXT NOT NULL,
+                    path TEXT NOT NULL,
+                    old_path TEXT,
+                    event_type TEXT NOT NULL,
+                    timestamp DATETIME DEFAULT (strftime('%Y-%m-%d %H:%M', 'now')),
+                    status TEXT DEFAULT 'pending',
+                    project_id TEXT,
+                    po_number TEXT,
+                    vendor_name TEXT,
+                    vendor_type TEXT,
+                    file_type TEXT,
+                    file_number TEXT,
+                    dropbox_share_link TEXT,
+                    file_stream_link TEXT,
+                    ocr_data TEXT,
+                    openai_data TEXT,
+                    UNIQUE(project_id, po_number, file_number, timestamp, event_type, path)
+                )
+            ''')
 
-            # If not a duplicate, insert the new event
+            # Create po_logs table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS po_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    file_name TEXT NOT NULL,
+                    project_id TEXT NOT NULL,
+                    dropbox_file_path TEXT NOT NULL,
+                    file_format TEXT NOT NULL CHECK(file_format IN ('txt', 'csv', 'tsv')),
+                    status TEXT DEFAULT 'unprocessed',
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
+            # Create indexes for optimization
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_file_id ON events (file_id)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_status ON events (status)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_po_logs_status ON po_logs (status)')
+
+            logging.info("Database schema initialized successfully.")
+        except sqlite3.Error as e:
+            logging.error(f"Error initializing database: {e}", exc_info=True)
+            raise
+
+
+def add_event_to_db(**event_data):
+    """
+    Adds an event to the events table, filtering by folder constraints and avoiding duplicates.
+
+    Returns:
+        tuple: (event_id, is_duplicate)
+    """
+    db_path = get_db_path()
+
+    with db_lock, sqlite3.connect(db_path, check_same_thread=False) as conn:
+        conn.row_factory = dict_factory
+        cursor = conn.cursor()
+
+        try:
+            if TARGET_PURCHASE_ORDERS_FOLDER not in event_data.get('path', ''):
+                logging.info(f"Skipping event outside target folder: {event_data['path']}")
+                return None, False
+
             cursor.execute('''
                 INSERT INTO events (
                     file_id,
@@ -150,102 +127,76 @@ def add_event_to_db(
                     file_number,
                     dropbox_share_link,
                     file_stream_link
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                file_id,
-                file_name,
-                path,
-                old_path,
-                event_type,
-                project_id,
-                po_number,
-                vendor_name,
-                vendor_type,
-                file_type,
-                file_number,
-                dropbox_share_link,
-                file_stream_link
-            ))
+                ) VALUES (
+                    :file_id,
+                    :file_name,
+                    :path,
+                    :old_path,
+                    :event_type,
+                    :project_id,
+                    :po_number,
+                    :vendor_name,
+                    :vendor_type,
+                    :file_type,
+                    :file_number,
+                    :dropbox_share_link,
+                    :file_stream_link
+                )
+            ''', event_data)
             conn.commit()
-            event_id = cursor.lastrowid
-            logging.info(
-                f"Event '{event_type}' for '{file_name}' at '{path}' added to the database with ID {event_id}.")
-            return event_id, False  # Not a duplicate
-        except sqlite3.IntegrityError as e:
-            logging.error(f"IntegrityError while adding event to database: {e}")
-            return None, False
+            return cursor.lastrowid, False  # New event added successfully
+        except sqlite3.IntegrityError:
+            logging.warning(f"Duplicate event detected: {event_data}")
+            return None, True
         except sqlite3.Error as e:
-            logging.error(f"Error adding event to database: {e}")
+            logging.error(f"Error adding event to database: {e}", exc_info=True)
             return None, False
-        finally:
-            conn.close()
-
 
 
 def fetch_pending_events():
     """
-    Fetches all events from the database with a status of 'pending'.
-
-    Returns:
-        list of dicts: Each dict represents an event row.
+    Fetches all events with status 'pending'.
     """
     db_path = get_db_path()
-    with db_lock:
-        conn = sqlite3.connect(db_path, check_same_thread=False)
+
+    with db_lock, sqlite3.connect(db_path, check_same_thread=False) as conn:
         conn.row_factory = dict_factory
         cursor = conn.cursor()
+
         try:
             cursor.execute("SELECT * FROM events WHERE status = 'pending'")
             events = cursor.fetchall()
             logging.info(f"Fetched {len(events)} pending events.")
             return events
         except sqlite3.Error as e:
-            logging.error(f"Database error while fetching pending events: {e}")
+            logging.error(f"Error fetching pending events: {e}", exc_info=True)
             return []
-        finally:
-            conn.close()
 
 
 def update_event_status(event_id, new_status):
     """
-    Updates the status of an event in the database.
-
-    Args:
-        event_id (int): The ID of the event to update.
-        new_status (str): The new status ('processed', 'failed', etc.).
+    Updates the status of a specific event.
     """
     db_path = get_db_path()
-    with db_lock:
-        conn = sqlite3.connect(db_path, check_same_thread=False)
-        conn.row_factory = dict_factory
+
+    with db_lock, sqlite3.connect(db_path, check_same_thread=False) as conn:
         cursor = conn.cursor()
+
         try:
             cursor.execute("UPDATE events SET status = ? WHERE id = ?", (new_status, event_id))
             conn.commit()
-            logging.info(f"Updated event ID {event_id} status to '{new_status}'.")
+            logging.info(f"Event {event_id} status updated to '{new_status}'.")
         except sqlite3.Error as e:
-            logging.error(f"Database error while updating event ID {event_id}: {e}")
-            conn.rollback()
-        finally:
-            conn.close()
+            logging.error(f"Error updating event {event_id}: {e}", exc_info=True)
 
 
-def add_po_log(file_name, project_id, dropbox_file_path, file_format):
+def add_po_log(**po_log_data):
     """
     Adds a PO log entry to the po_logs table.
-
-    Args:
-        file_name (str): Name of the log file.
-        project_id (str): Associated project ID.
-        dropbox_file_path (str): Path to the log file in Dropbox.
-        file_format (str): Format of the log file ('txt', 'csv', 'tsv').
-
-    Returns:
-        int: The ID of the inserted log entry, or None if insertion failed.
     """
     db_path = get_db_path()
-    with db_lock:
-        conn = sqlite3.connect(db_path, check_same_thread=False)
+
+    with db_lock, sqlite3.connect(db_path, check_same_thread=False) as conn:
         cursor = conn.cursor()
 
         try:
@@ -255,69 +206,55 @@ def add_po_log(file_name, project_id, dropbox_file_path, file_format):
                     project_id,
                     dropbox_file_path,
                     file_format
-                ) VALUES (?, ?, ?, ?)
-            ''', (
-                file_name,
-                project_id,
-                dropbox_file_path,
-                file_format.lower()  # Ensure lowercase for consistency
-            ))
+                ) VALUES (
+                    :file_name,
+                    :project_id,
+                    :dropbox_file_path,
+                    :file_format
+                )
+            ''', po_log_data)
             conn.commit()
-            log_id = cursor.lastrowid
-            logging.info(f"PO log '{file_name}' added with ID {log_id}.")
-            return log_id
-        except sqlite3.IntegrityError as e:
-            logging.error(f"IntegrityError while adding PO log '{file_name}': {e}")
+            return cursor.lastrowid
+        except sqlite3.IntegrityError:
+            logging.warning(f"Duplicate PO log detected: {po_log_data}")
             return None
         except sqlite3.Error as e:
-            logging.error(f"Error adding PO log '{file_name}': {e}")
+            logging.error(f"Error adding PO log: {e}", exc_info=True)
             return None
-        finally:
-            conn.close()
 
 
 def fetch_unprocessed_po_logs():
     """
-    Fetches all PO logs from the database with a status of 'unprocessed'.
-
-    Returns:
-        list of dicts: Each dict represents a PO log row.
+    Fetches all unprocessed PO logs.
     """
     db_path = get_db_path()
-    with db_lock:
-        conn = sqlite3.connect(db_path, check_same_thread=False)
+
+    with db_lock, sqlite3.connect(db_path, check_same_thread=False) as conn:
         conn.row_factory = dict_factory
         cursor = conn.cursor()
+
         try:
             cursor.execute("SELECT * FROM po_logs WHERE status = 'unprocessed'")
             logs = cursor.fetchall()
             logging.info(f"Fetched {len(logs)} unprocessed PO logs.")
             return logs
         except sqlite3.Error as e:
-            logging.error(f"Database error while fetching unprocessed PO logs: {e}")
+            logging.error(f"Error fetching unprocessed PO logs: {e}", exc_info=True)
             return []
-        finally:
-            conn.close()
 
 
 def update_po_log_status(log_id, new_status):
     """
-    Updates the status of a PO log in the database.
-
-    Args:
-        log_id (int): The ID of the PO log to update.
-        new_status (str): The new status ('processed', 'failed', etc.).
+    Updates the status of a specific PO log.
     """
     db_path = get_db_path()
-    with db_lock:
-        conn = sqlite3.connect(db_path, check_same_thread=False)
+
+    with db_lock, sqlite3.connect(db_path, check_same_thread=False) as conn:
         cursor = conn.cursor()
+
         try:
             cursor.execute("UPDATE po_logs SET status = ? WHERE id = ?", (new_status, log_id))
             conn.commit()
-            logging.info(f"Updated PO log ID {log_id} status to '{new_status}'.")
+            logging.info(f"PO log {log_id} status updated to '{new_status}'.")
         except sqlite3.Error as e:
-            logging.error(f"Database error while updating PO log ID {log_id}: {e}")
-            conn.rollback()
-        finally:
-            conn.close()
+            logging.error(f"Error updating PO log {log_id}: {e}", exc_info=True)
