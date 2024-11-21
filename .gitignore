@@ -4,3 +4,4 @@
 __pycache__/
 *.pyc
 token.json
+.DS_Store
