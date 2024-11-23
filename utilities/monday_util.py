@@ -39,6 +39,7 @@ def get_subitems_column_id(parent_board_id):
     else:
         raise Exception(f"Failed to retrieve columns: {response.text}")
 
+
 def get_subitem_board_id(parent_board_id):
     subitems_column_id = get_subitems_column_id(parent_board_id)
     query = f'''

@@ -1,23 +1,21 @@
 # /webhooks/xero_webhook_handler.py
 
-import threading
 import logging
-from flask import Flask, request
+from flask import Blueprint, request, jsonify
 from services.xero_service import XeroService
 from services.po_modification_service import POModificationService
-from utilities.config import Config
 from utilities.logger import setup_logging
 
 logger = logging.getLogger(__name__)
 setup_logging()
 
-app = Flask(__name__)
+xero_blueprint = Blueprint('xero', __name__)
+
 
 class XeroWebhookHandler:
     def __init__(self):
         self.xero_service = XeroService()
         self.po_modification_service = POModificationService()
-        self.port = Config.XERO_WEBHOOK_PORT
 
     def handle_xero_event(self, event):
         """Handle incoming Xero webhook event."""
@@ -29,6 +27,7 @@ class XeroWebhookHandler:
                 self.process_bill_status_change(event_data)
             elif event_type == 'SPEND-MONEY':
                 self.process_spend_money_status_change(event_data)
+        return jsonify({"message": "Xero event processed"}), 200
 
     def process_bill_status_change(self, event_data):
         """Process bill status change from Xero."""
@@ -60,17 +59,11 @@ class XeroWebhookHandler:
             self.po_modification_service.update_po_subitem_state(po_number, 'RECONCILED')
         # Add more status mappings as needed
 
-    def start(self):
-        """Start the Flask app in a separate thread."""
-        def run_app():
-            app.run(port=self.port, debug=False)
 
-        threading.Thread(target=run_app, daemon=True).start()
+handler = XeroWebhookHandler()
 
-# Flask routes for the webhook
-@app.route('/webhook/xero', methods=['POST'])
-def webhook():
+
+@xero_blueprint.route('/', methods=['POST'])
+def xero_webhook():
     event = request.get_json()
-    handler = XeroWebhookHandler()
-    handler.handle_xero_event(event)
-    return '', 200
+    return handler.handle_xero_event(event)

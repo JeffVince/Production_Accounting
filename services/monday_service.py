@@ -2,26 +2,39 @@
 
 import requests
 from utilities.config import Config
-from database.monday_repository import (
-    add_or_update_monday_po,
+from database.monday_database_util import (
+    update_main_item_from_monday,
     update_monday_po_status,
     link_contact_to_po,
 )
+import utilities.monday_util as M
 import logging
+import monday_api
 
 logger = logging.getLogger(__name__)
 
 class MondayService:
     def __init__(self):
         self.api_token = Config.MONDAY_API_TOKEN
+        self.board_id = M.PO_BOARD_ID
         self.api_url = 'https://api.monday.com/v2/'
+
+    def _make_request(self, query: str, variables: dict = None):
+        headers = {"Authorization": self.api_token}
+        response = requests.post(
+            self.api_url,
+            json={'query': query, 'variables': variables},
+            headers=headers
+        )
+        response.raise_for_status()
+        return response.json()
 
     def update_po_status(self, po_number: str, status: str):
         """Update the status of a PO in Monday.com."""
         query = '''
-        mutation ($po_number: String!, $status: String!) {
+        mutation ($po_number: String!, $status: String!, $board_id: String!) {
             change_column_value(
-                board_id: YOUR_BOARD_ID,
+                board_id: $board_id,
                 item_id: $po_number,
                 column_id: "status",
                 value: $status
@@ -30,7 +43,7 @@ class MondayService:
             }
         }
         '''
-        variables = {'po_number': po_number, 'status': status}
+        variables = {'po_number': po_number, 'status': status, 'board_id': self.board_id}
         self._make_request(query, variables)
         # Update local database
         update_monday_po_status(po_number, status)
@@ -69,10 +82,39 @@ class MondayService:
         # Implementation logic
         return True
 
-    def _make_request(self, query: str, variables: dict):
-        headers = {"Authorization": self.api_token}
-        response = requests.post(self.api_url, json={'query': query, 'variables': variables}, headers=headers)
-        if response.status_code != 200:
-            logger.error(f"Monday API error: {response.text}")
-            raise Exception(f"Monday API error: {response.text}")
-        return response.json()
+    def get_po_number_from_item(self, item_id):
+        """
+            Retrieve the PO number from a specific item in Monday.com.
+
+            Parameters:
+            - item_id (int): The ID of the item to query.
+
+            Returns:
+            - str: The PO number if found, else None.
+            """
+        query = '''
+              query ($item_id: [ID!], $po_column_id: [String!]) {
+        items (ids: $item_id) {
+            column_values (ids: $po_column_id) {
+                text
+            }
+        }
+    }
+            '''
+        variables = {
+            'item_id': [str(item_id)],
+            'po_column_id': [M.PO_NUMBER_COLUMN]
+        }
+        response = self._make_request(query, variables)
+        try:
+            po_number = response['data']['items'][0]['column_values'][0]['text']
+            return po_number
+        except (KeyError, IndexError) as e:
+            logger.error(f"Error retrieving PO number for item ID {item_id}: {e}")
+            return None
+
+    def link_contact_to_item(self, item_id: int, contact_id: int):
+        """Links a contact to an item."""
+        # Assuming a 'contacts' column exists
+        column_values = '{"contacts": {"item_ids": [' + str(contact_id) + ']}}'
+        return self.update_item(item_id, column_values)

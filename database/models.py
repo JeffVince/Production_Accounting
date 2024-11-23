@@ -3,23 +3,23 @@
 from sqlalchemy import (
     Column, Integer, String, Float, DateTime, ForeignKey, Enum, Text
 )
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 import enum
 from datetime import datetime
+from database.base import Base
 
-Base = declarative_base()
 
 
 # Enums for state fields
 class POState(enum.Enum):
     PENDING = 'PENDING'
-    RTP = 'RTP'
-    TO_VERIFY = 'TO_VERIFY'
+    TO_VERIFY = 'TO VERIFY'
     ISSUE = 'ISSUE'
     APPROVED = 'APPROVED'
-    PAID = 'PAID'
     RECONCILED = 'RECONCILED'
+    CC_PC = 'CC/PC'
 
 
 class POSubitemState(enum.Enum):
@@ -65,7 +65,7 @@ class PO(Base):
     __tablename__ = 'pos'
 
     id = Column(Integer, primary_key=True)
-    po_number = Column(String, unique=True, nullable=False)
+    po_number = Column(String, nullable=False)
     project_id = Column(Integer, ForeignKey('projects.id'))
     vendor_id = Column(Integer, ForeignKey('vendors.id'))
     state = Column(Enum(POState), default=POState.PENDING)
@@ -245,13 +245,18 @@ class MainItem(Base):
         cascade='all, delete-orphan'
     )
 
+    @hybrid_property
+    def computed_amount(self):
+        """Calculate the total amount from related subitems."""
+        return sum(sub_item.amount for sub_item in self.sub_items if sub_item.amount)
+
 
 # SubItem Model
 class SubItem(Base):
     __tablename__ = 'sub_items'
     id = Column(Integer, primary_key=True, autoincrement=True)
     subitem_id = Column(String, unique=True)
-    main_item_id = Column(String, ForeignKey('main_items.item_id'))
+    main_item_id = Column(String, ForeignKey('main_items.item_id', ondelete='CASCADE'), nullable=False)
     status = Column(String)
     invoice_number = Column(String)
     description = Column(Text)

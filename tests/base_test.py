@@ -1,12 +1,12 @@
 # tests/base_test.py
 
 import unittest
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import create_engine, inspect, event
 from sqlalchemy.orm import sessionmaker, scoped_session
-from database.models import Base
-from database.db_util import get_db_session, initialize_session_factory
+from database.base import Base
+from database.db_util import initialize_session_factory
 from contextlib import contextmanager
-
+import sqlite3
 
 class BaseTestCase(unittest.TestCase):
     """
@@ -20,6 +20,14 @@ class BaseTestCase(unittest.TestCase):
         """
         # Create a new in-memory SQLite engine
         self.engine = create_engine('sqlite:///:memory:', echo=False)
+
+        # Enable foreign key constraints
+        @event.listens_for(self.engine, "connect")
+        def set_sqlite_pragma(dbapi_connection, connection_record):
+            if isinstance(dbapi_connection, sqlite3.Connection):  # play safe with other DB backends
+                cursor = dbapi_connection.cursor()
+                cursor.execute("PRAGMA foreign_keys=ON;")
+                cursor.close()
 
         # Create a new scoped session with expire_on_commit=False to prevent DetachedInstanceError
         self.Session = scoped_session(sessionmaker(bind=self.engine, expire_on_commit=False))

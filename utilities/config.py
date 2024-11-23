@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
+
 # Configuration settings
 class Config:
 
@@ -14,6 +15,7 @@ class Config:
     MONDAY_WEBHOOK_PORT = 5002
     XERO_WEBHOOK_PORT = 5003
     MERCURY_WEBHOOK_PORT = 5004
+    WEBHOOK_MAIN_PORT = 5002
 
     # Celery
     CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL")
@@ -50,6 +52,9 @@ class Config:
     # Other
     MY_EMAIL = os.getenv("MY_EMAIL")
 
+    # Database
+    DATABASE_URL =  os.getenv("DATABASE_URL", "sqlite:///database/database/main_db.db")
+
     @staticmethod
     def load_configuration():
         """
@@ -69,6 +74,7 @@ class Config:
             "XERO_TENANT_ID": Config.XERO_TENANT_ID,
             "OPENAI_API_KEY": Config.OPENAI_API_KEY,
             "MY_EMAIL": Config.MY_EMAIL,
+            "DATABASE": Config.DATABASE_URL
         }
 
     @staticmethod
@@ -91,5 +97,5 @@ class Config:
         Returns database connection settings.
         """
         return {
-            "url": os.getenv("DATABASE_URL", "sqlite:///default.db"),  # Changed key to 'url'
+            "url": os.getenv("DATABASE_URL", "sqlite:///database/database/main_db.db"),  # Changed key to 'url'
         }

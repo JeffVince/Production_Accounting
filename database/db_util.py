@@ -1,29 +1,27 @@
 # database/db_util.py
 
 from contextlib import contextmanager
-
 from sqlalchemy import create_engine
 from sqlalchemy.orm import scoped_session, sessionmaker
-
+from database.base import Base
 # Global session factory variable
-from logger import logger
+# from logger import logger  # Remove if not used
 
 session_factory = None
 
-
 def initialize_database(connection_string):
-    """Initializes the database connection and session factory."""
+    """Initializes the database connection, session factory, and creates tables."""
     global session_factory
-    engine = create_engine(connection_string, echo=True)  # Use echo=True for debugging
+    engine = create_engine(connection_string, echo=True)
     session_factory = scoped_session(sessionmaker(bind=engine))
-
+    Base.metadata.create_all(engine)  # Add this line to create tables
 
 @contextmanager
 def get_db_session():
     global session_factory
     if session_factory is None:
         raise RuntimeError("Session factory not initialized.")
-    session = session_factory()  # Correctly create a session
+    session = session_factory()  # Correctly create a session by calling the factory
     try:
         yield session
         session.commit()
@@ -36,5 +34,3 @@ def get_db_session():
 def initialize_session_factory(session_factory_instance: scoped_session):
     global session_factory
     session_factory = session_factory_instance
-
-

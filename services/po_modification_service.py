@@ -44,3 +44,17 @@ class POModificationService:
         if changes:
             self.apply_modifications(po_number, changes)
             self.update_related_systems(po_number)
+
+    def update_po_state(self, po_number, mapped_status):
+        try:
+            # Update the PO state in the database
+            with get_db_session() as session:
+                po = session.query(PO).filter_by(po_number=po_number).first()
+                if not po:
+                    logger.warning(f"PO {po_number} not found in the database.")
+                    return
+                po.status = mapped_status  # Assuming 'status' is a column in your PO table
+                session.commit()
+                logger.info(f"Updated PO {po_number} status to {mapped_status} in the database.")
+        except Exception as e:
+            logger.exception(f"Error updating PO {po_number} status to {mapped_status}: {e}")

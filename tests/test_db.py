@@ -15,7 +15,7 @@ class TestDatabaseTables(BaseTestCase):
         expected_tables = [
             'projects', 'vendors', 'contacts', 'tax_forms', 'pos',
             'invoices', 'receipts', 'bills', 'transactions',
-            'spend_money_transactions', 'actuals'
+            'spend_money_transactions', 'actuals', 'sub_items', 'main_items'
         ]
         for table in expected_tables:
             self.assertIn(table, tables, f"Table '{table}' should exist in the database.")

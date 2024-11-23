@@ -1,26 +1,23 @@
 # /webhooks/dropbox_webhook_handler.py
 
-import threading
 import logging
-from flask import Flask, request
-from integrations.dropbox_api import DropboxAPI
+from flask import Blueprint, request, jsonify
 from services.dropbox_service import DropboxService
 from services.ocr_service import OCRService
 from services.validation_service import ValidationService
-from utilities.config import Config
 from utilities.logger import setup_logging
 
 logger = logging.getLogger(__name__)
 setup_logging()
 
-app = Flask(__name__)
+dropbox_blueprint = Blueprint('dropbox', __name__)
+
 
 class DropboxWebhookHandler:
     def __init__(self):
         self.dropbox_service = DropboxService()
         self.ocr_service = OCRService()
         self.validation_service = ValidationService()
-        self.port = Config.DROPBOX_WEBHOOK_PORT
 
     def handle_dropbox_event(self, event):
         """Handle incoming Dropbox webhook event."""
@@ -28,6 +25,7 @@ class DropboxWebhookHandler:
         event_data = event.get('list_folder', {}).get('accounts', [])
         for account_id in event_data:
             self.process_new_file_event(account_id)
+        return jsonify({"message": "Dropbox event processed"}), 200
 
     def process_new_file_event(self, account_id):
         """Process new file event from Dropbox."""
@@ -51,23 +49,20 @@ class DropboxWebhookHandler:
                 if po_number:
                     self.validation_service.update_po_state(po_number, 'ISSUE')
 
-    def start(self):
-        """Start the Flask app in a separate thread."""
-        def run_app():
-            app.run(port=self.port, debug=False)
 
-        threading.Thread(target=run_app, daemon=True).start()
+handler = DropboxWebhookHandler()
 
-# Flask routes for the webhook
-@app.route('/webhook/dropbox', methods=['GET', 'POST'])
-def webhook():
+
+@dropbox_blueprint.route('/', methods=['GET', 'POST'])
+def dropbox_webhook():
     if request.method == 'GET':
-        # Verification challenge
+        # Verification challenge (if applicable)
         challenge = request.args.get('challenge')
-        return challenge
+        if challenge:
+            logger.info("Dropbox webhook verification challenge received.")
+            return jsonify({'challenge': challenge}), 200
+        return jsonify({"message": "No challenge provided."}), 400
     elif request.method == 'POST':
         # Handle the Dropbox event
         event = request.get_json()
-        handler = DropboxWebhookHandler()
-        handler.handle_dropbox_event(event)
-        return '', 200
+        return handler.handle_dropbox_event(event)

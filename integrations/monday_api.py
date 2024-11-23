@@ -2,11 +2,17 @@
 
 import requests
 from utilities.config import Config
+import monday_util
+from monday.resources import items
+from monday import MondayClient
+
 
 class MondayAPI:
     def __init__(self):
         self.api_token = Config.MONDAY_API_TOKEN
         self.api_url = 'https://api.monday.com/v2/'
+        self.client = MondayClient(self.api_token)
+
 
     def _make_request(self, query: str, variables: dict = None):
         headers = {"Authorization": self.api_token}
@@ -65,42 +71,57 @@ class MondayAPI:
         }
         return self._make_request(query, variables)
 
-    def get_item_by_name(self, board_id: int, item_name: str):
-        """Retrieves an item by its name."""
-        query = '''
-        query ($board_id: Int!, $item_name: String!) {
-            boards(ids: $board_id) {
-                items (limit:1, page:1, newest_first:true, search: $item_name) {
-                    id
-                    name
-                }
-            }
-        }
-        '''
-        variables = {
-            'board_id': board_id,
-            'item_name': item_name
-        }
-        return self._make_request(query, variables)
+    # update_subitem
 
-    def search_items(self, query_text: str):
-        """Searches for items matching the query."""
-        query = '''
-        query ($query_text: String!) {
-            items_by_column_values (board_id: YOUR_BOARD_ID, column_id: "name", column_value: $query_text) {
+    def get_item_by_po_number(self, project_id: str, po_number: str):
+        """Retrieves an item by its PO and Project_D."""
+        query = """
+        query ($boardId: Int!, $column1Id: String!, $column1Values: [String]!, $column2Id: String!, $column2Values: [String]!) {
+          items_page_by_column_values(
+            board_id: $boardId,
+            columns: [
+              { column_id: $column1Id, column_values: $column1Values },
+              { column_id: $column2Id, column_values: $column2Values }
+            ],
+            limit: 1
+          ) {
+            items {
+              id
+              name
+              column_values {
                 id
-                name
+                text
+              }
             }
+            cursor
+          }
         }
-        '''
-        variables = {'query_text': query_text}
-        return self._make_request(query, variables)
+        """
 
-    def link_contact_to_item(self, item_id: int, contact_id: int):
-        """Links a contact to an item."""
-        # Assuming a 'contacts' column exists
-        column_values = '{"contacts": {"item_ids": [' + str(contact_id) + ']}}'
-        return self.update_item(item_id, column_values)
+        variables = {
+            "boardId": monday_util.PO_BOARD_ID,
+            "column1Id": monday_util.PO_NUMBER_COLUMN,
+            "column1Values": [po_number],
+            "column2Id": monday_util.PO_PROJECT_ID_COLUMN,
+            "column2Values": [project_id]
+        }
+
+        response = self._make_request(query, variables)
+        print(response)
+        return response
+
+    def get_item_by_ID(self, id: str):
+        return self.client.items.fetch_items_by_id(id)
+
+    # get_subitems_from_po
+
+    # get_subitem_by_invoice
+
+    # get_all_items
+    def get_all_items(self, board_id: str):
+        return self.client.items.list_items(board_id)
+
+    # get_all_subitems
 
     def get_contact_list(self):
         """Retrieves the list of contacts."""

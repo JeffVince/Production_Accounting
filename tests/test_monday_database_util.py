@@ -1,12 +1,12 @@
 # tests/test_monday_database_util.py
-import sqlite3
+
 import unittest
 from sqlalchemy.exc import IntegrityError
-from .base_test import BaseTestCase
+from tests.base_test import BaseTestCase
 from database.monday_database_util import (
     insert_main_item, insert_subitem,
     fetch_all_main_items, fetch_subitems_for_main_item,
-    fetch_main_items_by_status, fetch_subitems_by_main_item_and_status, get_connection
+    fetch_main_items_by_status, fetch_subitems_by_main_item_and_status
 )
 from sqlalchemy import inspect
 
@@ -107,23 +107,8 @@ class TestMondayDatabaseUtil(BaseTestCase):
         invalid_subitem['subitem_id'] = 'SI002'
         invalid_subitem['main_item_id'] = 'MI999'  # Non-existent
 
-        with self.assertRaises(sqlite3.IntegrityError):
-            with get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute('''
-                    INSERT INTO sub_items (
-                        subitem_id, main_item_id, status, invoice_number, description,
-                        amount, quantity, account_number, invoice_date, link,
-                        due_date, creation_log
-                    ) VALUES (
-                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-                    )
-                ''', (
-                    invalid_subitem['subitem_id'], invalid_subitem['main_item_id'], invalid_subitem['status'],
-                    invalid_subitem['invoice_number'], invalid_subitem['description'], invalid_subitem['amount'],
-                    invalid_subitem['quantity'], invalid_subitem['account_number'], invalid_subitem['invoice_date'],
-                    invalid_subitem['link'], invalid_subitem['due_date'], invalid_subitem['creation_log']
-                ))
+        with self.assertRaises(IntegrityError):
+            insert_subitem(invalid_subitem)
 
     def test_fetch_all_main_items(self):
         """
@@ -336,6 +321,7 @@ class TestMondayDatabaseUtil(BaseTestCase):
         self.assertEqual(fk['referred_table'], 'main_items')
         self.assertEqual(fk['constrained_columns'], ['main_item_id'])
         self.assertEqual(fk['referred_columns'], ['item_id'])
+
 
 if __name__ == '__main__':
     unittest.main()
