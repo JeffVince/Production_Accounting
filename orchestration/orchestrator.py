@@ -79,8 +79,10 @@ class Orchestrator:
     def start_background_tasks(self):
         """Start any necessary background tasks."""
         logger.info("Starting background tasks...")
-        self.schedule_po_log_check()
-        self.coordinate_state_transitions()
+        #self.schedule_po_log_check()
+        # self.schedule_monday_main_items_sync()
+        self.schedule_monday_sub_items_sync()
+        #self.coordinate_state_transitions()
 
     def handle_po_in_rtp(self, po):
         """Handle a PO that is in 'RTP' state."""
@@ -135,5 +137,31 @@ class Orchestrator:
             po_repository.update_po_status(po.po_number, 'PAID')
         except Exception as e:
             logger.error(f"Error processing payment for PO {po.po_number}: {e}")
+
+    def schedule_monday_main_items_sync(self, interval=90000):
+
+        def sync_monday_to_main_items():
+            while True:
+                logger.info("Fetching Main Item entries")
+                try:
+                    self.monday_service.sync_main_items_from_monday_board()
+                except Exception as e:
+                    logger.error(f"Error fetching Main Item entries: {e}")
+                time.sleep(interval)
+
+        threading.Thread(target=sync_monday_to_main_items, daemon=True).start()
+
+    def schedule_monday_sub_items_sync(self, interval=90000):
+
+        def sync_monday_to_sub_items():
+            while True:
+                logger.info("Fetching Sub Item entries")
+                try:
+                    self.monday_service.sync_sub_items_from_monday_board()
+                except Exception as e:
+                    logger.error(f"Error fetching Sub Item entries and syncing them to DB: {e}")
+                time.sleep(interval)
+
+        threading.Thread(target=sync_monday_to_sub_items, daemon=True).start()
 
     # Additional methods can be added to handle other state transitions

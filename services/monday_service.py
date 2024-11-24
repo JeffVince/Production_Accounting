@@ -5,19 +5,24 @@ from utilities.config import Config
 from database.monday_database_util import (
     update_main_item_from_monday,
     update_monday_po_status,
-    link_contact_to_po,
+    link_contact_to_po, insert_main_item, insert_subitem
 )
 import utilities.monday_util as M
 import logging
-import monday_api
+from monday_api import MondayAPI
+from monday import MondayClient
 
 logger = logging.getLogger(__name__)
+
 
 class MondayService:
     def __init__(self):
         self.api_token = Config.MONDAY_API_TOKEN
         self.board_id = M.PO_BOARD_ID
+        self.subitem_board_id = M.SUBITEM_BOARD_ID
         self.api_url = 'https://api.monday.com/v2/'
+        self.monday_api = MondayAPI()
+        self.monday_client = MondayClient(self.api_token)
 
     def _make_request(self, query: str, variables: dict = None):
         headers = {"Authorization": self.api_token}
@@ -118,3 +123,38 @@ class MondayService:
         # Assuming a 'contacts' column exists
         column_values = '{"contacts": {"item_ids": [' + str(contact_id) + ']}}'
         return self.update_item(item_id, column_values)
+
+    def sync_main_items_from_monday_board(self):
+        """
+        Synchronize all items from Monday.com boards to your database.
+        """
+        print(f"Fetching items from board {self.board_id}...")
+        all_items = self.monday_api.fetch_all_main_items(self.board_id)
+        print(f"Total items fetched from board {self.board_id}: {len(all_items)}")
+
+        # Now, all_items contains all items from all specified boards
+        # Proceed with syncing these items to your database
+        for item in all_items:
+            insert_main_item(item)
+
+    def sync_sub_items_from_monday_board(self):
+        """
+        Synchronize all items from Monday.com boards to your database.
+        """
+        try:
+            print(f"Fetching items from board {self.board_id}...")
+            all_items = self.monday_api.fetch_all_sub_items(self.subitem_board_id)
+            print(f"Total items fetched from board {self.board_id}: {len(all_items)}")
+        except Exception as e:
+            logger.error(f"Error fetching Sub Item from Monday: {e}")
+            return
+
+        try:
+            for item in all_items:
+                print(item)
+                insert_subitem(item)
+        except Exception as e:
+            logger.error(f"Error adding Sub Item to DB: {e}")
+            return
+
+        return

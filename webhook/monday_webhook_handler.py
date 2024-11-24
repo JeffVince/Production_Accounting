@@ -100,11 +100,26 @@ class MondayWebhookHandler:
             logger.exception("Error processing PO status change.")
             return jsonify({"error": str(e)}), 500
 
-    def handle_another_event(self, event_data):
-        """Handle other types of events."""
-        # Implement logic for other event types
-        logger.info("Handling another event.")
-        return jsonify({"message": "Another event handled"}), 200
+    def process_sub_item_change(self, event_data):
+         # Log the entire event data for debugging
+            logger.debug(f"Incoming event data: {event_data}")
+
+            # Extract the 'event' dictionary
+            event = event_data.get('event', {})
+            if not event:
+                logger.error("Missing 'event' key in the data.")
+                logger.debug(f"Full data: {event_data}")
+                return jsonify({"error": "Invalid event data"}), 400
+
+            # Extract the pulse ID (item ID)
+            item_id = event.get('pulseId')
+            logger.debug(f"Extracted item ID: {item_id}")
+
+            if not item_id:
+                logger.error("Missing 'pulseId' in the event.")
+                logger.debug(f"Event data: {event}")
+                return jsonify({"error": "Invalid item ID"}), 400
+
 
 
 handler = MondayWebhookHandler()
@@ -112,7 +127,6 @@ handler = MondayWebhookHandler()
 
 @monday_blueprint.route('/po_status_change', methods=['POST'])
 def main_handler():
-    """Entry point for all Monday.com webhook events."""
     event = request.get_json()
     if not event:
         return jsonify({"error": "Invalid event data"}), 400
@@ -122,3 +136,15 @@ def main_handler():
         return challenge_response
     else:
         return handler.process_po_status_change(event)
+
+@monday_blueprint.route('/subitem_change', methods=['POST'])
+def main_handler():
+    event = request.get_json()
+    if not event:
+        return jsonify({"error": "Invalid event data"}), 400
+    # Handle the challenge
+    challenge_response = handler.verify_challenge(event)
+    if challenge_response:
+        return challenge_response
+    else:
+        return handler.process_sub_item_change(event)

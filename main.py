@@ -33,10 +33,11 @@ def main():
 
     # Initialize the orchestrator
     orchestrator = Orchestrator()
+
     logger.info("Orchestrator initialized.")
 
     # Start background tasks such as PO Log checking and state coordination
-    #orchestrator.start_background_tasks()
+    orchestrator.start_background_tasks()
     # logger.info("Orchestrator background tasks started.")
 
     # Start Flask server in a thread

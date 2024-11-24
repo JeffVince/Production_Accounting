@@ -18,7 +18,6 @@ logging.basicConfig(level=logging.DEBUG)
 def insert_main_item(item_data):
     # Filter the data
     filtered_data = map_monday_data_to_main_item(item_data)
-    print(filtered_data)
     with get_db_session() as session:
         existing_item = session.query(MainItem).filter_by(item_id=filtered_data['item_id']).first()
         if existing_item:
@@ -31,14 +30,19 @@ def insert_main_item(item_data):
 
 
 def insert_subitem(subitem_data):
-    with get_db_session() as session:
-        existing_subitem = session.query(SubItem).filter_by(subitem_id=subitem_data['item_id']).first()
-        if existing_subitem:
-            for key, value in subitem_data.items():
-                setattr(existing_subitem, key, value)
-        else:
-            subitem = SubItem(**subitem_data)
-            session.add(subitem)
+
+    filtered_data = map_monday_data_to_sub_item(subitem_data)
+    try:
+        with get_db_session() as session:
+            existing_subitem = session.query(SubItem).filter_by(subitem_id=filtered_data['subitem_id']).first()
+            if existing_subitem:
+                for key, value in filtered_data.items():
+                    setattr(existing_subitem, key, value)
+            else:
+                subitem = SubItem(**filtered_data)
+                session.add(subitem)
+    except Exception as e:
+        logger.error(f"Error Inserting SubItem to DB: {e}")
         # session.commit()  # Already handled in get_db_session context manager
 
 
@@ -199,6 +203,39 @@ def map_monday_data_to_main_item(monday_data):
     return main_item_data
 
 
+def map_monday_data_to_sub_item(monday_subitem_data):
+    """
+    Maps Monday.com subitem data to the SubItem schema.
+
+    Parameters:
+    - monday_subitem_data (dict): Raw subitem data from Monday.com.
+    - main_item_id (str): The ID of the main item to which this subitem belongs.
+
+    Returns:
+    - dict: A dictionary with keys matching the SubItem schema.
+    """
+    # Extract column_values into a dictionary for easier access
+    column_values = {col['id']: col for col in monday_subitem_data.get('column_values', [])}
+
+    # Map Monday data to SubItem schema fields
+    sub_item_data = {
+        "subitem_id": monday_subitem_data.get("id"),
+        "main_item_id": monday_subitem_data.get("parent_item", {}).get("id"),
+        "status": column_values.get("status4", {}).get("text"),
+        "invoice_number": column_values.get("text0", {}).get("text"),
+        "description": column_values.get("text98", {}).get("text"),
+        "amount": parse_float(column_values.get("numbers9", {}).get("text")),
+        "quantity": parse_float(column_values.get("numbers0", {}).get("text")),
+        "account_number": column_values.get("dropdown", {}).get("text"),
+        "invoice_date": column_values.get("date", {}).get("text"),
+        "link": extract_url(column_values, "link"),
+        "due_date": column_values.get("date_1__1", {}).get("text"),
+        "creation_log": column_values.get("creation_log__1", {}).get("text"),
+    }
+
+    return sub_item_data
+
+
 def extract_url(column_values, target_id):
     """
     Safely extracts the URL from the 'value' field of a column.
@@ -223,3 +260,20 @@ def extract_url(column_values, target_id):
     else:
         print(f"No value found for {target_id}")
     return None
+
+
+def parse_float(value):
+    """
+    Safely converts a string to a float.
+
+    Parameters:
+    - value (str): The string to convert.
+
+    Returns:
+    - float: The converted float or None if conversion fails.
+    """
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        print(f"Error converting value to float: {value}")
+        return None
