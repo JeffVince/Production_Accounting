@@ -6,13 +6,16 @@ from sqlalchemy.orm import scoped_session, sessionmaker
 from database.base import Base
 # Global session factory variable
 # from logger import logger  # Remove if not used
+import logging
 
+logging.getLogger("sqlalchemy.engine.Engine").setLevel(logging.ERROR)
+logging.getLogger("sqlalchemy.pool").setLevel(logging.ERROR)
 session_factory = None
 
 def initialize_database(connection_string):
     """Initializes the database connection, session factory, and creates tables."""
     global session_factory
-    engine = create_engine(connection_string, echo=True)
+    engine = create_engine(connection_string, echo=False)
     session_factory = scoped_session(sessionmaker(bind=engine))
     Base.metadata.create_all(engine)  # Add this line to create tables
 

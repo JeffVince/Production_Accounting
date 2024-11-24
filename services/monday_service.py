@@ -5,7 +5,7 @@ from utilities.config import Config
 from database.monday_database_util import (
     update_main_item_from_monday,
     update_monday_po_status,
-    link_contact_to_po, insert_main_item, insert_subitem
+    link_contact_to_po, insert_main_item, insert_subitems
 )
 import utilities.monday_util as M
 import logging
@@ -142,17 +142,15 @@ class MondayService:
         Synchronize all items from Monday.com boards to your database.
         """
         try:
-            print(f"Fetching items from board {self.board_id}...")
+            print(f"Fetching items from board {self.subitem_board_id}...")
             all_items = self.monday_api.fetch_all_sub_items(self.subitem_board_id)
-            print(f"Total items fetched from board {self.board_id}: {len(all_items)}")
+            print(f"Total items fetched from board {self.subitem_board_id}: {len(all_items)}")
         except Exception as e:
             logger.error(f"Error fetching Sub Item from Monday: {e}")
             return
 
         try:
-            for item in all_items:
-                print(item)
-                insert_subitem(item)
+            insert_subitems(all_items)
         except Exception as e:
             logger.error(f"Error adding Sub Item to DB: {e}")
             return

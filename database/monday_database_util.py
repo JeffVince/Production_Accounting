@@ -1,18 +1,18 @@
 # database/monday_database_util.py
 import json
-import logging
-
-from sqlalchemy import inspect
 from sqlalchemy.exc import SQLAlchemyError
-
 from database.db_util import get_db_session
 from database.models import MainItem, SubItem, PO, Contact, Vendor, POState
 
 # Configure logging
 from logger import logger
+from monday_util import SUBITEM_RATE_COLUMN_ID, SUBITEM_QUANTITY_COLUMN_ID
 from utils import get_po_state
-
-logging.basicConfig(level=logging.DEBUG)
+# Set SQLAlchemy log levels independently
+import logging
+logging.getLogger("sqlalchemy.engine.Engine").setLevel(logging.ERROR)
+logging.getLogger("sqlalchemy.pool").setLevel(logging.ERROR)
+logging.basicConfig(level=logging.ERROR)
 
 
 def insert_main_item(item_data):
@@ -29,21 +29,52 @@ def insert_main_item(item_data):
         # session.commit()  # Already handled in get_db_session context manager
 
 
-def insert_subitem(subitem_data):
+def insert_subitems(subitem_data):
+    """
+    Inserts a new SubItem or updates an existing one based on subitem_id.
+    Only updates fields that have changed.
+    """
+    for subitem in subitem_data:
+        try:
+            # Step 1: Map the data and validate required fields
+            filtered_data = map_monday_data_to_sub_item(subitem)
 
-    filtered_data = map_monday_data_to_sub_item(subitem_data)
-    try:
-        with get_db_session() as session:
-            existing_subitem = session.query(SubItem).filter_by(subitem_id=filtered_data['subitem_id']).first()
-            if existing_subitem:
-                for key, value in filtered_data.items():
-                    setattr(existing_subitem, key, value)
-            else:
-                subitem = SubItem(**filtered_data)
-                session.add(subitem)
-    except Exception as e:
-        logger.error(f"Error Inserting SubItem to DB: {e}")
-        # session.commit()  # Already handled in get_db_session context manager
+            if not filtered_data.get("main_item_id"):
+                logger.warning(f"Subitem {filtered_data['subitem_id']} has no parent_item. Skipping.")
+                continue  # Skip subitems without a parent_item
+
+            # Validate numeric fields
+            filtered_data['amount'] = validate_numeric_field(filtered_data.get('amount', ''), 'amount')
+            filtered_data['quantity'] = validate_numeric_field(filtered_data.get('quantity', ''), 'quantity')
+
+            with get_db_session() as session:
+                existing_subitem = session.query(SubItem).filter_by(subitem_id=filtered_data['subitem_id']).first()
+
+                if existing_subitem:
+                    changes = {}
+                    for key, value in filtered_data.items():
+                        existing_value = getattr(existing_subitem, key, None)
+                        if existing_value != value:
+                            changes[key] = value
+                            setattr(existing_subitem, key, value)
+
+                    if changes:
+                        logger.info(f"Updated SubItem ID {filtered_data['subitem_id']} with changes: {changes}")
+                else:
+                    new_subitem = SubItem(**filtered_data)
+                    session.add(new_subitem)
+                    logger.info(f"Inserted new SubItem with ID {filtered_data['subitem_id']}")
+
+                session.commit()
+        except KeyError as e:
+            logger.error(f"KeyError: Missing key {e} in filtered_data for subitem: {subitem}. Skipping subitem.")
+        except ValueError as e:
+            logger.error(f"ValueError: {e} Subitem data: {subitem}")
+        except SQLAlchemyError as e:
+            logger.error(f"Database error while processing SubItem: {e}. Subitem data: {subitem}")
+        except Exception as e:
+            logger.error(f"Unexpected error while processing SubItem: {e}. Subitem data: {subitem}")
+
 
 
 def fetch_all_main_items():
@@ -84,6 +115,35 @@ def item_exists_by_monday_id(monday_id, is_subitem=False):
             return session.query(MainItem).filter_by(item_id=monday_id).first() is not None
 
 
+def patch_subitem(subitem_id, update_data):
+    """
+    Patches an existing SubItem in the local database with the provided update_data.
+    """
+    try:
+        logger.debug(f"Patching SubItem ID {subitem_id} with data: {update_data}")
+
+        with get_db_session() as session:
+            existing_subitem = session.query(SubItem).filter_by(subitem_id=str(subitem_id)).first()
+
+            if existing_subitem:
+                # Update the specified fields
+                for key, value in update_data.items():
+                    setattr(existing_subitem, key, value)
+                logger.info(f"Updated SubItem with ID {subitem_id}")
+            else:
+                logger.error(f"SubItem with ID {subitem_id} does not exist in the database.")
+                return False, f"SubItem with ID {subitem_id} does not exist."
+        print(f"Succesful patch of {subitem_id} to with {key} to {value}")
+        return True, "SubItem patched successfully."
+
+    except SQLAlchemyError as e:
+        logger.error(f"Database error while patching SubItem: {e}")
+        return False, "Database error."
+    except Exception as e:
+        logger.error(f"Unexpected error while patching SubItem: {e}")
+        return False, "Unexpected error."
+
+
 def update_main_item_from_monday(main_item_data):
     """
     Updates a MainItem record based on data from Monday.com.
@@ -94,7 +154,7 @@ def update_main_item_from_monday(main_item_data):
     try:
         with get_db_session() as session:
             # Find the MainItem by item_id
-            main_item = session.query(main_item_data).filter_by(item_id=main_item_data['item_id']).first()
+            main_item = session.query(MainItem).filter_by(item_id=main_item_data['item_id']).first()
             if main_item:
                 logger.debug(f"Updating MainItem {main_item_data['item_id']} from Monday.com data")
                 # Update fields with the provided data
@@ -209,7 +269,6 @@ def map_monday_data_to_sub_item(monday_subitem_data):
 
     Parameters:
     - monday_subitem_data (dict): Raw subitem data from Monday.com.
-    - main_item_id (str): The ID of the main item to which this subitem belongs.
 
     Returns:
     - dict: A dictionary with keys matching the SubItem schema.
@@ -220,18 +279,22 @@ def map_monday_data_to_sub_item(monday_subitem_data):
     # Map Monday data to SubItem schema fields
     sub_item_data = {
         "subitem_id": monday_subitem_data.get("id"),
-        "main_item_id": monday_subitem_data.get("parent_item", {}).get("id"),
+        "main_item_id": (monday_subitem_data.get("parent_item") or {}).get("id"),  # Safely handle None
         "status": column_values.get("status4", {}).get("text"),
         "invoice_number": column_values.get("text0", {}).get("text"),
         "description": column_values.get("text98", {}).get("text"),
-        "amount": parse_float(column_values.get("numbers9", {}).get("text")),
-        "quantity": parse_float(column_values.get("numbers0", {}).get("text")),
+        "amount": column_values.get("numbers9", {}).get("text"),
+        "quantity": column_values.get("numbers0", {}).get("text"),
         "account_number": column_values.get("dropdown", {}).get("text"),
         "invoice_date": column_values.get("date", {}).get("text"),
         "link": extract_url(column_values, "link"),
         "due_date": column_values.get("date_1__1", {}).get("text"),
         "creation_log": column_values.get("creation_log__1", {}).get("text"),
     }
+
+    # Validate required fields (e.g., subitem_id)
+    if not sub_item_data["subitem_id"]:
+        raise ValueError(f"SubItem data is missing required 'subitem_id'. Data: {monday_subitem_data}")
 
     return sub_item_data
 
@@ -250,15 +313,15 @@ def extract_url(column_values, target_id):
     value = column_values.get(target_id, {}).get("value")
     if value:
         try:
-            print(f"Parsing value for {target_id}: {value}")  # Debugging log
+            # print(f"Parsing value for {target_id}: {value}")  # Debugging log
             parsed_value = json.loads(value)
-            print(parsed_value.get("url"))
+            # print(parsed_value.get("url"))
             return parsed_value.get("url")
         except (json.JSONDecodeError, TypeError) as e:
-            print(f"Error parsing JSON for {target_id}: {e}")
+            # print(f"Error parsing JSON for {target_id}: {e}")
             return None
-    else:
-        print(f"No value found for {target_id}")
+    # else:
+        # print(f"No value found for {target_id}")
     return None
 
 
@@ -275,5 +338,94 @@ def parse_float(value):
     try:
         return float(value)
     except (ValueError, TypeError):
-        print(f"Error converting value to float: {value}")
+        # print(f"Error converting value to float: {value}")
         return None
+
+
+def map_event_to_update_data(event):
+    """
+    Maps the event data to the fields that need to be updated in the SubItem.
+    """
+    column_id = event.get('columnId')
+    if not column_id:
+        logger.error("Missing 'columnId' in the event.")
+        return None, "Missing 'columnId' in the event."
+
+    column_mapping = get_sub_item_column_mapping()
+    field_name = column_mapping.get(column_id)
+
+    if not field_name:
+        logger.warning(f"No mapping found for column ID: {column_id}")
+        return None, f"No mapping found for column ID: {column_id}"
+
+    # Extract the new value based on columnType
+    new_value = extract_text(event)
+
+    # Handle special parsing based on the field type
+    if column_id in [SUBITEM_RATE_COLUMN_ID, SUBITEM_QUANTITY_COLUMN_ID]:
+        parsed_value = parse_float(new_value)
+    elif column_id == "link":
+        parsed_value = new_value  # Already extracted URL
+    else:
+        parsed_value = new_value
+
+    update_data = {field_name: parsed_value}
+    # logger.debug(f"Mapped update data: {update_data}")
+    return update_data, None
+
+
+def get_sub_item_column_mapping():
+    """
+    Returns a mapping from column IDs to SubItem model fields.
+    Update this mapping based on your actual column IDs and model fields.
+    """
+    return {
+        "status4": "status",
+        "text0": "invoice_number",
+        "text98": "description",
+        "numbers9": "amount",
+        "numbers0": "quantity",
+        "dropdown": "account_number",
+        "date": "invoice_date",
+        "link": "link",
+        "date_1__1": "due_date",
+        "creation_log__1": "creation_log",
+        # Add other mappings as necessary
+    }
+
+
+def extract_text(event):
+    """
+    Extracts the text value based on columnType.
+    Returns None if the value is empty or None.
+    """
+    column_type = event.get('columnType')
+    value_field = event.get('value', {})
+
+    if column_type == 'color':
+        # For color type columns
+        label = value_field.get('label', {}) if value_field else {}
+        return label.get('text', '') if label else ''
+    elif column_type == 'text':
+        # For text type columns
+        return value_field.get('value', '') if value_field else ''
+    elif column_type == 'numbers':
+        # For number type columns
+        return value_field.get('value', '') if value_field else ''
+    elif column_type == 'link':
+        # For link type columns
+        return extract_url(value_field.get('value')) if value_field else None
+    # Add more columnType handlers as needed
+    else:
+        logger.warning(f"Unhandled columnType: {column_type}")
+        return ''
+
+
+def validate_numeric_field(value, field_name):
+    try:
+        if value is None or value == '':
+            return None  # Convert empty strings or None to NULL
+        return float(value)  # Attempt to convert to a float
+    except ValueError:
+        logger.error(f"Invalid value for numeric field '{field_name}': {value}. Defaulting to NULL.")
+        return None  # Default invalid values to NULL

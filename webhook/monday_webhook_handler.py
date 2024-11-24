@@ -1,9 +1,12 @@
 import logging
 from flask import Blueprint, request, jsonify
+from sqlalchemy.exc import SQLAlchemyError
+
 from services.monday_service import MondayService
 from services.po_modification_service import POModificationService
 from database.monday_database_util import (
-    update_main_item_from_monday, item_exists_by_monday_id, update_monday_po_status, insert_main_item
+    update_main_item_from_monday, item_exists_by_monday_id, update_monday_po_status, insert_main_item,
+    map_event_to_update_data, patch_subitem
 )
 
 from utilities.logger import setup_logging
@@ -101,24 +104,48 @@ class MondayWebhookHandler:
             return jsonify({"error": str(e)}), 500
 
     def process_sub_item_change(self, event_data):
-         # Log the entire event data for debugging
-            logger.debug(f"Incoming event data: {event_data}")
+        """
+        Process SubItem change event from Monday.com and update the local SubItem table.
+        """
+        try:
+            # Log the entire event data for debugging
+            logger.debug(f"Incoming SubItem change event data: {event_data}")
 
-            # Extract the 'event' dictionary
-            event = event_data.get('event', {})
+            # Validate the event structure
+            event = event_data.get('event')
             if not event:
-                logger.error("Missing 'event' key in the data.")
-                logger.debug(f"Full data: {event_data}")
-                return jsonify({"error": "Invalid event data"}), 400
+                logger.error("Missing 'event' key in the event data.")
+                return jsonify({"error": "Invalid event data: Missing 'event' key"}), 400
 
-            # Extract the pulse ID (item ID)
-            item_id = event.get('pulseId')
-            logger.debug(f"Extracted item ID: {item_id}")
+            # Extract the subitem ID (pulseId)
+            subitem_id = event.get('pulseId')
+            logger.debug(f"Extracted SubItem ID (pulseId): {subitem_id}")
 
-            if not item_id:
+            if not subitem_id:
                 logger.error("Missing 'pulseId' in the event.")
-                logger.debug(f"Event data: {event}")
-                return jsonify({"error": "Invalid item ID"}), 400
+                return jsonify({"error": "Invalid event data: Missing 'pulseId'"}), 400
+
+            # Map the event data to update data
+            update_data, error = map_event_to_update_data(event)
+            if error:
+                logger.error(error)
+                return jsonify({"error": error}), 400
+
+            # Patch the SubItem in the local database
+            success, message = patch_subitem(subitem_id, update_data)
+            if not success:
+                return jsonify({"error": message}), 500
+
+            logger.info(f"Successfully processed SubItem change for ID: {subitem_id}")
+
+            return jsonify({"message": "SubItem change processed successfully"}), 200
+
+        except SQLAlchemyError as e:
+            logger.exception(f"Database error while processing SubItem change: {e}")
+            return jsonify({"error": "Database error"}), 500
+        except Exception as e:
+            logger.exception("Unexpected error while processing SubItem change.")
+            return jsonify({"error": str(e)}), 500
 
 
 
@@ -126,7 +153,8 @@ handler = MondayWebhookHandler()
 
 
 @monday_blueprint.route('/po_status_change', methods=['POST'])
-def main_handler():
+def po_status_change():
+    print("po status change event")
     event = request.get_json()
     if not event:
         return jsonify({"error": "Invalid event data"}), 400
@@ -137,8 +165,10 @@ def main_handler():
     else:
         return handler.process_po_status_change(event)
 
+
 @monday_blueprint.route('/subitem_change', methods=['POST'])
-def main_handler():
+def subitem_change():
+    print("subitem change event")
     event = request.get_json()
     if not event:
         return jsonify({"error": "Invalid event data"}), 400

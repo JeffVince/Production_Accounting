@@ -9,7 +9,10 @@ from sqlalchemy.ext.declarative import declarative_base
 import enum
 from datetime import datetime
 from database.base import Base
+import logging
 
+logging.getLogger("sqlalchemy.engine.Engine").setLevel(logging.ERROR)
+logging.getLogger("sqlalchemy.pool").setLevel(logging.ERROR)
 
 
 # Enums for state fields

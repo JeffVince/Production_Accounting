@@ -10,8 +10,9 @@ os.makedirs(LOGS_DIR, exist_ok=True)
 # Configure logger
 def setup_logging():
     logger = logging.getLogger("app_logger")
-    logger.setLevel(logging.DEBUG)
-
+    logger.setLevel(logging.ERROR)
+    # Suppress SQLAlchemy engine logs
+    logging.getLogger("sqlalchemy.engine").setLevel(logging.ERROR)
     # Formatter for the logs
     log_format = logging.Formatter(
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -25,12 +26,12 @@ def setup_logging():
         backupCount=7,  # Keeps last 7 days of logs
     )
     file_handler.setFormatter(log_format)
-    file_handler.setLevel(logging.INFO)
+    file_handler.setLevel(logging.ERROR)
 
     # Console handler
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(log_format)
-    console_handler.setLevel(logging.DEBUG)
+    console_handler.setLevel(logging.ERROR)
 
     # Add handlers to the logger
     logger.addHandler(file_handler)

@@ -229,7 +229,7 @@ class MondayAPI:
 
         return all_items
 
-    def fetch_all_sub_items(self, board_id, limit=50):
+    def fetch_all_sub_items(self, board_id, limit=100):
         """
         Fetch all items from a Monday.com board using cursor-based pagination.
 
