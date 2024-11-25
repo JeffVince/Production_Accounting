@@ -1,6 +1,6 @@
 # services/po_log_service.py
 
-from database.models import PO, POState, POSubitemState, MainItem, SubItem
+from database.models import PurchaseOrder, POState, DetailItemState, DetailItem
 from database.db_util import get_db_session
 from monday_service import MondayService
 from typing import List
@@ -9,7 +9,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def update_po_database(po_number: str, main_item: MainItem):
+def update_po_database(po_number: str, main_item: PurchaseOrder):
     """Update the PO database with new entries."""
     with get_db_session() as session:
         po = session.query(PO).filter_by(po_number=po_number).first()
@@ -30,7 +30,7 @@ def update_po_database(po_number: str, main_item: MainItem):
         session.commit()
 
 
-def process_receipt_entries(entries: List[SubItem]):
+def process_receipt_entries(entries: List[DetailItem]):
     """Process receipt entries associated with POs."""
     for entry in entries:
         po_number = entry.main_item_id
@@ -43,14 +43,14 @@ class POLogService:
     def __init__(self):
         self.monday_service = MondayService()
 
-    def fetch_po_log_entries(self) -> List[MainItem]:
+    def fetch_po_log_entries(self) -> List[PurchaseOrder]:
         """Fetch PO log entries from the database."""
         with get_db_session() as session:
-            entries = session.query(MainItem).all()
+            entries = session.query(PurchaseOrder).all()
             # Detach instances to avoid DetachedInstanceError
             return [session.expunge(entry) or entry for entry in entries]
 
-    def process_po_log_entries(self, entries: List[MainItem]):
+    def process_po_log_entries(self, entries: List[PurchaseOrder]):
         """Process a list of PO log entries."""
         for entry in entries:
             po_number = entry.item_id

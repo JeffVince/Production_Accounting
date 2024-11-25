@@ -1,6 +1,5 @@
 # dropbox_database_util.py
 
-import sqlite3
 import logging
 import threading
 import os

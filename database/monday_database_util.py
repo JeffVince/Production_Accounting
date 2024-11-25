@@ -2,7 +2,7 @@
 import json
 from sqlalchemy.exc import SQLAlchemyError
 from database.db_util import get_db_session
-from database.models import MainItem, SubItem, PO, Contact, Vendor, POState
+from database.models import PurchaseOrder, DetailItem, Contact, POState
 
 # Configure logging
 from logger import logger
@@ -18,157 +18,159 @@ logging.basicConfig(level=logging.ERROR)
 def insert_main_item(item_data):
     # Filter the data
     filtered_data = map_monday_data_to_main_item(item_data)
+    print("LOGGING FILTERED DATA", filtered_data)
     with get_db_session() as session:
-        existing_item = session.query(MainItem).filter_by(item_id=filtered_data['item_id']).first()
+        existing_item = session.query(PurchaseOrder).filter_by(pulse_id=filtered_data['pulse_id']).first()
         if existing_item:
             for key, value in filtered_data.items():
                 setattr(existing_item, key, value)
         else:
-            main_item = MainItem(**filtered_data)
+            main_item = PurchaseOrder(**filtered_data)
             session.add(main_item)
-        # session.commit()  # Already handled in get_db_session context manager
+           # session.commit()  # Already handled in get_db_session context manager
 
 
-def insert_subitems(subitem_data):
+def insert_DetailItems(DetailItem_data):
     """
-    Inserts a new SubItem or updates an existing one based on subitem_id.
+    Inserts a new DetailItem or updates an existing one based on DetailItem_id.
     Only updates fields that have changed.
     """
-    for subitem in subitem_data:
+    for DetailItem in DetailItem_data:
         try:
             # Step 1: Map the data and validate required fields
-            filtered_data = map_monday_data_to_sub_item(subitem)
+            filtered_data = map_monday_data_to_sub_item(DetailItem)
 
             if not filtered_data.get("main_item_id"):
-                logger.warning(f"Subitem {filtered_data['subitem_id']} has no parent_item. Skipping.")
-                continue  # Skip subitems without a parent_item
+                logger.warning(f"DetailItem {filtered_data['DetailItem_id']} has no parent_item. Skipping.")
+                continue  # Skip DetailItems without a parent_item
 
             # Validate numeric fields
             filtered_data['amount'] = validate_numeric_field(filtered_data.get('amount', ''), 'amount')
             filtered_data['quantity'] = validate_numeric_field(filtered_data.get('quantity', ''), 'quantity')
 
             with get_db_session() as session:
-                existing_subitem = session.query(SubItem).filter_by(subitem_id=filtered_data['subitem_id']).first()
+                existing_DetailItem = session.query(DetailItem).filter_by(DetailItem_id=filtered_data['DetailItem_id']).first()
 
-                if existing_subitem:
+                if existing_DetailItem:
                     changes = {}
                     for key, value in filtered_data.items():
-                        existing_value = getattr(existing_subitem, key, None)
+                        existing_value = getattr(existing_DetailItem, key, None)
                         if existing_value != value:
                             changes[key] = value
-                            setattr(existing_subitem, key, value)
+                            setattr(existing_DetailItem, key, value)
 
                     if changes:
-                        logger.info(f"Updated SubItem ID {filtered_data['subitem_id']} with changes: {changes}")
+                        logger.info(f"Updated DetailItem ID {filtered_data['DetailItem_id']} with changes: {changes}")
                 else:
-                    new_subitem = SubItem(**filtered_data)
-                    session.add(new_subitem)
-                    logger.info(f"Inserted new SubItem with ID {filtered_data['subitem_id']}")
+                    new_DetailItem = DetailItem(**filtered_data)
+                    session.add(new_DetailItem)
+                    logger.info(f"Inserted new DetailItem with ID {filtered_data['DetailItem_id']}")
 
                 session.commit()
         except KeyError as e:
-            logger.error(f"KeyError: Missing key {e} in filtered_data for subitem: {subitem}. Skipping subitem.")
+            logger.error(f"KeyError: Missing key {e} in filtered_data for DetailItem: {DetailItem}. Skipping DetailItem.")
         except ValueError as e:
-            logger.error(f"ValueError: {e} Subitem data: {subitem}")
+            logger.error(f"ValueError: {e} DetailItem data: {DetailItem}")
         except SQLAlchemyError as e:
-            logger.error(f"Database error while processing SubItem: {e}. Subitem data: {subitem}")
+            logger.error(f"Database error while processing DetailItem: {e}. DetailItem data: {DetailItem}")
         except Exception as e:
-            logger.error(f"Unexpected error while processing SubItem: {e}. Subitem data: {subitem}")
+            logger.error(f"Unexpected error while processing DetailItem: {e}. DetailItem data: {DetailItem}")
 
 
 
 def fetch_all_main_items():
     with get_db_session() as session:
-        return session.query(MainItem).all()
+        return session.query(PurchaseOrder).all()
 
 
-def fetch_subitems_for_main_item(main_item_id):
+def fetch_DetailItems_for_main_item(main_item_id):
     with get_db_session() as session:
-        return session.query(SubItem).filter_by(main_item_id=main_item_id).all()
+        return session.query(DetailItem).filter_by(main_item_id=main_item_id).all()
 
 
 def fetch_main_items_by_status(status):
     with get_db_session() as session:
-        return session.query(MainItem).filter_by(po_status=status).all()
+        return session.query(PurchaseOrder).filter_by(po_status=status).all()
 
 
-def fetch_subitems_by_main_item_and_status(main_item_id, status):
+def fetch_DetailItems_by_main_item_and_status(main_item_id, status):
     with get_db_session() as session:
-        return session.query(SubItem).filter_by(main_item_id=main_item_id, status=status).all()
+        return session.query(DetailItem).filter_by(main_item_id=main_item_id, status=status).all()
 
 
-def item_exists_by_monday_id(monday_id, is_subitem=False):
+def item_exists_by_monday_id(monday_id, is_DetailItem=False):
     """
     Checks if an item exists in the database by its monday.com ID.
 
     Parameters:
     - monday_id (str or int): The monday.com ID of the item to check.
-    - is_subitem (bool): Whether to check in the SubItem table (default: False).
+    - is_DetailItem (bool): Whether to check in the DetailItem table (default: False).
 
     Returns:
     - bool: True if the item exists, False otherwise.
     """
     with get_db_session() as session:
-        if is_subitem:
-            return session.query(SubItem).filter_by(subitem_id=monday_id).first() is not None
+        if is_DetailItem:
+            return session.query(DetailItem).filter_by(pulse_id=monday_id).first() is not None
         else:
-            return session.query(MainItem).filter_by(item_id=monday_id).first() is not None
+            return session.query(PurchaseOrder).filter_by(pulse_id=monday_id).first() is not None
 
 
-def patch_subitem(subitem_id, update_data):
+def patch_DetailItem(DetailItem_id, update_data):
     """
-    Patches an existing SubItem in the local database with the provided update_data.
+    Patches an existing DetailItem in the local database with the provided update_data.
     """
     try:
-        logger.debug(f"Patching SubItem ID {subitem_id} with data: {update_data}")
+        logger.debug(f"Patching DetailItem ID {DetailItem_id} with data: {update_data}")
 
         with get_db_session() as session:
-            existing_subitem = session.query(SubItem).filter_by(subitem_id=str(subitem_id)).first()
+            existing_DetailItem = session.query(DetailItem).filter_by(DetailItem_id=str(DetailItem_id)).first()
 
-            if existing_subitem:
+            if existing_DetailItem:
                 # Update the specified fields
                 for key, value in update_data.items():
-                    setattr(existing_subitem, key, value)
-                logger.info(f"Updated SubItem with ID {subitem_id}")
+                    setattr(existing_DetailItem, key, value)
+                logger.info(f"Updated DetailItem with ID {DetailItem_id}")
             else:
-                logger.error(f"SubItem with ID {subitem_id} does not exist in the database.")
-                return False, f"SubItem with ID {subitem_id} does not exist."
-        print(f"Succesful patch of {subitem_id} to with {key} to {value}")
-        return True, "SubItem patched successfully."
+                logger.error(f"DetailItem with ID {DetailItem_id} does not exist in the database.")
+                return False, f"DetailItem with ID {DetailItem_id} does not exist."
+        print(f"Succesful patch of {DetailItem_id} to with {key} to {value}")
+        return True, "DetailItem patched successfully."
 
     except SQLAlchemyError as e:
-        logger.error(f"Database error while patching SubItem: {e}")
+        logger.error(f"Database error while patching DetailItem: {e}")
         return False, "Database error."
     except Exception as e:
-        logger.error(f"Unexpected error while patching SubItem: {e}")
+        logger.error(f"Unexpected error while patching DetailItem: {e}")
         return False, "Unexpected error."
 
 
 def update_main_item_from_monday(main_item_data):
     """
-    Updates a MainItem record based on data from Monday.com.
+    Updates a PurchaseOrder record based on data from Monday.com.
 
     Parameters:
-    - main_item_data (dict): Data for the MainItem table.
+    - main_item_data (dict): Data for the PurchaseOrder table.
     """
+
     try:
         with get_db_session() as session:
-            # Find the MainItem by item_id
-            main_item = session.query(MainItem).filter_by(item_id=main_item_data['item_id']).first()
+            # Find the PurchaseOrder by item_id
+            main_item = session.query(PurchaseOrder).filter_by(item_id=main_item_data['item_id']).first()
             if main_item:
-                logger.debug(f"Updating MainItem {main_item_data['item_id']} from Monday.com data")
+                logger.debug(f"Updating PurchaseOrder {main_item_data['item_id']} from Monday.com data")
                 # Update fields with the provided data
                 for key, value in main_item_data.items():
                     setattr(main_item, key, value)
                 session.commit()
-                logger.info(f"Updated MainItem {main_item_data['item_id']} successfully.")
+                logger.info(f"Updated PurchaseOrder {main_item_data['item_id']} successfully.")
                 return main_item
             else:
-                logger.warning(f"MainItem {main_item_data['item_id']} not found in the database.")
+                logger.warning(f"PurchaseOrder {main_item_data['item_id']} not found in the database.")
                 insert_main_item(main_item_data)
                 return None
     except SQLAlchemyError as e:
-        logger.error(f"Error updating MainItem {main_item_data['item_id']}: {e}")
+        logger.error(f"Error updating PurchaseOrder {main_item_data['item_id']}: {e}")
         raise e
 
 
@@ -179,9 +181,11 @@ def update_monday_po_status(item_id, status):
     """
     Updates the status of a PO.
     """
+    print("LOGGING FILTERED DATA", item_id)
+
     try:
         with get_db_session() as session:
-            po = session.query(MainItem).filter_by(item_id=item_id).first()
+            po = session.query(PurchaseOrder).filter_by(pulse_id=item_id).first()
             if po:
                 po.po_status = status
                 session.commit()
@@ -199,7 +203,7 @@ def link_contact_to_po(po_number, contact_data):
     """
     try:
         with get_db_session() as session:
-            po = session.query(PO).filter_by(po_number=po_number).first()
+            po = session.query(PurchaseOrder).filter_by(po_number=po_number).first()
             if not po:
                 logger.warning(f"PO {po_number} not found")
                 return
@@ -213,7 +217,7 @@ def link_contact_to_po(po_number, contact_data):
 
             # Link contact to vendor
             if not po.vendor:
-                vendor = Vendor(vendor_name=contact_data.get('name', 'Unknown Vendor'), contact=contact)
+                vendor = Contact(name=contact_data.get('name', 'Unknown Vendor'), contact=contact)
                 session.add(vendor)
                 po.vendor = vendor
             else:
@@ -235,51 +239,55 @@ def get_monday_po_state(po_number):
 
 def map_monday_data_to_main_item(monday_data):
     """
-    Maps Monday.com data to the MainItem schema.
+    Maps Monday.com data to the PurchaseOrder schema.
 
     Parameters:
     - monday_data (dict): Raw data from Monday.com.
 
     Returns:
-    - dict: A dictionary with keys matching the MainItem schema.
+    - dict: A dictionary with keys matching the PurchaseOrder schema.
     """
     # Extract column_values into a dictionary for easier access
     column_values = {col['id']: col for col in monday_data.get('column_values', [])}
-    # Map Monday data to MainItem schema fields
+
+    if column_values.get("status", {}).get("text") == "CC / PC":
+        po_type = 'CC / PC'
+    else:
+        po_type = 'Vendor'
+
+    # Map Monday data to PurchaseOrder schema fields
     main_item_data = {
-        "item_id": monday_data.get("id"),
-        "name": monday_data.get("name"),
+        "pulse_id": monday_data.get("id"),
         "project_id": column_values.get("project_id", {}).get("text"),
-        "numbers": column_values.get("numbers08", {}).get("text"),
+        "po_number": column_values.get("numbers08", {}).get("text"),
         "description": column_values.get("text6", {}).get("text"),
-        "tax_form": extract_url(column_values, "dup__of_invoice"),  # Use helper function
-        "amount": column_values.get("subitems_sub_total", {}).get("text"),
-        "po_status": column_values.get("status", {}).get("text"),
-        "producer_pm": column_values.get("people", {}).get("text"),
-        "updated_date": column_values.get("date01", {}).get("text"),
-        "folder": extract_url(column_values, "dup__of_tax_form__1")
+        "tax_form_link": extract_url(column_values, "dup__of_invoice"),  # Use helper function
+        "state": column_values.get("status", {}).get("text"),
+        "producer": column_values.get("people", {}).get("text"),
+        "folder_link": extract_url(column_values, "dup__of_tax_form__1"),
+        "po_type":  po_type
     }
 
     return main_item_data
 
 
-def map_monday_data_to_sub_item(monday_subitem_data):
+def map_monday_data_to_sub_item(monday_DetailItem_data):
     """
-    Maps Monday.com subitem data to the SubItem schema.
+    Maps Monday.com DetailItem data to the DetailItem schema.
 
     Parameters:
-    - monday_subitem_data (dict): Raw subitem data from Monday.com.
+    - monday_DetailItem_data (dict): Raw DetailItem data from Monday.com.
 
     Returns:
-    - dict: A dictionary with keys matching the SubItem schema.
+    - dict: A dictionary with keys matching the DetailItem schema.
     """
     # Extract column_values into a dictionary for easier access
-    column_values = {col['id']: col for col in monday_subitem_data.get('column_values', [])}
+    column_values = {col['id']: col for col in monday_DetailItem_data.get('column_values', [])}
 
-    # Map Monday data to SubItem schema fields
+    # Map Monday data to DetailItem schema fields
     sub_item_data = {
-        "subitem_id": monday_subitem_data.get("id"),
-        "main_item_id": (monday_subitem_data.get("parent_item") or {}).get("id"),  # Safely handle None
+        "DetailItem_id": monday_DetailItem_data.get("id"),
+        "main_item_id": (monday_DetailItem_data.get("parent_item") or {}).get("id"),  # Safely handle None
         "status": column_values.get("status4", {}).get("text"),
         "invoice_number": column_values.get("text0", {}).get("text"),
         "description": column_values.get("text98", {}).get("text"),
@@ -292,9 +300,9 @@ def map_monday_data_to_sub_item(monday_subitem_data):
         "creation_log": column_values.get("creation_log__1", {}).get("text"),
     }
 
-    # Validate required fields (e.g., subitem_id)
-    if not sub_item_data["subitem_id"]:
-        raise ValueError(f"SubItem data is missing required 'subitem_id'. Data: {monday_subitem_data}")
+    # Validate required fields (e.g., DetailItem_id)
+    if not sub_item_data["DetailItem_id"]:
+        raise ValueError(f"DetailItem data is missing required 'DetailItem_id'. Data: {monday_DetailItem_data}")
 
     return sub_item_data
 
@@ -344,7 +352,7 @@ def parse_float(value):
 
 def map_event_to_update_data(event):
     """
-    Maps the event data to the fields that need to be updated in the SubItem.
+    Maps the event data to the fields that need to be updated in the DetailItem.
     """
     column_id = event.get('columnId')
     if not column_id:
@@ -376,7 +384,7 @@ def map_event_to_update_data(event):
 
 def get_sub_item_column_mapping():
     """
-    Returns a mapping from column IDs to SubItem model fields.
+    Returns a mapping from column IDs to DetailItem model fields.
     Update this mapping based on your actual column IDs and model fields.
     """
     return {

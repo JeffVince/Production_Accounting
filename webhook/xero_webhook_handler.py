@@ -2,7 +2,6 @@
 
 import logging
 from flask import Blueprint, request, jsonify
-from services.xero_service import XeroService
 from services.po_modification_service import POModificationService
 from utilities.logger import setup_logging
 
@@ -14,7 +13,6 @@ xero_blueprint = Blueprint('xero', __name__)
 
 class XeroWebhookHandler:
     def __init__(self):
-        self.xero_service = XeroService()
         self.po_modification_service = POModificationService()
 
     def handle_xero_event(self, event):

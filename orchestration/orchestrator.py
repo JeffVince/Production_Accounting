@@ -10,16 +10,8 @@ from integrations.mercury_bank_api import MercuryBankAPI
 from services.po_log_service import POLogService
 from services.dropbox_service import DropboxService
 from services.monday_service import MondayService
-from services.vendor_service import VendorService
-from services.tax_form_service import TaxFormService
 from services.ocr_service import OCRService
-from services.validation_service import ValidationService
-from services.xero_service import XeroService
-from services.mercury_service import MercuryService
-from services.payment_backpropagation_service import PaymentBackpropagationService
 from services.po_modification_service import POModificationService
-from services.reconciliation_service import ReconciliationService
-from services.spend_money_service import SpendMoneyService
 from database import po_repository
 from utilities.logger import setup_logging
 
@@ -33,16 +25,8 @@ class Orchestrator:
         self.po_log_service = POLogService()
         self.dropbox_service = DropboxService()
         self.monday_service = MondayService()
-        self.vendor_service = VendorService()
-        self.tax_form_service = TaxFormService()
         self.ocr_service = OCRService()
-        self.validation_service = ValidationService()
-        self.xero_service = XeroService()
-        self.mercury_service = MercuryService()
-        self.payment_backpropagation_service = PaymentBackpropagationService()
         self.po_modification_service = POModificationService()
-        self.reconciliation_service = ReconciliationService()
-        self.spend_money_service = SpendMoneyService()
 
     def schedule_po_log_check(self, interval=60):
         """Periodically check the PO Log for updates."""

@@ -1,6 +1,6 @@
 # services/po_modification_service.py
 
-from database.models import PO
+from database.models import PurchaseOrder
 from database.db_util import get_db_session
 from monday_service import MondayService
 import logging
@@ -22,7 +22,7 @@ class POModificationService:
     def apply_modifications(self, po_number: str, changes: dict):
         """Apply modifications to a PO."""
         with get_db_session() as session:
-            po = session.query(PO).filter_by(po_number=po_number).first()
+            po = session.query(PurchaseOrder).filter_by(po_number=po_number).first()
             if not po:
                 logger.warning(f"PO {po_number} not found")
                 return
@@ -49,7 +49,7 @@ class POModificationService:
         try:
             # Update the PO state in the database
             with get_db_session() as session:
-                po = session.query(PO).filter_by(po_number=po_number).first()
+                po = session.query(PurchaseOrder).filter_by(po_number=po_number).first()
                 if not po:
                     logger.warning(f"PO {po_number} not found in the database.")
                     return

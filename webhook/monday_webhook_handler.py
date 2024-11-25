@@ -6,7 +6,7 @@ from services.monday_service import MondayService
 from services.po_modification_service import POModificationService
 from database.monday_database_util import (
     update_main_item_from_monday, item_exists_by_monday_id, update_monday_po_status, insert_main_item,
-    map_event_to_update_data, patch_subitem
+    map_event_to_update_data, patch_DetailItem
 )
 
 from utilities.logger import setup_logging
@@ -132,7 +132,7 @@ class MondayWebhookHandler:
                 return jsonify({"error": error}), 400
 
             # Patch the SubItem in the local database
-            success, message = patch_subitem(subitem_id, update_data)
+            success, message = patch_DetailItem(subitem_id, update_data)
             if not success:
                 return jsonify({"error": message}), 500
 

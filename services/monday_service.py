@@ -5,7 +5,7 @@ from utilities.config import Config
 from database.monday_database_util import (
     update_main_item_from_monday,
     update_monday_po_status,
-    link_contact_to_po, insert_main_item, insert_subitems
+    link_contact_to_po, insert_main_item, insert_DetailItems
 )
 import utilities.monday_util as M
 import logging

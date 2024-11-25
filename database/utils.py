@@ -1,7 +1,7 @@
 # database/utils.py
 
 from sqlalchemy.exc import SQLAlchemyError
-from database.models import PO, POState, MainItem, SubItem
+from database.models import PurchaseOrder, POState, PurchaseOrder, DetailItem
 from database.db_util import get_db_session
 import logging
 

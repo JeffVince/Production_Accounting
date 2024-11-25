@@ -1,12 +1,19 @@
-# database/models.py
-
 from sqlalchemy import (
-    Column, Integer, String, Float, DateTime, ForeignKey, Enum, Text
+    Column,
+    Integer,
+    String,
+    Float,
+    DateTime,
+    Date,
+    ForeignKey,
+    Text,
+    Boolean,
+    DECIMAL,
+    Table,
 )
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
-import enum
 from datetime import datetime
 from database.base import Base
 import logging
@@ -14,262 +21,259 @@ import logging
 logging.getLogger("sqlalchemy.engine.Engine").setLevel(logging.ERROR)
 logging.getLogger("sqlalchemy.pool").setLevel(logging.ERROR)
 
-
-# Enums for state fields
-class POState(enum.Enum):
-    PENDING = 'PENDING'
-    TO_VERIFY = 'TO VERIFY'
-    ISSUE = 'ISSUE'
-    APPROVED = 'APPROVED'
-    RECONCILED = 'RECONCILED'
-    CC_PC = 'CC/PC'
-
-
-class POSubitemState(enum.Enum):
-    PENDING = 'PENDING'
-    PAID = 'PAID'
-    ISSUE = 'ISSUE'
-    RECONCILED = 'RECONCILED'
-
-
-class BillState(enum.Enum):
-    DRAFT = 'Draft'
-    SUBMITTED = 'Submitted'
-    APPROVED = 'Approved'
-    PAID = 'Paid'
-    RECONCILED = 'Reconciled'
-
-
-class SpendMoneyState(enum.Enum):
-    DRAFT = 'Draft'
-    APPROVED = 'Approved'
-    RECONCILED = 'Reconciled'
-
-
-class TransactionState(enum.Enum):
-    PENDING = 'PENDING'
-    PAID = 'PAID'
-    CONFIRMED = 'CONFIRMED'
-
-
-# Project Model
-class Project(Base):
-    __tablename__ = 'projects'
-
-    id = Column(Integer, primary_key=True)
-    project_id = Column(String, unique=True, nullable=False)
-    name = Column(String, nullable=False)
-
-    pos = relationship('PO', back_populates='project')
-
-
-# PO (Purchase Order) Model
-class PO(Base):
-    __tablename__ = 'pos'
-
-    id = Column(Integer, primary_key=True)
-    po_number = Column(String, nullable=False)
-    project_id = Column(Integer, ForeignKey('projects.id'))
-    vendor_id = Column(Integer, ForeignKey('vendors.id'))
-    state = Column(Enum(POState), default=POState.PENDING)
-    amount = Column(Float)
-    description = Column(Text)
-    status = Column(Text)
-
-    project = relationship('Project', back_populates='pos')
-    vendor = relationship('Vendor', back_populates='pos', foreign_keys=[vendor_id])
-    invoices = relationship('Invoice', back_populates='po')
-    receipts = relationship('Receipt', back_populates='po')
-    bills = relationship('Bill', back_populates='po')
-    transactions = relationship('Transaction', back_populates='po')
-    spend_money_transactions = relationship(
-        'SpendMoneyTransaction', back_populates='po')
-    actuals = relationship('Actual', back_populates='po')
-
-
-# Vendor Model
-class Vendor(Base):
-    __tablename__ = 'vendors'
-
-    id = Column(Integer, primary_key=True)
-    vendor_name = Column(String, unique=True, nullable=False)
-    contact_id = Column(Integer, ForeignKey('contacts.id'))
-
-    pos = relationship('PO', back_populates='vendor')
-    contact = relationship(
-        'Contact',
-        back_populates='vendor',
-        foreign_keys=[contact_id]
-    )
-    tax_form = relationship(
-        'TaxForm',
-        back_populates='vendor',
-        uselist=False  # Indicates one-to-one relationship
-    )
-
-
-# TaxForm Model
-class TaxForm(Base):
-    __tablename__ = 'tax_forms'
-
-    id = Column(Integer, primary_key=True)
-    vendor_id = Column(Integer, ForeignKey('vendors.id'))
-    form_type = Column(String)  # e.g., 'W-9', 'W-8BEN'
-    status = Column(String)     # e.g., 'Pending', 'Validated'
-    data = Column(Text)         # JSON or text data extracted from the form
-
-    vendor = relationship(
-        'Vendor',
-        back_populates='tax_form',
-        foreign_keys=[vendor_id]
-    )
+# Association Table for DetailItem and BillLineItem
+detail_items_has_bill_line_items = Table(
+    "detail_items_has_bill_line_items",
+    Base.metadata,
+    Column(
+        "detail_items_detail_item_id",
+        Integer,
+        ForeignKey("detail_items.detail_item_id"),
+        primary_key=True,
+    ),
+    Column(
+        "bill_line_items_bill_line_item_id",
+        Integer,
+        ForeignKey("bill_line_items.bill_line_item_id"),
+        primary_key=True,
+    ),
+)
 
 
 # Contact Model
 class Contact(Base):
-    __tablename__ = 'contacts'
+    __tablename__ = "contacts"
 
-    id = Column(Integer, primary_key=True)
-    contact_id = Column(String, unique=True)
-    name = Column(String)
-    email = Column(String)
-    phone = Column(String)
+    contact_id = Column(Integer, primary_key=True, autoincrement=True)
+    pulse_id = Column(Integer, nullable=True)
+    name = Column(String(100), nullable=False)
+    vendor_type = Column(String(45), nullable=True)
+    payment_details = Column(String(255), nullable=False, default="PENDING")
+    email = Column(String(100), nullable=True)
+    phone = Column(String(45), nullable=True)
+    address_line_1 = Column(String(255), nullable=True)
+    city = Column(String(100), nullable=True)
+    zip = Column(String(20), nullable=True)
+    tax_ID = Column(String(45), unique=True, nullable=True)
+    tax_form_link = Column(String(255), nullable=True)
+    tax_form_status = Column(String(45), nullable=False, default="PENDING")
 
-    vendor = relationship(
-        'Vendor',
-        back_populates='contact',
-        uselist=False  # One-to-one relationship
-    )
-
-
-# Invoice Model
-class Invoice(Base):
-    __tablename__ = 'invoices'
-
-    id = Column(Integer, primary_key=True)
-    po_id = Column(Integer, ForeignKey('pos.id'))
-    file_path = Column(String, nullable=False)
-    data = Column(Text)         # JSON or text data extracted from the invoice
-    status = Column(String)     # e.g., 'Pending', 'Validated'
-
-    po = relationship('PO', back_populates='invoices')
+    # Relationships
+    purchase_orders = relationship("PurchaseOrder", back_populates="contact")
 
 
-# Receipt Model
-class Receipt(Base):
-    __tablename__ = 'receipts'
+# Project Model
+class Project(Base):
+    __tablename__ = "projects"
 
-    id = Column(Integer, primary_key=True)
-    po_id = Column(Integer, ForeignKey('pos.id'))
-    file_path = Column(String, nullable=False)
-    data = Column(Text)         # JSON or text data extracted from the receipt
-    status = Column(String)     # e.g., 'Pending', 'Validated'
+    project_id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(100), nullable=False)
+    status = Column(String(45), nullable=False)
 
-    po = relationship('PO', back_populates='receipts')
+    purchase_orders = relationship("PurchaseOrder", back_populates="project")
+
+
+# POState Model
+class POState(Base):
+    __tablename__ = "po_states"
+
+    state = Column(String(45), primary_key=True)
+    description = Column(String(255), nullable=True)
+
+    purchase_orders = relationship("PurchaseOrder", back_populates="po_state")
+
+
+# PurchaseOrder Model
+class PurchaseOrder(Base):
+    __tablename__ = "purchase_orders"
+
+    po_id = Column(Integer, primary_key=True, autoincrement=True)
+    po_number = Column(Integer, unique=True, nullable=False)
+    project_id = Column(Integer, ForeignKey("projects.project_id"), nullable=False)
+    contact_id = Column(Integer, ForeignKey("contacts.contact_id"), nullable=True)
+    state = Column(String(45), ForeignKey("po_states.state"), nullable=False, default="PENDING")
+    amount_total = Column(DECIMAL(15, 2), nullable=False, default=0.00)
+    description = Column(String(255), nullable=True)
+    folder_link = Column(String(255), nullable=True)
+    producer = Column(String(100), nullable=True)
+    po_type = Column(String(45), nullable=False)
+    pulse_id = Column(Integer, nullable=True)
+    issue_type = Column(String(45), nullable=True)
+    tax_form_link = Column(String(255), nullable=True)
+
+    # Relationships
+    project = relationship("Project", back_populates="purchase_orders")
+    contact = relationship("Contact", back_populates="purchase_orders")
+    po_state = relationship("POState", back_populates="purchase_orders")
+    bills = relationship("Bill", back_populates="purchase_order")
+    detail_items = relationship("DetailItem", back_populates="purchase_order")
+    spend_money_transactions = relationship("SpendMoney", back_populates="purchase_order")
+    issue_logs = relationship("IssueLog", back_populates="purchase_order")
+
+
+# XeroBillState Model
+class XeroBillState(Base):
+    __tablename__ = "xero_bill_states"
+
+    state = Column(String(45), primary_key=True)
+    description = Column(String(255), nullable=True)
+
+    bills = relationship("Bill", back_populates="bill_state")
 
 
 # Bill Model
 class Bill(Base):
-    __tablename__ = 'bills'
+    __tablename__ = "bills"
 
-    id = Column(Integer, primary_key=True)
-    po_id = Column(Integer, ForeignKey('pos.id'))
-    bill_id = Column(String, unique=True)
-    state = Column(Enum(BillState), default=BillState.DRAFT)
-    amount = Column(Float)
-    due_date = Column(DateTime)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    bill_id = Column(Integer, primary_key=True, autoincrement=True)
+    po_id = Column(Integer, ForeignKey("purchase_orders.po_id"), nullable=False)
+    xero_bill_id = Column(String(100), nullable=True)
+    state = Column(String(45), ForeignKey("xero_bill_states.state"), nullable=False, default="Draft")
+    due_date = Column(Date, nullable=True)
+    issue_date = Column(Date, nullable=True)
+    transaction_date = Column(Date, nullable=True)
+    contracted_total = Column(DECIMAL(15, 2), nullable=False, default=0.00)
+    file_link = Column(String(255), nullable=True)
 
-    po = relationship('PO', back_populates='bills')
-
-
-# Transaction Model (Mercury Bank Transactions)
-class Transaction(Base):
-    __tablename__ = 'transactions'
-
-    id = Column(Integer, primary_key=True)
-    po_id = Column(Integer, ForeignKey('pos.id'))
-    transaction_id = Column(String, unique=True)
-    state = Column(Enum(TransactionState), default=TransactionState.PENDING)
-    amount = Column(Float)
-    executed_at = Column(DateTime)
-
-    po = relationship('PO', back_populates='transactions')
+    # Relationships
+    purchase_order = relationship("PurchaseOrder", back_populates="bills")
+    bill_state = relationship("XeroBillState", back_populates="bills")
+    bill_line_items = relationship("BillLineItem", back_populates="bill")
+    bank_transactions = relationship("BankTransaction", back_populates="bill")
 
 
-# SpendMoneyTransaction Model (Credit Card and Petty Cash)
-class SpendMoneyTransaction(Base):
-    __tablename__ = 'spend_money_transactions'
+# DetailItemState Model
+class DetailItemState(Base):
+    __tablename__ = "detail_item_states"
 
-    id = Column(Integer, primary_key=True)
-    transaction_id = Column(String, unique=True, nullable=False)
-    po_id = Column(Integer, ForeignKey('pos.id'), nullable=False)
-    state = Column(Enum(SpendMoneyState), default=SpendMoneyState.DRAFT)
-    amount = Column(Float, nullable=False)
-    description = Column(Text)  # Added description field
-    created_at = Column(DateTime, default=datetime.utcnow)
+    state = Column(String(45), primary_key=True)
+    description = Column(String(255), nullable=True)
 
-    po = relationship('PO', back_populates='spend_money_transactions')
+    detail_items = relationship("DetailItem", back_populates="detail_item_state")
 
 
-# Actual Model
-class Actual(Base):
-    __tablename__ = 'actuals'
+# DetailItem Model
+class DetailItem(Base):
+    __tablename__ = "detail_items"
 
-    id = Column(Integer, primary_key=True)
-    po_id = Column(Integer, ForeignKey('pos.id'))
-    amount = Column(Float)
-    description = Column(Text)
-    date = Column(DateTime)
-    source = Column(String)  # e.g., 'Xero', 'Mercury', 'Manual'
+    detail_item_id = Column(Integer, primary_key=True, autoincrement=True)
+    po_id = Column(Integer, ForeignKey("purchase_orders.po_id"), nullable=False)
+    transaction_date = Column(DateTime, nullable=True)
+    due_date = Column(DateTime, nullable=True)
+    rate = Column(DECIMAL(15, 2), nullable=False)
+    quantity = Column(DECIMAL(15, 2), nullable=False, default=1.00)
+    sub_total = Column(DECIMAL(15, 2), nullable=False)
+    description = Column(String(255), nullable=True)
+    file_link = Column(String(255), nullable=True)
+    is_receipt = Column(Boolean, nullable=False, default=False)
+    state = Column(String(45), ForeignKey("detail_item_states.state"), nullable=False, default="PENDING")
+    pulse_id = Column(Integer, nullable=True)
+    issue_type = Column(String(45), nullable=True)
 
-    po = relationship('PO', back_populates='actuals')
-
-
-# MainItem Model
-class MainItem(Base):
-    __tablename__ = 'main_items'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    item_id = Column(String, unique=True)
-    name = Column(String)
-    project_id = Column(String)
-    numbers = Column(String)
-    description = Column(Text)
-    tax_form = Column(String)
-    folder = Column(String)
-    amount = Column(String)
-    po_status = Column(String)
-    producer_pm = Column(String)
-    updated_date = Column(String)
-
-    sub_items = relationship(
-        'SubItem',
-        back_populates='main_item',
-        cascade='all, delete-orphan'
+    # Relationships
+    purchase_order = relationship("PurchaseOrder", back_populates="detail_items")
+    detail_item_state = relationship("DetailItemState", back_populates="detail_items")
+    spend_money = relationship("SpendMoney", back_populates="detail_item", uselist=False)
+    issue_logs = relationship("IssueLog", back_populates="detail_item")
+    bill_line_items = relationship(
+        "BillLineItem",
+        secondary=detail_items_has_bill_line_items,
+        back_populates="detail_items",
     )
 
-    @hybrid_property
-    def computed_amount(self):
-        """Calculate the total amount from related subitems."""
-        return sum(sub_item.amount for sub_item in self.sub_items if sub_item.amount)
+
+# XeroSpendMoneyState Model
+class XeroSpendMoneyState(Base):
+    __tablename__ = "xero_spend_money_states"
+
+    state = Column(String(45), primary_key=True)
+    description = Column(String(255), nullable=True)
+
+    spend_money_transactions = relationship("SpendMoney", back_populates="spend_money_state")
 
 
-# SubItem Model
-class SubItem(Base):
-    __tablename__ = 'sub_items'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    subitem_id = Column(String, unique=True)
-    main_item_id = Column(String, ForeignKey('main_items.item_id', ondelete='CASCADE'), nullable=False)
-    status = Column(String)
-    invoice_number = Column(String)
-    description = Column(Text)
-    amount = Column(Float)
-    quantity = Column(Float)
-    account_number = Column(String)
-    invoice_date = Column(String)
-    link = Column(String)
-    due_date = Column(String)
-    creation_log = Column(Text)
+# SpendMoney Model
+class SpendMoney(Base):
+    __tablename__ = "spend_money"
 
-    main_item = relationship('MainItem', back_populates='sub_items')
+    spend_money_id = Column(Integer, primary_key=True, autoincrement=True)
+    po_id = Column(Integer, ForeignKey("purchase_orders.po_id"), nullable=False)
+    xero_spend_money_id = Column(String(100), nullable=True)
+    detail_item_id = Column(Integer, ForeignKey("detail_items.detail_item_id"), nullable=False)
+    amount = Column(DECIMAL(15, 2), nullable=False)
+    tax_account = Column(Integer, nullable=True)
+    file_link = Column(String(255), nullable=True)
+    state = Column(String(45), ForeignKey("xero_spend_money_states.state"), nullable=False, default="Draft")
 
+    # Relationships
+    purchase_order = relationship("PurchaseOrder", back_populates="spend_money_transactions")
+    detail_item = relationship("DetailItem", back_populates="spend_money", uselist=False)
+    spend_money_state = relationship("XeroSpendMoneyState", back_populates="spend_money_transactions")
+    bank_transactions = relationship("BankTransaction", back_populates="spend_money")
+
+
+# MercuryState Model
+class MercuryState(Base):
+    __tablename__ = "mercury_states"
+
+    state = Column(String(45), primary_key=True)
+    description = Column(String(255), nullable=True)
+
+    bank_transactions = relationship("BankTransaction", back_populates="mercury_state")
+
+
+# BankTransaction Model
+class BankTransaction(Base):
+    __tablename__ = "bank_transactions"
+
+    bank_transaction_id = Column(Integer, primary_key=True, autoincrement=True)
+    recipient = Column(String(100), nullable=True)
+    amount = Column(DECIMAL(15, 2), nullable=False)
+    bill_id = Column(Integer, ForeignKey("bills.bill_id"), nullable=True)
+    spend_money_id = Column(Integer, ForeignKey("spend_money.spend_money_id"), nullable=True)
+    mercury_transaction_id = Column(String(100), nullable=True)
+    state = Column(String(45), ForeignKey("mercury_states.state"), nullable=False, default="Pending")
+
+    # Relationships
+    bill = relationship("Bill", back_populates="bank_transactions")
+    spend_money = relationship("SpendMoney", back_populates="bank_transactions")
+    mercury_state = relationship("MercuryState", back_populates="bank_transactions")
+
+
+# BillLineItem Model
+class BillLineItem(Base):
+    __tablename__ = "bill_line_items"
+
+    bill_line_item_id = Column(Integer, primary_key=True, autoincrement=True)
+    bill_id = Column(Integer, ForeignKey("bills.bill_id"), nullable=False)
+    description = Column(String(255), nullable=True)
+    rate = Column(DECIMAL(15, 2), nullable=False)
+    quantity = Column(DECIMAL(15, 2), nullable=False, default=1.00)
+    sub_total = Column(DECIMAL(15, 2), nullable=False)
+    tax_account = Column(Integer, nullable=True)
+
+    # Relationships
+    bill = relationship("Bill", back_populates="bill_line_items")
+    detail_items = relationship(
+        "DetailItem",
+        secondary=detail_items_has_bill_line_items,
+        back_populates="bill_line_items",
+    )
+
+
+# IssueLog Model
+class IssueLog(Base):
+    __tablename__ = "issue_logs"
+
+    issue_id = Column(Integer, primary_key=True, autoincrement=True)
+    po_id = Column(Integer, ForeignKey("purchase_orders.po_id"), nullable=True)
+    detail_item_id = Column(Integer, ForeignKey("detail_items.detail_item_id"), nullable=True)
+    issue_type = Column(String(45), nullable=False)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=True, default=datetime.utcnow)
+    resolved = Column(Boolean, nullable=False, default=False)
+    resolved_at = Column(DateTime, nullable=True)
+
+    # Relationships
+    purchase_order = relationship("PurchaseOrder", back_populates="issue_logs")
+    detail_item = relationship("DetailItem", back_populates="issue_logs")

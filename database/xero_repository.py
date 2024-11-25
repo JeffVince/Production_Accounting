@@ -1,7 +1,7 @@
 # database/xero_repository.py
 
 from sqlalchemy.exc import SQLAlchemyError
-from database.models import Bill, SpendMoneyTransaction, BillState, SpendMoneyState, PO
+from database.models import Bill, SpendMoney, XeroBillState, XeroSpendMoneyState, PurchaseOrder
 from database.db_util import get_db_session
 import logging
 
@@ -42,7 +42,7 @@ def update_bill_status(bill_id, status):
         ValueError: If the provided status is not an instance of BillState.
         SQLAlchemyError: If a database error occurs.
     """
-    if not isinstance(status, BillState):
+    if not isinstance(status, XeroBillState):
         raise ValueError(f"'{status}' is not a valid BillState")
 
     try:
@@ -65,7 +65,7 @@ def get_bill_by_po(po_number):
     """
     try:
         with get_db_session() as session:
-            po = session.query(PO).filter_by(po_number=po_number).first()
+            po = session.query(PurchaseOrder).filter_by(po_number=po_number).first()
             if po:
                 bill = session.query(Bill).filter_by(po_id=po.id).first()
                 return bill
@@ -100,7 +100,7 @@ def add_or_update_spend_money_transaction(transaction_data):
     """
     try:
         with get_db_session() as session:
-            transaction = session.query(SpendMoneyTransaction).filter_by(transaction_id=transaction_data['transaction_id']).first()
+            transaction = session.query(XeroSpendMoneyState).filter_by(transaction_id=transaction_data['transaction_id']).first()
             if transaction:
                 # Update existing transaction
                 transaction.amount = transaction_data.get('amount', transaction.amount)
@@ -109,7 +109,7 @@ def add_or_update_spend_money_transaction(transaction_data):
                 logger.info(f"Updated SpendMoneyTransaction {transaction.transaction_id}")
             else:
                 # Create new transaction
-                transaction = SpendMoneyTransaction(**transaction_data)
+                transaction = XeroSpendMoneyState(**transaction_data)
                 session.add(transaction)
                 logger.info(f"Added SpendMoneyTransaction {transaction.transaction_id}")
             session.commit()

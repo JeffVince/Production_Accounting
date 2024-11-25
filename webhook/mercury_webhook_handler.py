@@ -2,7 +2,6 @@
 
 import logging
 from flask import Blueprint, request, jsonify
-from services.mercury_service import MercuryService
 from services.po_modification_service import POModificationService
 from utilities.logger import setup_logging
 
@@ -14,7 +13,6 @@ mercury_blueprint = Blueprint('mercury', __name__)
 
 class MercuryWebhookHandler:
     def __init__(self):
-        self.mercury_service = MercuryService()
         self.po_modification_service = POModificationService()
 
     def handle_mercury_event(self, event):

@@ -53,7 +53,8 @@ class Config:
     MY_EMAIL = os.getenv("MY_EMAIL")
 
     # Database
-    DATABASE_URL =  os.getenv("DATABASE_URL", "sqlite:///database/database/main_db.db")
+    DATABASE_URL =  os.getenv("DATABASE_URL", "mysql+pymysql://root:z //55gohi@localhost:3306/virtual_pm")
+
 
     @staticmethod
     def load_configuration():
@@ -97,5 +98,5 @@ class Config:
         Returns database connection settings.
         """
         return {
-            "url": os.getenv("DATABASE_URL", "sqlite:///database/database/main_db.db"),  # Changed key to 'url'
+            "url": os.getenv("DATABASE_URL", "mysql+pymysql://root:z //55gohi@localhost:3306/virtual_pm"),  # Changed key to 'url'
         }

@@ -4,7 +4,6 @@ import logging
 from flask import Blueprint, request, jsonify
 from services.dropbox_service import DropboxService
 from services.ocr_service import OCRService
-from services.validation_service import ValidationService
 from utilities.logger import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -17,7 +16,6 @@ class DropboxWebhookHandler:
     def __init__(self):
         self.dropbox_service = DropboxService()
         self.ocr_service = OCRService()
-        self.validation_service = ValidationService()
 
     def handle_dropbox_event(self, event):
         """Handle incoming Dropbox webhook event."""

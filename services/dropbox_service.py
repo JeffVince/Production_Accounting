@@ -3,7 +3,6 @@
 import os
 import dropbox
 from typing import Dict
-from database.dropbox_repository import add_file_record
 from utilities.config import Config
 from ocr_service import OCRService
 from monday_service import MondayService
@@ -39,7 +38,7 @@ class DropboxService:
             text_data = self.ocr_service.extract_text_from_file(file_content)
             file_data['data'] = text_data
         # Store file metadata in the database
-        add_file_record(file_data)
+        # add_file_record(file_data)
         # Notify Monday.com
         self.notify_monday_of_new_file(metadata['po_number'], metadata['file_type'])
 
