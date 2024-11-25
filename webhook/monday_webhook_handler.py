@@ -6,12 +6,13 @@ from services.monday_service import MondayService
 from services.po_modification_service import POModificationService
 from database.monday_database_util import (
     update_main_item_from_monday, item_exists_by_monday_id, update_monday_po_status, insert_main_item,
-    map_event_to_update_data, patch_DetailItem
+    patch_detail_item, delete_sub_item_from_db
 )
 
 from utilities.logger import setup_logging
 from monday import MondayClient
 from utilities.config import Config
+from utils import map_event_to_update_data
 
 logger = logging.getLogger(__name__)
 setup_logging()
@@ -132,7 +133,7 @@ class MondayWebhookHandler:
                 return jsonify({"error": error}), 400
 
             # Patch the SubItem in the local database
-            success, message = patch_DetailItem(subitem_id, update_data)
+            success, message = patch_detail_item(subitem_id, update_data)
             if not success:
                 return jsonify({"error": message}), 500
 
@@ -147,6 +148,14 @@ class MondayWebhookHandler:
             logger.exception("Unexpected error while processing SubItem change.")
             return jsonify({"error": str(e)}), 500
 
+    def process_sub_item_delete(self, event_data):
+        try:
+            print("Process Sub Item Delete")
+            pulse_id = event_data.get('event').get('pulseId')
+            delete_sub_item_from_db(pulse_id)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        return jsonify({"message": "SubItem deleted  successfully"}), 200
 
 
 handler = MondayWebhookHandler()
@@ -178,3 +187,17 @@ def subitem_change():
         return challenge_response
     else:
         return handler.process_sub_item_change(event)
+
+
+@monday_blueprint.route('/subitem_delete', methods=['POST'])
+def subitem_delete():
+    print("subitem delete event")
+    event = request.get_json()
+    if not event:
+        return jsonify({"error": "Invalid event data"}), 400
+    # Handle the challenge
+    challenge_response = handler.verify_challenge(event)
+    if challenge_response:
+        return challenge_response
+    else:
+        return handler.process_sub_item_delete(event)

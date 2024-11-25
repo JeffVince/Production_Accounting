@@ -5,7 +5,7 @@ from utilities.config import Config
 from database.monday_database_util import (
     update_main_item_from_monday,
     update_monday_po_status,
-    link_contact_to_po, insert_main_item, insert_DetailItems
+    link_contact_to_po, insert_main_item, insert_detail_item
 )
 import utilities.monday_util as M
 import logging
@@ -150,7 +150,7 @@ class MondayService:
             return
 
         try:
-            insert_subitems(all_items)
+            insert_detail_item(all_items)
         except Exception as e:
             logger.error(f"Error adding Sub Item to DB: {e}")
             return

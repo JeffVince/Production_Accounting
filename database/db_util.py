@@ -16,7 +16,7 @@ session_factory = None
 def initialize_database(connection_string):
     """Initializes the database connection, session factory, and creates tables."""
     global session_factory
-    engine = create_engine(connection_string, echo=True)
+    engine = create_engine(connection_string, echo=False)
     session_factory = scoped_session(sessionmaker(bind=engine))
     Base.metadata.create_all(engine)  # Add this line to create tables
     logger.debug(f"Database connection string: {connection_string}")

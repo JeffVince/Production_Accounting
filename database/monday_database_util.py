@@ -1,5 +1,7 @@
 # database/monday_database_util.py
 import json
+from datetime import datetime
+
 from sqlalchemy.exc import SQLAlchemyError
 from database.db_util import get_db_session
 from database.models import PurchaseOrder, DetailItem, Contact, POState
@@ -7,7 +9,7 @@ from database.models import PurchaseOrder, DetailItem, Contact, POState
 # Configure logging
 from logger import logger
 from monday_util import SUBITEM_RATE_COLUMN_ID, SUBITEM_QUANTITY_COLUMN_ID
-from utils import get_po_state
+from utils import get_po_state, extract_detail_item_id, parse_transaction_date, extract_url, validate_numeric_field
 # Set SQLAlchemy log levels independently
 import logging
 logging.getLogger("sqlalchemy.engine.Engine").setLevel(logging.ERROR)
@@ -18,7 +20,6 @@ logging.basicConfig(level=logging.ERROR)
 def insert_main_item(item_data):
     # Filter the data
     filtered_data = map_monday_data_to_main_item(item_data)
-    print("LOGGING FILTERED DATA", filtered_data)
     with get_db_session() as session:
         existing_item = session.query(PurchaseOrder).filter_by(pulse_id=filtered_data['pulse_id']).first()
         if existing_item:
@@ -30,29 +31,37 @@ def insert_main_item(item_data):
            # session.commit()  # Already handled in get_db_session context manager
 
 
-def insert_DetailItems(DetailItem_data):
+def insert_detail_item(detail_item_data):
     """
     Inserts a new DetailItem or updates an existing one based on DetailItem_id.
-    Only updates fields that have changed.
+    Only updates fields that have changed, but always updates 'state'.
     """
-    for DetailItem in DetailItem_data:
+    for detail_item in detail_item_data:
         try:
             # Step 1: Map the data and validate required fields
-            filtered_data = map_monday_data_to_sub_item(DetailItem)
+            filtered_data = map_monday_data_to_sub_item(detail_item)
 
-            if not filtered_data.get("main_item_id"):
-                logger.warning(f"DetailItem {filtered_data['DetailItem_id']} has no parent_item. Skipping.")
-                continue  # Skip DetailItems without a parent_item
+            if not filtered_data.get("pulse_id"):
+                logger.warning(f"DetailItem has no pulse_id. Skipping.")
+                continue  # Skip DetailItems without a pulse_id
 
             # Validate numeric fields
-            filtered_data['amount'] = validate_numeric_field(filtered_data.get('amount', ''), 'amount')
+            filtered_data['rate'] = validate_numeric_field(filtered_data.get('rate', ''), 'rate')
             filtered_data['quantity'] = validate_numeric_field(filtered_data.get('quantity', ''), 'quantity')
 
             with get_db_session() as session:
-                existing_DetailItem = session.query(DetailItem).filter_by(DetailItem_id=filtered_data['DetailItem_id']).first()
+                # Step 2: Check if the parent exists in the purchase_orders table
+                parent_id = filtered_data.get("parent_id")
+                if not session.query(PurchaseOrder).filter_by(pulse_id=parent_id).first():
+                    logger.warning(f"Parent ID {parent_id} does not exist. Skipping DetailItem with pulse_id {filtered_data['pulse_id']}.")
+                    continue
+
+                # Step 3: Check if the DetailItem already exists
+                existing_DetailItem = session.query(DetailItem).filter_by(pulse_id=filtered_data['pulse_id']).first()
 
                 if existing_DetailItem:
                     changes = {}
+                    # Update fields that have changed
                     for key, value in filtered_data.items():
                         existing_value = getattr(existing_DetailItem, key, None)
                         if existing_value != value:
@@ -60,22 +69,23 @@ def insert_DetailItems(DetailItem_data):
                             setattr(existing_DetailItem, key, value)
 
                     if changes:
-                        logger.info(f"Updated DetailItem ID {filtered_data['DetailItem_id']} with changes: {changes}")
+                        logger.info(f"Updated DetailItem ID {filtered_data['pulse_id']} with changes: {changes}")
                 else:
+                    # Insert new DetailItem
                     new_DetailItem = DetailItem(**filtered_data)
                     session.add(new_DetailItem)
-                    logger.info(f"Inserted new DetailItem with ID {filtered_data['DetailItem_id']}")
+                    logger.info(f"Inserted new DetailItem with ID {filtered_data['pulse_id']}")
 
+                # Commit changes
                 session.commit()
         except KeyError as e:
-            logger.error(f"KeyError: Missing key {e} in filtered_data for DetailItem: {DetailItem}. Skipping DetailItem.")
+            logger.error(f"KeyError: Missing key {e} in filtered_data for DetailItem. Skipping DetailItem.")
         except ValueError as e:
-            logger.error(f"ValueError: {e} DetailItem data: {DetailItem}")
+            logger.error(f"ValueError: {e} DetailItem data: {detail_item}")
         except SQLAlchemyError as e:
-            logger.error(f"Database error while processing DetailItem: {e}. DetailItem data: {DetailItem}")
+            logger.error(f"Database error while processing DetailItem: {e}. DetailItem data: {detail_item}")
         except Exception as e:
-            logger.error(f"Unexpected error while processing DetailItem: {e}. DetailItem data: {DetailItem}")
-
+            logger.error(f"Unexpected error while processing DetailItem: {e}. DetailItem data: {detail_item}")
 
 
 def fetch_all_main_items():
@@ -83,7 +93,7 @@ def fetch_all_main_items():
         return session.query(PurchaseOrder).all()
 
 
-def fetch_DetailItems_for_main_item(main_item_id):
+def fetch_detail_item_for_main_item(main_item_id):
     with get_db_session() as session:
         return session.query(DetailItem).filter_by(main_item_id=main_item_id).all()
 
@@ -116,25 +126,33 @@ def item_exists_by_monday_id(monday_id, is_DetailItem=False):
             return session.query(PurchaseOrder).filter_by(pulse_id=monday_id).first() is not None
 
 
-def patch_DetailItem(DetailItem_id, update_data):
+def patch_detail_item(detail_item, update_data):
     """
     Patches an existing DetailItem in the local database with the provided update_data.
     """
     try:
-        logger.debug(f"Patching DetailItem ID {DetailItem_id} with data: {update_data}")
+        print("Patching Detail Item")
+        logger.debug(f"Patching DetailItem ID {detail_item} with data: {update_data}")
 
         with get_db_session() as session:
-            existing_DetailItem = session.query(DetailItem).filter_by(DetailItem_id=str(DetailItem_id)).first()
+            existing_DetailItem = session.query(DetailItem).filter_by(pulse_id=str(detail_item)).first()
 
             if existing_DetailItem:
-                # Update the specified fields
+                changes = {}
+                # Update other fields
                 for key, value in update_data.items():
-                    setattr(existing_DetailItem, key, value)
-                logger.info(f"Updated DetailItem with ID {DetailItem_id}")
+                    existing_value = getattr(existing_DetailItem, key, None)
+                    if existing_value != value:
+                        changes[key] = value
+                        setattr(existing_DetailItem, key, value)
+
+                if changes:
+                    logger.info(f"Updated DetailItem with ID {detail_item} with changes: {changes}")
             else:
-                logger.error(f"DetailItem with ID {DetailItem_id} does not exist in the database.")
-                return False, f"DetailItem with ID {DetailItem_id} does not exist."
-        print(f"Succesful patch of {DetailItem_id} to with {key} to {value}")
+                logger.error(f"DetailItem with ID {detail_item} does not exist in the database.")
+                return False, f"DetailItem with ID {detail_item} does not exist."
+
+        logger.debug(f"Successful patch of {detail_item} with changes: {update_data}")
         return True, "DetailItem patched successfully."
 
     except SQLAlchemyError as e:
@@ -230,6 +248,38 @@ def link_contact_to_po(po_number, contact_data):
         raise e
 
 
+def delete_sub_item_from_db(pulse_id):
+    """
+    Deletes a sub-item (DetailItem) from the database using its pulse_id.
+
+    Parameters:
+    - pulse_id (str or int): The pulse_id of the sub-item to be deleted.
+
+    Returns:
+    - bool: True if the deletion was successful, False otherwise.
+    - str: Message indicating the result of the operation.
+    """
+    try:
+        with get_db_session() as session:
+            # Find the sub-item in the database
+            sub_item = session.query(DetailItem).filter_by(pulse_id=pulse_id).first()
+
+            if sub_item:
+                # Delete the sub-item
+                session.delete(sub_item)
+                session.commit()
+                logger.info(f"Successfully deleted DetailItem with pulse_id: {pulse_id}")
+                return True, f"DetailItem with pulse_id {pulse_id} has been deleted."
+            else:
+                logger.warning(f"No DetailItem found with pulse_id: {pulse_id}")
+                return False, f"No DetailItem found with pulse_id {pulse_id}."
+    except SQLAlchemyError as e:
+        logger.error(f"Database error while deleting DetailItem with pulse_id {pulse_id}: {e}")
+        return False, f"Database error occurred: {e}"
+    except Exception as e:
+        logger.error(f"Unexpected error while deleting DetailItem with pulse_id {pulse_id}: {e}")
+        return False, f"Unexpected error occurred: {e}"
+
 def get_monday_po_state(po_number):
     """
     Retrieves the state of a PO as per Monday.com data.
@@ -276,164 +326,29 @@ def map_monday_data_to_sub_item(monday_DetailItem_data):
     Maps Monday.com DetailItem data to the DetailItem schema.
 
     Parameters:
-    - monday_DetailItem_data (dict): Raw DetailItem data from Monday.com.
+        monday_DetailItem_data (dict): Raw DetailItem data from Monday.com.
 
     Returns:
-    - dict: A dictionary with keys matching the DetailItem schema.
+        dict: A dictionary with keys matching the DetailItem schema.
     """
     # Extract column_values into a dictionary for easier access
     column_values = {col['id']: col for col in monday_DetailItem_data.get('column_values', [])}
 
+
     # Map Monday data to DetailItem schema fields
     sub_item_data = {
-        "DetailItem_id": monday_DetailItem_data.get("id"),
-        "main_item_id": (monday_DetailItem_data.get("parent_item") or {}).get("id"),  # Safely handle None
-        "status": column_values.get("status4", {}).get("text"),
-        "invoice_number": column_values.get("text0", {}).get("text"),
+        "pulse_id": monday_DetailItem_data.get("id"),
+        "parent_id": (monday_DetailItem_data.get("parent_item") or {}).get("id"),
+        "state": column_values.get("status4", {}).get("text"),
+        "detail_item_id": extract_detail_item_id(column_values.get("text0", {}).get("text", "0").lstrip("0")),
         "description": column_values.get("text98", {}).get("text"),
-        "amount": column_values.get("numbers9", {}).get("text"),
+        "rate": column_values.get("numbers9", {}).get("text") or 1,
         "quantity": column_values.get("numbers0", {}).get("text"),
-        "account_number": column_values.get("dropdown", {}).get("text"),
-        "invoice_date": column_values.get("date", {}).get("text"),
-        "link": extract_url(column_values, "link"),
-        "due_date": column_values.get("date_1__1", {}).get("text"),
-        "creation_log": column_values.get("creation_log__1", {}).get("text"),
+        "account_number": column_values.get("dropdown", {}).get("text") or None,
+        "transaction_date": parse_transaction_date(column_values.get("date", {}).get("text")) or None,
+        "file_link": extract_url(column_values, "link"),
     }
-
-    # Validate required fields (e.g., DetailItem_id)
-    if not sub_item_data["DetailItem_id"]:
-        raise ValueError(f"DetailItem data is missing required 'DetailItem_id'. Data: {monday_DetailItem_data}")
 
     return sub_item_data
 
 
-def extract_url(column_values, target_id):
-    """
-    Safely extracts the URL from the 'value' field of a column.
-
-    Parameters:
-    - column_values (dict): Dictionary of column values.
-    - target_id (str): The ID of the target column.
-
-    Returns:
-    - str: Extracted URL or None if not available.
-    """
-    value = column_values.get(target_id, {}).get("value")
-    if value:
-        try:
-            # print(f"Parsing value for {target_id}: {value}")  # Debugging log
-            parsed_value = json.loads(value)
-            # print(parsed_value.get("url"))
-            return parsed_value.get("url")
-        except (json.JSONDecodeError, TypeError) as e:
-            # print(f"Error parsing JSON for {target_id}: {e}")
-            return None
-    # else:
-        # print(f"No value found for {target_id}")
-    return None
-
-
-def parse_float(value):
-    """
-    Safely converts a string to a float.
-
-    Parameters:
-    - value (str): The string to convert.
-
-    Returns:
-    - float: The converted float or None if conversion fails.
-    """
-    try:
-        return float(value)
-    except (ValueError, TypeError):
-        # print(f"Error converting value to float: {value}")
-        return None
-
-
-def map_event_to_update_data(event):
-    """
-    Maps the event data to the fields that need to be updated in the DetailItem.
-    """
-    column_id = event.get('columnId')
-    if not column_id:
-        logger.error("Missing 'columnId' in the event.")
-        return None, "Missing 'columnId' in the event."
-
-    column_mapping = get_sub_item_column_mapping()
-    field_name = column_mapping.get(column_id)
-
-    if not field_name:
-        logger.warning(f"No mapping found for column ID: {column_id}")
-        return None, f"No mapping found for column ID: {column_id}"
-
-    # Extract the new value based on columnType
-    new_value = extract_text(event)
-
-    # Handle special parsing based on the field type
-    if column_id in [SUBITEM_RATE_COLUMN_ID, SUBITEM_QUANTITY_COLUMN_ID]:
-        parsed_value = parse_float(new_value)
-    elif column_id == "link":
-        parsed_value = new_value  # Already extracted URL
-    else:
-        parsed_value = new_value
-
-    update_data = {field_name: parsed_value}
-    # logger.debug(f"Mapped update data: {update_data}")
-    return update_data, None
-
-
-def get_sub_item_column_mapping():
-    """
-    Returns a mapping from column IDs to DetailItem model fields.
-    Update this mapping based on your actual column IDs and model fields.
-    """
-    return {
-        "status4": "status",
-        "text0": "invoice_number",
-        "text98": "description",
-        "numbers9": "amount",
-        "numbers0": "quantity",
-        "dropdown": "account_number",
-        "date": "invoice_date",
-        "link": "link",
-        "date_1__1": "due_date",
-        "creation_log__1": "creation_log",
-        # Add other mappings as necessary
-    }
-
-
-def extract_text(event):
-    """
-    Extracts the text value based on columnType.
-    Returns None if the value is empty or None.
-    """
-    column_type = event.get('columnType')
-    value_field = event.get('value', {})
-
-    if column_type == 'color':
-        # For color type columns
-        label = value_field.get('label', {}) if value_field else {}
-        return label.get('text', '') if label else ''
-    elif column_type == 'text':
-        # For text type columns
-        return value_field.get('value', '') if value_field else ''
-    elif column_type == 'numbers':
-        # For number type columns
-        return value_field.get('value', '') if value_field else ''
-    elif column_type == 'link':
-        # For link type columns
-        return extract_url(value_field.get('value')) if value_field else None
-    # Add more columnType handlers as needed
-    else:
-        logger.warning(f"Unhandled columnType: {column_type}")
-        return ''
-
-
-def validate_numeric_field(value, field_name):
-    try:
-        if value is None or value == '':
-            return None  # Convert empty strings or None to NULL
-        return float(value)  # Attempt to convert to a float
-    except ValueError:
-        logger.error(f"Invalid value for numeric field '{field_name}': {value}. Defaulting to NULL.")
-        return None  # Default invalid values to NULL

@@ -9,7 +9,7 @@ from sqlalchemy import (
     Text,
     Boolean,
     DECIMAL,
-    Table,
+    Table, Double,
 )
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
@@ -87,7 +87,7 @@ class POState(Base):
 class PurchaseOrder(Base):
     __tablename__ = "purchase_orders"
 
-    po_id = Column(Integer, primary_key=True, autoincrement=True)
+    pulse_id = Column(Double, primary_key=True, nullable=False, comment='Integration with Monday.com')
     po_number = Column(Integer, unique=True, nullable=False)
     project_id = Column(Integer, ForeignKey("projects.project_id"), nullable=False)
     contact_id = Column(Integer, ForeignKey("contacts.contact_id"), nullable=True)
@@ -97,7 +97,6 @@ class PurchaseOrder(Base):
     folder_link = Column(String(255), nullable=True)
     producer = Column(String(100), nullable=True)
     po_type = Column(String(45), nullable=False)
-    pulse_id = Column(Integer, nullable=True)
     issue_type = Column(String(45), nullable=True)
     tax_form_link = Column(String(255), nullable=True)
 
@@ -108,7 +107,36 @@ class PurchaseOrder(Base):
     bills = relationship("Bill", back_populates="purchase_order")
     detail_items = relationship("DetailItem", back_populates="purchase_order")
     spend_money_transactions = relationship("SpendMoney", back_populates="purchase_order")
-    issue_logs = relationship("IssueLog", back_populates="purchase_order")
+
+
+# DetailItem Model
+class DetailItem(Base):
+    __tablename__ = "detail_items"
+
+    pulse_id = Column(Double, primary_key=True, nullable=False, comment='Integration with Monday.com')
+    detail_item_id = Column(Integer, nullable=False, default=1)  # Not a primary key
+    transaction_date = Column(DateTime, nullable=True)
+    due_date = Column(DateTime, nullable=True)
+    rate = Column(DECIMAL(15, 2), nullable=False)
+    quantity = Column(DECIMAL(15, 2), nullable=False, default=1.00)
+    #sub_total = Column(DECIMAL(15, 2), nullable=False)
+    description = Column(String(255), nullable=True)
+    file_link = Column(String(255), nullable=True, comment='Link to invoice or receipt in Dropbox')
+    is_receipt = Column(Boolean, nullable=False, default=False, comment='1 for receipts, 0 for invoices')
+    state = Column(String(45), ForeignKey("detail_item_states.state"), nullable=False, default="PENDING")
+    issue_type = Column(String(45), nullable=True)
+    account_number = Column(Integer, nullable=True)
+    parent_id = Column(Double, ForeignKey("purchase_orders.pulse_id"), nullable=False)
+
+    # Relationships
+    purchase_order = relationship("PurchaseOrder", back_populates="detail_items")
+    detail_item_state = relationship("DetailItemState", back_populates="detail_items")
+    spend_money = relationship("SpendMoney", back_populates="detail_item", uselist=False)
+    bill_line_items = relationship(
+        "BillLineItem",
+        secondary=detail_items_has_bill_line_items,
+        back_populates="detail_items",
+    )
 
 
 # XeroBillState Model
@@ -126,7 +154,7 @@ class Bill(Base):
     __tablename__ = "bills"
 
     bill_id = Column(Integer, primary_key=True, autoincrement=True)
-    po_id = Column(Integer, ForeignKey("purchase_orders.po_id"), nullable=False)
+    po_id = Column(Double, ForeignKey("purchase_orders.pulse_id"), nullable=False)
     xero_bill_id = Column(String(100), nullable=True)
     state = Column(String(45), ForeignKey("xero_bill_states.state"), nullable=False, default="Draft")
     due_date = Column(Date, nullable=True)
@@ -152,36 +180,6 @@ class DetailItemState(Base):
     detail_items = relationship("DetailItem", back_populates="detail_item_state")
 
 
-# DetailItem Model
-class DetailItem(Base):
-    __tablename__ = "detail_items"
-
-    detail_item_id = Column(Integer, primary_key=True, autoincrement=True)
-    po_id = Column(Integer, ForeignKey("purchase_orders.po_id"), nullable=False)
-    transaction_date = Column(DateTime, nullable=True)
-    due_date = Column(DateTime, nullable=True)
-    rate = Column(DECIMAL(15, 2), nullable=False)
-    quantity = Column(DECIMAL(15, 2), nullable=False, default=1.00)
-    sub_total = Column(DECIMAL(15, 2), nullable=False)
-    description = Column(String(255), nullable=True)
-    file_link = Column(String(255), nullable=True)
-    is_receipt = Column(Boolean, nullable=False, default=False)
-    state = Column(String(45), ForeignKey("detail_item_states.state"), nullable=False, default="PENDING")
-    pulse_id = Column(Integer, nullable=True)
-    issue_type = Column(String(45), nullable=True)
-
-    # Relationships
-    purchase_order = relationship("PurchaseOrder", back_populates="detail_items")
-    detail_item_state = relationship("DetailItemState", back_populates="detail_items")
-    spend_money = relationship("SpendMoney", back_populates="detail_item", uselist=False)
-    issue_logs = relationship("IssueLog", back_populates="detail_item")
-    bill_line_items = relationship(
-        "BillLineItem",
-        secondary=detail_items_has_bill_line_items,
-        back_populates="detail_items",
-    )
-
-
 # XeroSpendMoneyState Model
 class XeroSpendMoneyState(Base):
     __tablename__ = "xero_spend_money_states"
@@ -197,7 +195,7 @@ class SpendMoney(Base):
     __tablename__ = "spend_money"
 
     spend_money_id = Column(Integer, primary_key=True, autoincrement=True)
-    po_id = Column(Integer, ForeignKey("purchase_orders.po_id"), nullable=False)
+    po_id = Column(Double, ForeignKey("purchase_orders.pulse_id"), nullable=False)
     xero_spend_money_id = Column(String(100), nullable=True)
     detail_item_id = Column(Integer, ForeignKey("detail_items.detail_item_id"), nullable=False)
     amount = Column(DECIMAL(15, 2), nullable=False)
@@ -261,19 +259,3 @@ class BillLineItem(Base):
     )
 
 
-# IssueLog Model
-class IssueLog(Base):
-    __tablename__ = "issue_logs"
-
-    issue_id = Column(Integer, primary_key=True, autoincrement=True)
-    po_id = Column(Integer, ForeignKey("purchase_orders.po_id"), nullable=True)
-    detail_item_id = Column(Integer, ForeignKey("detail_items.detail_item_id"), nullable=True)
-    issue_type = Column(String(45), nullable=False)
-    description = Column(Text, nullable=True)
-    created_at = Column(DateTime, nullable=True, default=datetime.utcnow)
-    resolved = Column(Boolean, nullable=False, default=False)
-    resolved_at = Column(DateTime, nullable=True)
-
-    # Relationships
-    purchase_order = relationship("PurchaseOrder", back_populates="issue_logs")
-    detail_item = relationship("DetailItem", back_populates="issue_logs")

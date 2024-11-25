@@ -247,7 +247,7 @@ class MondayAPI:
                 query ($cursor: String!, $limit: Int!) {
                     next_items_page(cursor: $cursor, limit: $limit) {
                         cursor
-                        items {
+                        items  {
                             id
                             name
                             parent_item {
