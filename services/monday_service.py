@@ -1,12 +1,10 @@
 # services/monday_service.py
 
 import requests
+
+from monday_database_util import create_purchase_order_in_db, update_detail_item_in_db
 from utilities.config import Config
-from database.monday_database_util import (
-    update_main_item_from_monday,
-    update_monday_po_status,
-    link_contact_to_po, insert_main_item, insert_detail_item
-)
+
 import utilities.monday_util as M
 import logging
 from monday_api import MondayAPI
@@ -51,7 +49,7 @@ class MondayService:
         variables = {'po_number': po_number, 'status': status, 'board_id': self.board_id}
         self._make_request(query, variables)
         # Update local database
-        update_monday_po_status(po_number, status)
+        #update_monday_po_status(po_number, status)
 
     def verify_po_tax_compliance(self, po_number: str) -> bool:
         """Verify tax compliance for a PO."""
@@ -69,7 +67,7 @@ class MondayService:
             'email': 'vendor@example.com',
             'phone': '123-456-7890',
         }
-        link_contact_to_po(po_number, contact_data)  # Now po_number is passed in
+        #link_contact_to_po(po_number, contact_data)  # Now po_number is passed in
         return contact_data['contact_id']
 
     def validate_po_detail_items(self, po_number: str) -> bool:
@@ -135,7 +133,7 @@ class MondayService:
         # Now, all_items contains all items from all specified boards
         # Proceed with syncing these items to your database
         for item in all_items:
-            insert_main_item(item)
+            create_purchase_order_in_db(item)
 
     def sync_sub_items_from_monday_board(self):
         """
@@ -150,7 +148,7 @@ class MondayService:
             return
 
         try:
-            insert_detail_item(all_items)
+            update_detail_item_in_db(all_items)
         except Exception as e:
             logger.error(f"Error adding Sub Item to DB: {e}")
             return

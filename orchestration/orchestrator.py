@@ -125,13 +125,13 @@ class Orchestrator:
     def schedule_monday_main_items_sync(self, interval=90000):
 
         def sync_monday_to_main_items():
-            time.sleep(interval)
             while True:
                 logger.info("Fetching Main Item entries")
                 try:
                     self.monday_service.sync_main_items_from_monday_board()
                 except Exception as e:
                     logger.error(f"Error fetching Main Item entries: {e}")
+                time.sleep(interval)
 
         threading.Thread(target=sync_monday_to_main_items, daemon=True).start()
 

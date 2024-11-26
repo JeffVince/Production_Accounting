@@ -3,7 +3,7 @@ import json
 from datetime import datetime
 
 from sqlalchemy.exc import SQLAlchemyError
-from database.models import PurchaseOrder, POState, PurchaseOrder, DetailItem
+from database.models import PurchaseOrder, PurchaseOrder, DetailItem
 from database.db_util import get_db_session
 import logging
 

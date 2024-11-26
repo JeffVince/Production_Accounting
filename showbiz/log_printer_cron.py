@@ -21,10 +21,7 @@ from utilities.monday_util import (
     MONDAY_API_TOKEN
 )
 
-from webhook.dropbox_webhook_handler import (
-    get_dropbox_client,
-    create_share_link
-)
+from integrations.dropbox_client import ( get_dropbox_client, create_share_link)
 
 
 # Configure logging

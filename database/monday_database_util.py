@@ -1,354 +1,343 @@
 # database/monday_database_util.py
+
 import json
 from datetime import datetime
 
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine
+
+from database.models import (
+    PurchaseOrder,
+    DetailItem,
+    Contact,
+    Project,
+    AicpCode,
+    TaxAccount,
+    # other models as needed
+)
+
 from database.db_util import get_db_session
-from database.models import PurchaseOrder, DetailItem, Contact, POState
 
-# Configure logging
-from logger import logger
-from monday_util import SUBITEM_RATE_COLUMN_ID, SUBITEM_QUANTITY_COLUMN_ID
-from utils import get_po_state, extract_detail_item_id, parse_transaction_date, extract_url, validate_numeric_field
-# Set SQLAlchemy log levels independently
+from utilities.monday_util import (
+    create_item,
+    update_item_columns,
+    create_subitem,
+    update_subitem_columns,
+    get_group_id_by_project_id,
+    find_item_by_project_and_po,
+    find_subitem_by_invoice_or_receipt_number,
+    find_all_po_subitems,
+    find_contact_item_by_name,
+    # Column IDs for POs
+    PO_BOARD_ID,
+    PO_PROJECT_ID_COLUMN,
+    PO_NUMBER_COLUMN,
+    PO_DESCRIPTION_COLUMN_ID,
+    PO_FOLDER_LINK_COLUMN_ID,
+    PO_TAX_COLUMN_ID,
+    PO_STATUS_COLUMN_ID,
+    PO_CONNECTION_COLUMN_ID,
+    # Column IDs for Subitems
+    SUBITEM_NOTES_COLUMN_ID,
+    SUBITEM_STATUS_COLUMN_ID,
+    SUBITEM_ID_COLUMN_ID,
+    SUBITEM_DESCRIPTION_COLUMN_ID,
+    SUBITEM_QUANTITY_COLUMN_ID,
+    SUBITEM_RATE_COLUMN_ID,
+    SUBITEM_DATE_COLUMN_ID,
+    SUBITEM_DUE_DATE_COLUMN_ID,
+    SUBITEM_ACCOUNT_NUMBER_COLUMN_ID,
+    SUBITEM_LINK_COLUMN_ID,
+    SUBITEM_BOARD_ID,
+)
+
 import logging
-logging.getLogger("sqlalchemy.engine.Engine").setLevel(logging.ERROR)
-logging.getLogger("sqlalchemy.pool").setLevel(logging.ERROR)
-logging.basicConfig(level=logging.ERROR)
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+
+# Ensure the Monday API Token is loaded
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+MONDAY_API_TOKEN = os.getenv("MONDAY_API_TOKEN")
+if not MONDAY_API_TOKEN:
+    logger.error("Monday API Token not found. Please set it in the environment variables.")
+    exit(1)
 
 
-def insert_main_item(item_data):
-    # Filter the data
-    filtered_data = map_monday_data_to_main_item(item_data)
-    with get_db_session() as session:
-        existing_item = session.query(PurchaseOrder).filter_by(pulse_id=filtered_data['pulse_id']).first()
-        if existing_item:
-            for key, value in filtered_data.items():
-                setattr(existing_item, key, value)
-        else:
-            main_item = PurchaseOrder(**filtered_data)
-            session.add(main_item)
-           # session.commit()  # Already handled in get_db_session context manager
-
-
-def insert_detail_item(detail_item_data):
-    """
-    Inserts a new DetailItem or updates an existing one based on DetailItem_id.
-    Only updates fields that have changed, but always updates 'state'.
-    """
-    for detail_item in detail_item_data:
-        try:
-            # Step 1: Map the data and validate required fields
-            filtered_data = map_monday_data_to_sub_item(detail_item)
-
-            if not filtered_data.get("pulse_id"):
-                logger.warning(f"DetailItem has no pulse_id. Skipping.")
-                continue  # Skip DetailItems without a pulse_id
-
-            # Validate numeric fields
-            filtered_data['rate'] = validate_numeric_field(filtered_data.get('rate', ''), 'rate')
-            filtered_data['quantity'] = validate_numeric_field(filtered_data.get('quantity', ''), 'quantity')
-
-            with get_db_session() as session:
-                # Step 2: Check if the parent exists in the purchase_orders table
-                parent_id = filtered_data.get("parent_id")
-                if not session.query(PurchaseOrder).filter_by(pulse_id=parent_id).first():
-                    logger.warning(f"Parent ID {parent_id} does not exist. Skipping DetailItem with pulse_id {filtered_data['pulse_id']}.")
-                    continue
-
-                # Step 3: Check if the DetailItem already exists
-                existing_DetailItem = session.query(DetailItem).filter_by(pulse_id=filtered_data['pulse_id']).first()
-
-                if existing_DetailItem:
-                    changes = {}
-                    # Update fields that have changed
-                    for key, value in filtered_data.items():
-                        existing_value = getattr(existing_DetailItem, key, None)
-                        if existing_value != value:
-                            changes[key] = value
-                            setattr(existing_DetailItem, key, value)
-
-                    if changes:
-                        logger.info(f"Updated DetailItem ID {filtered_data['pulse_id']} with changes: {changes}")
-                else:
-                    # Insert new DetailItem
-                    new_DetailItem = DetailItem(**filtered_data)
-                    session.add(new_DetailItem)
-                    logger.info(f"Inserted new DetailItem with ID {filtered_data['pulse_id']}")
-
-                # Commit changes
-                session.commit()
-        except KeyError as e:
-            logger.error(f"KeyError: Missing key {e} in filtered_data for DetailItem. Skipping DetailItem.")
-        except ValueError as e:
-            logger.error(f"ValueError: {e} DetailItem data: {detail_item}")
-        except SQLAlchemyError as e:
-            logger.error(f"Database error while processing DetailItem: {e}. DetailItem data: {detail_item}")
-        except Exception as e:
-            logger.error(f"Unexpected error while processing DetailItem: {e}. DetailItem data: {detail_item}")
-
-
-def fetch_all_main_items():
-    with get_db_session() as session:
-        return session.query(PurchaseOrder).all()
-
-
-def fetch_detail_item_for_main_item(main_item_id):
-    with get_db_session() as session:
-        return session.query(DetailItem).filter_by(main_item_id=main_item_id).all()
-
-
-def fetch_main_items_by_status(status):
-    with get_db_session() as session:
-        return session.query(PurchaseOrder).filter_by(po_status=status).all()
-
-
-def fetch_DetailItems_by_main_item_and_status(main_item_id, status):
-    with get_db_session() as session:
-        return session.query(DetailItem).filter_by(main_item_id=main_item_id, status=status).all()
-
-
-def item_exists_by_monday_id(monday_id, is_DetailItem=False):
-    """
-    Checks if an item exists in the database by its monday.com ID.
-
-    Parameters:
-    - monday_id (str or int): The monday.com ID of the item to check.
-    - is_DetailItem (bool): Whether to check in the DetailItem table (default: False).
-
-    Returns:
-    - bool: True if the item exists, False otherwise.
-    """
-    with get_db_session() as session:
-        if is_DetailItem:
-            return session.query(DetailItem).filter_by(pulse_id=monday_id).first() is not None
-        else:
-            return session.query(PurchaseOrder).filter_by(pulse_id=monday_id).first() is not None
-
-
-def patch_detail_item(detail_item, update_data):
-    """
-    Patches an existing DetailItem in the local database with the provided update_data.
-    """
+# Helper functions to validate and parse data
+def parse_decimal(value):
     try:
-        print("Patching Detail Item")
-        logger.debug(f"Patching DetailItem ID {detail_item} with data: {update_data}")
-
-        with get_db_session() as session:
-            existing_DetailItem = session.query(DetailItem).filter_by(pulse_id=str(detail_item)).first()
-
-            if existing_DetailItem:
-                changes = {}
-                # Update other fields
-                for key, value in update_data.items():
-                    existing_value = getattr(existing_DetailItem, key, None)
-                    if existing_value != value:
-                        changes[key] = value
-                        setattr(existing_DetailItem, key, value)
-
-                if changes:
-                    logger.info(f"Updated DetailItem with ID {detail_item} with changes: {changes}")
-            else:
-                logger.error(f"DetailItem with ID {detail_item} does not exist in the database.")
-                return False, f"DetailItem with ID {detail_item} does not exist."
-
-        logger.debug(f"Successful patch of {detail_item} with changes: {update_data}")
-        return True, "DetailItem patched successfully."
-
-    except SQLAlchemyError as e:
-        logger.error(f"Database error while patching DetailItem: {e}")
-        return False, "Database error."
-    except Exception as e:
-        logger.error(f"Unexpected error while patching DetailItem: {e}")
-        return False, "Unexpected error."
+        return float(value)
+    except (ValueError, TypeError):
+        return None
 
 
-def update_main_item_from_monday(main_item_data):
-    """
-    Updates a PurchaseOrder record based on data from Monday.com.
-
-    Parameters:
-    - main_item_data (dict): Data for the PurchaseOrder table.
-    """
-
+def parse_date(value):
     try:
-        with get_db_session() as session:
-            # Find the PurchaseOrder by item_id
-            main_item = session.query(PurchaseOrder).filter_by(item_id=main_item_data['item_id']).first()
-            if main_item:
-                logger.debug(f"Updating PurchaseOrder {main_item_data['item_id']} from Monday.com data")
-                # Update fields with the provided data
-                for key, value in main_item_data.items():
-                    setattr(main_item, key, value)
-                session.commit()
-                logger.info(f"Updated PurchaseOrder {main_item_data['item_id']} successfully.")
-                return main_item
-            else:
-                logger.warning(f"PurchaseOrder {main_item_data['item_id']} not found in the database.")
-                insert_main_item(main_item_data)
-                return None
-    except SQLAlchemyError as e:
-        logger.error(f"Error updating PurchaseOrder {main_item_data['item_id']}: {e}")
-        raise e
+        return datetime.strptime(value, "%Y-%m-%d")
+    except (ValueError, TypeError):
+        return None
 
 
-def update_monday_po_status(item_id, status):
+# Mapping functions to map Monday.com data to database models
+def map_monday_data_to_purchase_order(monday_data):
     """
-    Updates the PO status based on Monday.com data.
+    Map Monday.com data to PurchaseOrder model fields.
     """
-    """
-    Updates the status of a PO.
-    """
-    print("LOGGING FILTERED DATA", item_id)
-
-    try:
-        with get_db_session() as session:
-            po = session.query(PurchaseOrder).filter_by(pulse_id=item_id).first()
-            if po:
-                po.po_status = status
-                session.commit()
-                logger.debug(f"Updated PO {item_id} status to {status}")
-            else:
-                logger.warning(f"PO {item_id} not found")
-    except SQLAlchemyError as e:
-        logger.error(f"Error updating PO status: {e}")
-        raise e
-
-
-def link_contact_to_po(po_number, contact_data):
-    """
-    Links a contact to a PO.
-    """
-    try:
-        with get_db_session() as session:
-            po = session.query(PurchaseOrder).filter_by(po_number=po_number).first()
-            if not po:
-                logger.warning(f"PO {po_number} not found")
-                return
-
-            # Find or create the contact
-            contact = session.query(Contact).filter_by(contact_id=contact_data['contact_id']).first()
-            if not contact:
-                contact = Contact(**contact_data)
-                session.add(contact)
-                logger.debug(f"Created new contact {contact_data['contact_id']}")
-
-            # Link contact to vendor
-            if not po.vendor:
-                vendor = Contact(name=contact_data.get('name', 'Unknown Vendor'), contact=contact)
-                session.add(vendor)
-                po.vendor = vendor
-            else:
-                po.vendor.contact = contact
-
-            session.commit()
-            logger.debug(f"Linked contact {contact.contact_id} to PO {po_number}")
-    except SQLAlchemyError as e:
-        logger.error(f"Error linking contact to PO: {e}")
-        raise e
-
-
-def delete_sub_item_from_db(pulse_id):
-    """
-    Deletes a sub-item (DetailItem) from the database using its pulse_id.
-
-    Parameters:
-    - pulse_id (str or int): The pulse_id of the sub-item to be deleted.
-
-    Returns:
-    - bool: True if the deletion was successful, False otherwise.
-    - str: Message indicating the result of the operation.
-    """
-    try:
-        with get_db_session() as session:
-            # Find the sub-item in the database
-            sub_item = session.query(DetailItem).filter_by(pulse_id=pulse_id).first()
-
-            if sub_item:
-                # Delete the sub-item
-                session.delete(sub_item)
-                session.commit()
-                logger.info(f"Successfully deleted DetailItem with pulse_id: {pulse_id}")
-                return True, f"DetailItem with pulse_id {pulse_id} has been deleted."
-            else:
-                logger.warning(f"No DetailItem found with pulse_id: {pulse_id}")
-                return False, f"No DetailItem found with pulse_id {pulse_id}."
-    except SQLAlchemyError as e:
-        logger.error(f"Database error while deleting DetailItem with pulse_id {pulse_id}: {e}")
-        return False, f"Database error occurred: {e}"
-    except Exception as e:
-        logger.error(f"Unexpected error while deleting DetailItem with pulse_id {pulse_id}: {e}")
-        return False, f"Unexpected error occurred: {e}"
-
-def get_monday_po_state(po_number):
-    """
-    Retrieves the state of a PO as per Monday.com data.
-    """
-    return get_po_state(po_number)  # Use the shared function from utils.py
-
-
-def map_monday_data_to_main_item(monday_data):
-    """
-    Maps Monday.com data to the PurchaseOrder schema.
-
-    Parameters:
-    - monday_data (dict): Raw data from Monday.com.
-
-    Returns:
-    - dict: A dictionary with keys matching the PurchaseOrder schema.
-    """
-    # Extract column_values into a dictionary for easier access
     column_values = {col['id']: col for col in monday_data.get('column_values', [])}
 
-    if column_values.get("status", {}).get("text") == "CC / PC":
-        po_type = 'CC / PC'
+    # Extract and parse data
+    project_id = column_values.get(PO_PROJECT_ID_COLUMN, {}).get('text')
+    po_number = column_values.get(PO_NUMBER_COLUMN, {}).get('text')
+    description = column_values.get(PO_DESCRIPTION_COLUMN_ID, {}).get('text')
+    folder_link = column_values.get(PO_FOLDER_LINK_COLUMN_ID, {}).get('value')
+    if folder_link:
+        folder_link = json.loads(folder_link).get('url')
+    tax_form_link = column_values.get(PO_TAX_COLUMN_ID, {}).get('value')
+    if tax_form_link:
+        tax_form_link = json.loads(tax_form_link).get('url')
+    status = column_values.get(PO_STATUS_COLUMN_ID, {}).get('text')
+    pulse_id = monday_data.get('id')
+
+    # Map the data
+    po_data = {
+        'po_surrogate_id': int(pulse_id),
+        'pulse_id': int(pulse_id),
+        'project_id': int(project_id) if project_id else None,
+        'po_number': int(po_number) if po_number else None,
+        'description': description,
+        'folder_link': folder_link,
+        'tax_form_link': tax_form_link,
+        'state': status,
+        'po_type': 'Vendor' if status != 'CC / PC' else 'CC / PC',
+    }
+    return po_data
+
+
+def map_monday_data_to_detail_item(monday_data, parent_pulse_id):
+    """
+    Map Monday.com subitem data to DetailItem model fields.
+    """
+    column_values = {col['id']: col for col in monday_data.get('column_values', [])}
+
+    # Extract and parse data
+    detail_item_id = column_values.get(SUBITEM_ID_COLUMN_ID, {}).get('text')
+    description = column_values.get(SUBITEM_DESCRIPTION_COLUMN_ID, {}).get('text')
+    rate = parse_decimal(column_values.get(SUBITEM_RATE_COLUMN_ID, {}).get('text'))
+    quantity = parse_decimal(column_values.get(SUBITEM_QUANTITY_COLUMN_ID, {}).get('text'))
+    date_text = column_values.get(SUBITEM_DATE_COLUMN_ID, {}).get('text')
+    transaction_date = parse_date(date_text)
+    due_date_text = column_values.get(SUBITEM_DUE_DATE_COLUMN_ID, {}).get('text')
+    due_date = parse_date(due_date_text)
+    account_number_text = column_values.get(SUBITEM_ACCOUNT_NUMBER_COLUMN_ID, {}).get('text')
+    account_number_id = get_account_number_id(account_number_text)
+    file_link_value = column_values.get(SUBITEM_LINK_COLUMN_ID, {}).get('value')
+    file_link = None
+    if file_link_value:
+        file_link = json.loads(file_link_value).get('url')
+    status = column_values.get(SUBITEM_STATUS_COLUMN_ID, {}).get('text')
+    pulse_id = monday_data.get('id')
+
+    # Map the data
+    detail_item_data = {
+        'detail_item_surrogate_id': int(pulse_id),
+        'pulse_id': int(pulse_id),
+        'po_surrogate_id': int(parent_pulse_id),
+        'detail_item_id': int(detail_item_id) if detail_item_id else None,
+        'description': description,
+        'rate': rate or 0.0,
+        'quantity': quantity or 1.0,
+        'transaction_date': transaction_date,
+        'due_date': due_date,
+        'account_number_id': account_number_id,
+        'file_link': file_link,
+        'state': status,
+        'is_receipt': False,  # Adjust based on your logic
+    }
+    return detail_item_data
+
+
+def get_account_number_id(account_number_text):
+    """
+    Retrieve the account_code_id from the account number text.
+    """
+    with get_db_session() as session:
+        account = session.query(AicpCode).filter_by(line_number=account_number_text).first()
+        if account:
+            return account.account_code_id
+        else:
+            # Optionally create a new account code
+            return None
+
+
+# CRUD Operations
+
+# CREATE
+def create_purchase_order_in_db(monday_item_data):
+    po_data = map_monday_data_to_purchase_order(monday_item_data)
+    if not po_data['po_surrogate_id']:
+        logger.error("Cannot create PurchaseOrder without a pulse_id.")
+        return None
+
+    with get_db_session() as session:
+        existing_po = session.query(PurchaseOrder).filter_by(po_surrogate_id=po_data['po_surrogate_id']).first()
+        if existing_po:
+            logger.info(f"PurchaseOrder with ID {po_data['po_surrogate_id']} already exists. Updating instead.")
+            return update_purchase_order_in_db(monday_item_data)
+
+        new_po = PurchaseOrder(**po_data)
+        session.add(new_po)
+        session.commit()
+        logger.info(f"Created new PurchaseOrder with ID {new_po.po_surrogate_id}.")
+        return new_po
+
+
+def create_detail_item_in_db(monday_subitem_data, parent_pulse_id):
+    detail_item_data = map_monday_data_to_detail_item(monday_subitem_data, parent_pulse_id)
+    if not detail_item_data['detail_item_surrogate_id']:
+        logger.error("Cannot create DetailItem without a pulse_id.")
+        return None
+
+    with get_db_session() as session:
+        existing_detail_item = session.query(DetailItem).filter_by(
+            detail_item_surrogate_id=detail_item_data['detail_item_surrogate_id']).first()
+        if existing_detail_item:
+            logger.info(
+                f"DetailItem with ID {detail_item_data['detail_item_surrogate_id']} already exists. Updating instead.")
+            return update_detail_item_in_db(monday_subitem_data, parent_pulse_id)
+
+        new_detail_item = DetailItem(**detail_item_data)
+        session.add(new_detail_item)
+        session.commit()
+        logger.info(f"Created new DetailItem with ID {new_detail_item.detail_item_surrogate_id}.")
+        return new_detail_item
+
+
+# READ
+def get_purchase_order_by_pulse_id(pulse_id):
+    with get_db_session() as session:
+        po = session.query(PurchaseOrder).filter_by(po_surrogate_id=pulse_id).first()
+        return po
+
+
+def get_detail_item_by_pulse_id(pulse_id):
+    with get_db_session() as session:
+        detail_item = session.query(DetailItem).filter_by(detail_item_surrogate_id=pulse_id).first()
+        return detail_item
+
+
+# UPDATE
+def update_purchase_order_in_db(monday_item_data):
+    po_data = map_monday_data_to_purchase_order(monday_item_data)
+    if not po_data['po_surrogate_id']:
+        logger.error("Cannot update PurchaseOrder without a pulse_id.")
+        return None
+
+    with get_db_session() as session:
+        po = session.query(PurchaseOrder).filter_by(po_surrogate_id=po_data['po_surrogate_id']).first()
+        if not po:
+            logger.error(f"PurchaseOrder with ID {po_data['po_surrogate_id']} does not exist.")
+            return None
+
+        for key, value in po_data.items():
+            setattr(po, key, value)
+        session.commit()
+        logger.info(f"Updated PurchaseOrder with ID {po.po_surrogate_id}.")
+        return po
+
+
+def update_detail_item_in_db(monday_subitem_data, parent_pulse_id):
+    detail_item_data = map_monday_data_to_detail_item(monday_subitem_data, parent_pulse_id)
+    if not detail_item_data['detail_item_surrogate_id']:
+        logger.error("Cannot update DetailItem without a pulse_id.")
+        return None
+
+    with get_db_session() as session:
+        detail_item = session.query(DetailItem).filter_by(
+            detail_item_surrogate_id=detail_item_data['detail_item_surrogate_id']).first()
+        if not detail_item:
+            logger.error(f"DetailItem with ID {detail_item_data['detail_item_surrogate_id']} does not exist.")
+            return None
+
+        for key, value in detail_item_data.items():
+            setattr(detail_item, key, value)
+        session.commit()
+        logger.info(f"Updated DetailItem with ID {detail_item.detail_item_surrogate_id}.")
+        return detail_item
+
+
+# DELETE
+def delete_purchase_order_in_db(pulse_id):
+    with get_db_session() as session:
+        po = session.query(PurchaseOrder).filter_by(po_surrogate_id=pulse_id).first()
+        if not po:
+            logger.error(f"PurchaseOrder with ID {pulse_id} does not exist.")
+            return False
+        session.delete(po)
+        session.commit()
+        logger.info(f"Deleted PurchaseOrder with ID {pulse_id}.")
+        return True
+
+
+def delete_detail_item_in_db(pulse_id):
+    with get_db_session() as session:
+        detail_item = session.query(DetailItem).filter_by(detail_item_surrogate_id=pulse_id).first()
+        if not detail_item:
+            logger.error(f"DetailItem with ID {pulse_id} does not exist.")
+            return False
+        session.delete(detail_item)
+        session.commit()
+        logger.info(f"Deleted DetailItem with ID {pulse_id}.")
+        return True
+
+
+# Synchronization functions
+def sync_purchase_order_from_monday(pulse_id):
+    # Fetch item data from Monday.com
+    item_data = get_item_from_monday(pulse_id)
+    if not item_data:
+        logger.error(f"Failed to retrieve PurchaseOrder with ID {pulse_id} from Monday.com.")
+        return None
+
+    # Check if the PO exists in the database
+    existing_po = get_purchase_order_by_pulse_id(pulse_id)
+    if existing_po:
+        return update_purchase_order_in_db(item_data)
     else:
-        po_type = 'Vendor'
-
-    # Map Monday data to PurchaseOrder schema fields
-    main_item_data = {
-        "pulse_id": monday_data.get("id"),
-        "project_id": column_values.get("project_id", {}).get("text"),
-        "po_number": column_values.get("numbers08", {}).get("text"),
-        "description": column_values.get("text6", {}).get("text"),
-        "tax_form_link": extract_url(column_values, "dup__of_invoice"),  # Use helper function
-        "state": column_values.get("status", {}).get("text"),
-        "producer": column_values.get("people", {}).get("text"),
-        "folder_link": extract_url(column_values, "dup__of_tax_form__1"),
-        "po_type":  po_type
-    }
-
-    return main_item_data
+        return create_purchase_order_in_db(item_data)
 
 
-def map_monday_data_to_sub_item(monday_DetailItem_data):
+def sync_detail_items_from_monday(parent_pulse_id):
+    # Fetch subitems from Monday.com
+    subitems = find_all_po_subitems(parent_pulse_id)
+    if not subitems:
+        logger.info(f"No subitems found for parent item ID {parent_pulse_id}.")
+        return []
+
+    synced_items = []
+    for subitem in subitems:
+        subitem_pulse_id = subitem.get('id')
+        existing_detail_item = get_detail_item_by_pulse_id(subitem_pulse_id)
+        if existing_detail_item:
+            updated_item = update_detail_item_in_db(subitem, parent_pulse_id)
+            synced_items.append(updated_item)
+        else:
+            new_item = create_detail_item_in_db(subitem, parent_pulse_id)
+            synced_items.append(new_item)
+    return synced_items
+
+
+def get_item_from_monday(pulse_id):
     """
-    Maps Monday.com DetailItem data to the DetailItem schema.
-
-    Parameters:
-        monday_DetailItem_data (dict): Raw DetailItem data from Monday.com.
-
-    Returns:
-        dict: A dictionary with keys matching the DetailItem schema.
+    Retrieve an item from Monday.com by its pulse_id.
     """
-    # Extract column_values into a dictionary for easier access
-    column_values = {col['id']: col for col in monday_DetailItem_data.get('column_values', [])}
+    # Implement the function using Monday.com API
+    # Since the code for fetching an item is not provided, here's a placeholder
+    # You should implement this using the appropriate function from monday_util.py
+    pass
 
-
-    # Map Monday data to DetailItem schema fields
-    sub_item_data = {
-        "pulse_id": monday_DetailItem_data.get("id"),
-        "parent_id": (monday_DetailItem_data.get("parent_item") or {}).get("id"),
-        "state": column_values.get("status4", {}).get("text"),
-        "detail_item_id": extract_detail_item_id(column_values.get("text0", {}).get("text", "0").lstrip("0")),
-        "description": column_values.get("text98", {}).get("text"),
-        "rate": column_values.get("numbers9", {}).get("text") or 1,
-        "quantity": column_values.get("numbers0", {}).get("text"),
-        "account_number": column_values.get("dropdown", {}).get("text") or None,
-        "transaction_date": parse_transaction_date(column_values.get("date", {}).get("text")) or None,
-        "file_link": extract_url(column_values, "link"),
-    }
-
-    return sub_item_data
-
-
+# Additional functions as needed

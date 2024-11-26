@@ -8,6 +8,8 @@ import logging
 import os
 from dotenv import load_dotenv
 
+from logger import logger
+
 load_dotenv()
 
 
@@ -105,6 +107,41 @@ CONTACT_ADDRESS_ZIP = 'text84'
 CONTACT_ADDRESS_COUNTRY = 'text6'
 CONTACT_ADDRESS_TAX_TYPE = 'text14'
 CONTACT_ADDRESS_TAX_NUMBER = 'text2'
+
+
+def get_po_number_and_data(self, item_id):
+    """
+    Fetches the PO number and item data for a given item ID.
+    """
+    query = f'''
+    query {{
+        items(ids: {item_id}) {{
+            id
+            name
+            column_values {{
+                id
+                text
+                value
+            }}
+        }}
+    }}
+    '''
+    response = requests.post(self.api_url, headers=self.headers, json={'query': query})
+    data = response.json()
+
+    if response.status_code == 200 and 'data' in data:
+        items = data['data']['items']
+        if items:
+            item = items[0]
+            # Extract PO number based on your specific column ID
+            po_number = None
+            for col in item['column_values']:
+                if col['id'] == 'numbers08':  # Replace with your actual PO Number column ID
+                    po_number = col.get('text')
+                    break
+            return po_number, item
+    logger.error(f"Failed to fetch item data for Item ID {item_id}: {data.get('errors')}")
+    return None, None
 
 
 # FIND PROJECT GROUP IN MONDAY
@@ -1094,3 +1131,69 @@ def get_all_items_from_board(board_id):
             break
 
     return items
+
+
+def get_po_number_and_data(item_id):
+    """
+    Fetches the PO number and item data for a given item ID.
+    """
+    query = f'''
+    query {{
+        items(ids: {item_id}) {{
+            id
+            name
+            column_values {{
+                id
+                text
+                value
+            }}
+        }}
+    }}
+    '''
+    response = requests.post(MONDAY_API_URL, headers=headers, json={'query': query})
+    data = response.json()
+
+    if response.status_code == 200 and 'data' in data:
+        items = data['data']['items']
+        if items:
+            item = items[0]
+            # Extract PO number based on your specific column ID
+            po_number = None
+            for col in item['column_values']:
+                if col['id'] == PO_NUMBER_COLUMN:
+                    po_number = col.get('text')
+                    break
+            return po_number, item
+    logging.error(f"Failed to fetch item data for Item ID {item_id}: {data.get('errors')}")
+    return None, None
+
+def get_subitem_data(subitem_id):
+    """
+    Fetches the subitem data for a given subitem ID.
+    """
+    query = f'''
+    query {{
+        items(ids: {subitem_id}) {{
+            id
+            name
+            parent_item {{
+                id
+            }}
+            column_values {{
+                id
+                text
+                value
+            }}
+        }}
+    }}
+    '''
+    response = requests.post(MONDAY_API_URL, headers=headers, json={'query': query})
+    data = response.json()
+
+    if response.status_code == 200 and 'data' in data:
+        items = data['data']['items']
+        if items:
+            subitem = items[0]
+            return subitem
+    logging.error(f"Failed to fetch subitem data for SubItem ID {subitem_id}: {data.get('errors')}")
+    return None
