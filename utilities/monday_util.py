@@ -160,11 +160,11 @@ def prep_main_item_event_for_db_creation(event):
     Returns:
         dict: A dictionary representing the database creation item.
     """
-    if not event or "data" not in event or "items" not in event["data"]:
-        raise ValueError("Invalid event structure. Ensure the event payload is properly formatted.")
+    # if not event or "data" not in event or "items" not in event["data"]:
+    # raise ValueError("Invalid event structure. Ensure the event payload is properly formatted.")
 
     # Extract the first item from the event payload (assuming a single subitem event)
-    item = event["data"]["items"][0]
+    item = event
     print("MAIN ITEM FOR CREATION:    ", item)
 
     # Prepare the database creation item
@@ -208,7 +208,7 @@ def prep_main_item_event_for_db_creation(event):
     return creation_item
 
 
-# SUBITEM UTILS
+# SUB_ITEM UTILS
 
 def prep_sub_item_event_for_db_change(event):
     """
@@ -216,23 +216,67 @@ def prep_sub_item_event_for_db_change(event):
 
     Args:
         event (dict): The Monday event payload.
-        column_mapping (dict): Mapping of Monday column IDs to DB field names.
 
     Returns:
         dict: A prepared database change item.
     """
     column_id = event.get('columnId')
+    column_type = event.get('columnType', 'default')  # Use 'default' if columnType is not provided
+
+    # Determine the database field for the column
     db_field = SUB_ITEM_COLUMN_ID_TO_DB_FIELD.get(column_id)
     if not db_field:
         raise ValueError(f"Column ID '{column_id}' is not mapped to a database field.")
 
+    # Find the appropriate handler for the column type
+    handler = COLUMN_TYPE_HANDLERS.get(column_type, handle_default_column)
+
+    # Process the value using the appropriate handler
+    new_value = handler(event)
+
+    # Construct the change item
     change_item = {
         "pulse_id": int(event.get('pulseId')),  # Monday pulse ID (subitem ID)
         "db_field": db_field,  # Corresponding DB field
-        "new_value": event['value'].get('label', {}).get('text'),  # Extract new value
+        "new_value": new_value,  # Extracted new value
         "changed_at": datetime.fromtimestamp(event.get('changedAt', 0)),
     }
     return change_item
+
+def handle_date_column(event):
+    """
+    Date handler for columns, extracting a single date.
+    """
+    return event.get('value', {}).get('date', {})
+
+def handle_dropdown_column(event):
+    """
+    Handles dropdown column type and extracts chosen values.
+    """
+    try:
+        previous_value = event.get('previousValue', {}).get('chosenValues', [])
+        if previous_value:
+            # Extract the names of the chosen values
+                return [value.get('id') for value in previous_value]
+    except Exception as e:
+        logger.warning("Setting Account ID to 1 because unexpected Monday Account Value Received")
+        return 1
+    return 1
+
+
+def handle_default_column(event):
+    """
+    Default handler for columns, extracting a single text label.
+    """
+    return event.get('value', {}).get('label', {}).get('text')
+
+
+# Mapping of column types to their handlers
+COLUMN_TYPE_HANDLERS = {
+    "dropdown": handle_dropdown_column,
+    "default": handle_default_column,
+    "date": handle_date_column
+}
 
 
 def prep_sub_item_event_for_db_creation(event):
@@ -246,15 +290,17 @@ def prep_sub_item_event_for_db_creation(event):
     Returns:
         dict: A dictionary representing the database creation item.
     """
-    if not event or "data" not in event or "items" not in event["data"]:
-        raise ValueError("Invalid event structure. Ensure the event payload is properly formatted.")
-
     # Extract the first item from the event payload (assuming a single subitem event)
-    item = event["data"]["items"][0]
-
+    item = event
     # Prepare the database creation item
+    print("ITEM DATA:       ", item)
+    # remove orphan detail items
+    if not item["parent_item"]:
+        return None
+
     creation_item = {
-        "pulse_id": int(item["id"]),  # Monday subitem ID
+        "pulse_id": int(item["id"]),
+        "parent_id": item["parent_item"]["id"]
     }
 
     for column in item["column_values"]:

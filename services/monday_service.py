@@ -3,7 +3,8 @@ import json
 
 import requests
 
-from monday_database_util import create_or_update_contact_item_in_db
+from monday_database_util import create_or_update_contact_item_in_db, create_or_update_main_item_in_db, \
+    create_or_update_sub_item_in_db
 from utilities.config import Config
 
 import utilities.monday_util as M
@@ -138,8 +139,11 @@ class MondayService:
 
         # Now, all_items contains all items from all specified boards
         # Proceed with syncing these items to your database
-        #for item in all_items:
-            # create_purchase_order_in_db(item)
+
+        for item in all_items:
+            creation_item = M.prep_main_item_event_for_db_creation(item)
+            create_or_update_main_item_in_db(creation_item)
+
     #good to go
     def sync_sub_items_from_monday_board(self):
         """
@@ -154,22 +158,25 @@ class MondayService:
         except Exception as e:
             logger.error(f"Error fetching Sub Items from Monday.com: {e}")
             return
-
         try:
             for item in all_items:
-                # Extract the parent ID from the sub-item.
-                # Based on the provided data structure, 'parent_item' contains the parent information.
-                parent_info = item.get('parent_item', {})
-                parent_id = int(parent_info.get('id'))
+                creation_item = M.prep_sub_item_event_for_db_creation(item)
+                if not creation_item:
+                    continue# Skip to the next item
+                result = create_or_update_sub_item_in_db(creation_item)
 
-                if not parent_id:
-                    logger.warning(f"Sub-item {item.get('id')} does not have a parent ID. Skipping.")
-                    continue  # Skip sub-items without a parent ID.
+                if not result:
+                    logger.error(f"Failed to create or update sub-item with pulse_id: {creation_item.get('pulse_id')}")
+                    continue  # Skip to the next item
 
-                # Pass both the sub-item and its parent ID to the update function.
-                #update_detail_item_in_db(item, parent_id)
+                if result.get("status") == "Created":
+                    logger.info(
+                        f"Successfully created sub-item with pulse_id: {creation_item.get('pulse_id')}, surrogate_id: {result.get('detail_item_id')}")
+                else:
+                    logger.error(
+                        f"Failed to create sub-item with pulse_id: {creation_item.get('pulse_id')}. Error: {result.get('error')}")
         except Exception as e:
-            logger.error(f"Error adding Sub Items to DB: {e}")
+            logger.exception(f"Unexpected error while adding Sub Items to DB: {e}")
             return
 
         print("Sub-items synchronization completed successfully.")

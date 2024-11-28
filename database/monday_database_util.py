@@ -3,7 +3,7 @@
 import json
 from datetime import datetime
 
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine, func
 
@@ -92,13 +92,13 @@ def create_or_update_main_item_in_db(item_data):
     with get_db_session() as session:
         try:
             # Check if the item already exists in the database
-            detail_item = session.query(PurchaseOrder).filter_by(pulse_id=pulse_id).one_or_none()
+            po_item = session.query(PurchaseOrder).filter_by(pulse_id=pulse_id).one_or_none()
 
-            if detail_item:
+            if po_item:
                 # Update existing record
                 for db_field, value in item_data.items():
                     if db_field != "pulse_id":  # Skip pulse_id since it's the key
-                        setattr(detail_item, db_field, value)
+                        setattr(po_item, db_field, value)
                 logger.info(f"Updated existing Main with pulse_id: {pulse_id}")
                 status = "Updated"
             else:  # Create a new record
@@ -128,6 +128,8 @@ def create_or_update_sub_item_in_db(item_data):
     pulse_id = item_data.get("pulse_id")
     parent_id = item_data.get("parent_id")
     account_number = item_data.get("account_number_id")
+    if not account_number:
+        account_number = "5000"
     with get_db_session() as session:
         try:
             # Fetch the parent PurchaseOrder using the pulse_id
@@ -136,25 +138,36 @@ def create_or_update_sub_item_in_db(item_data):
             if not po_surrogate_id:
                 raise ValueError(f"No PurchaseOrder found with pulse_id: {parent_id}")
             if not aicp_code_surrogate_id:
-                raise ValueError(f"No AICP Line found with pulse_id: {aicp_code_surrogate_id}")
+                raise ValueError(f"No AICP Line found with surrogate id: {aicp_code_surrogate_id}")
             # set the account number to account surrogate id
             item_data['account_number_id'] = aicp_code_surrogate_id.aicp_code_surrogate_id
             # Set the parent_id to the po_surrogate_id
             item_data['parent_id'] = po_surrogate_id.po_surrogate_id
-
             # Create the new DetailItem
             new_detail_item = DetailItem(**item_data)
-            print(new_detail_item)
-
             session.add(new_detail_item)
             session.commit()
 
-            logger.info(f"Created new DetailItem with pulse_id: {pulse_id}")
-            return "Created"
+            logger.info(
+                f"Created new DetailItem with pulse_id: {pulse_id}, surrogate_id: {new_detail_item.detail_item_surrogate_id}")
+            return {
+                "status": "Created",
+                "detail_item_id": new_detail_item.detail_item_surrogate_id
+            }
+        except IntegrityError as ie:
+            session.rollback()
+            logger.error(f"IntegrityError processing subitem in DB: {ie}")
+            return {
+                "status": "Fail",
+                "error": str(ie)
+            }
         except Exception as e:
             session.rollback()
             logger.error(f"Error processing subitem in DB: {e}")
-            return "Fail"
+            return {
+                "status": "Fail",
+                "error": str(e)
+            }
 
 
 def create_or_update_contact_item_in_db(item_data):

@@ -221,7 +221,7 @@ class BankTransaction(Base):
 class DetailItem(Base):
     __tablename__ = 'detail_items'
 
-    detail_item_surrogate_id = Column(MYSQL_INTEGER, primary_key=True, autoincrement=True, default=1)
+    detail_item_surrogate_id = Column(MYSQL_INTEGER, primary_key=True, autoincrement=True)
     transaction_date = Column(DateTime, nullable=True)
     due_date = Column(DateTime, nullable=True)
     pulse_id = Column(MYSQL_BIGINT, nullable=True, unique=True)
@@ -245,7 +245,6 @@ class DetailItem(Base):
         nullable=False,
         default='PENDING',
     )
-    issue_type = Column(String(45), nullable=True, comment="'PO_LOG_MISMATCH', 'OCR_ERROR', etc.")
     account_number_id = Column(
         MYSQL_INTEGER, ForeignKey('aicp_codes.aicp_code_surrogate_id'), nullable=True
     )
