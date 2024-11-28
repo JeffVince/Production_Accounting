@@ -106,7 +106,7 @@ class MondayDatabaseUtil:
                 item_data['parent_id'] = po_surrogate_id
                 # Set is receipt?
                 if po_type ==  "Vendor":
-                     item_data["is_receipt"] = 0
+                    item_data["is_receipt"] = 0
                 else:
                     item_data["is_receipt"] = 1
 
