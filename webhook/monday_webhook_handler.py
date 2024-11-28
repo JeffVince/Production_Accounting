@@ -231,7 +231,6 @@ def po_status_change():
     """
     logger.debug("PO status change event received")
     event = request.get_json()
-    print(event)
     if not event:
         return jsonify({"error": "Invalid event data"}), 400
 
@@ -249,7 +248,6 @@ def subitem_change():
     """
     logger.debug("SubItem change event received")
     event = request.get_json()
-    print(event)
     if not event:
         return jsonify({"error": "Invalid event data"}), 400
 
@@ -267,7 +265,7 @@ def subitem_delete():
     """
     logger.debug("SubItem delete event received")
     event = request.get_json()
-    print(event)
+
     if not event:
         return jsonify({"error": "Invalid event data"}), 400
 

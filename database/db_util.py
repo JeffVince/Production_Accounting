@@ -8,7 +8,7 @@ from database.base import Base
 from logger import logger  # Remove if not used
 import logging
 
-logging.getLogger("sqlalchemy.engine.Engine").setLevel(logging.DEBUG)
+logging.getLogger("sqlalchemy.engine.Engine").setLevel(logging.ERROR)
 # logging.getLogger("sqlalchemy.pool").setLevel(logging.DEBUG)
 session_factory = None
 
