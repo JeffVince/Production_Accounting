@@ -1,32 +1,29 @@
 # models.py
+import logging
 
 from sqlalchemy import (
     Column,
-    Integer,
     String,
-    Float,
     DateTime,
-    Date,
     ForeignKey,
-    Text,
-    Boolean,
-    DECIMAL,
-    UniqueConstraint,
     Enum,
-    ForeignKeyConstraint,
-    BigInteger,
+    UniqueConstraint,
     Index,
+    Computed,
 )
-from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.dialects.mysql import (
+    INTEGER as MYSQL_INTEGER,
+    TINYINT as MYSQL_TINYINT,
+    DECIMAL as MYSQL_DECIMAL,
+    BIGINT as MYSQL_BIGINT,
+)
 
-# If you have a separate base.py, import Base from there
-# from database.base import Base
 Base = declarative_base()
 
-import logging
 
+# Configure logging levels for SQLAlchemy
 logging.getLogger("sqlalchemy.engine.Engine").setLevel(logging.ERROR)
 logging.getLogger("sqlalchemy.pool").setLevel(logging.ERROR)
 
@@ -35,7 +32,7 @@ logging.getLogger("sqlalchemy.pool").setLevel(logging.ERROR)
 class TaxAccount(Base):
     __tablename__ = 'tax_accounts'
 
-    tax_code_id = Column(Integer, primary_key=True, autoincrement=True)
+    tax_code_id = Column(MYSQL_INTEGER, primary_key=True, autoincrement=True)
     code = Column(String(45), nullable=False, unique=True)
     description = Column(String(255), nullable=True)
 
@@ -49,9 +46,13 @@ class TaxAccount(Base):
 class AicpCode(Base):
     __tablename__ = 'aicp_codes'
 
-    account_code_id = Column(Integer, primary_key=True, autoincrement=True)
-    line_number = Column(String(45), nullable=False, unique=True)
-    tax_code_id = Column(Integer, ForeignKey('tax_accounts.tax_code_id', onupdate='CASCADE', ondelete='RESTRICT'), nullable=False)
+    aicp_code_surrogate_id = Column(MYSQL_INTEGER, primary_key=True, autoincrement=True)
+    code = Column(String(45), nullable=False, unique=True)
+    tax_code_id = Column(
+        MYSQL_INTEGER,
+        ForeignKey('tax_accounts.tax_code_id', onupdate='CASCADE', ondelete='RESTRICT'),
+        nullable=False,
+    )
     description = Column(String(45), nullable=True)
 
     # Relationships
@@ -63,8 +64,8 @@ class AicpCode(Base):
 class Contact(Base):
     __tablename__ = 'contacts'
 
-    contact_surrogate_id = Column(BigInteger, primary_key=True)
-    pulse_id = Column(BigInteger, nullable=False)
+    contact_surrogate_id = Column(MYSQL_INTEGER(unsigned=True), primary_key=True, autoincrement=True)
+    pulse_id = Column(MYSQL_BIGINT, nullable=False, unique=True)
     name = Column(String(100), nullable=False, index=True)
     vendor_type = Column(String(45), nullable=True, index=True)
     payment_details = Column(String(255), nullable=False, default="PENDING")
@@ -73,19 +74,25 @@ class Contact(Base):
     address_line_1 = Column(String(255), nullable=True)
     city = Column(String(100), nullable=True)
     zip = Column(String(20), nullable=True)
+    country = Column(String(100), nullable=True)
     tax_ID = Column(String(45), nullable=True, unique=True)
     tax_form_link = Column(String(255), nullable=True)
-    tax_form_status = Column(String(45), nullable=False, default="PENDING")
+    tax_type = Column(String(45), default="SSN")
+    tax_form_status = Column(Enum('PENDING', 'ON FILE', 'REQUESTED'), nullable=False, default="PENDING")
 
     # Relationships
-    purchase_orders = relationship('PurchaseOrder', back_populates='contact')
+    purchase_orders = relationship(
+        'PurchaseOrder',
+        back_populates='contact',
+        primaryjoin='Contact.pulse_id == PurchaseOrder.contact_id',
+    )
 
 
 # Project Model
 class Project(Base):
     __tablename__ = 'projects'
 
-    project_id = Column(Integer, primary_key=True, autoincrement=False)
+    project_id = Column(MYSQL_INTEGER(unsigned=True), primary_key=True, autoincrement=False)
     name = Column(String(100), nullable=False)
     status = Column(Enum('Active', 'Closed'), nullable=False)
 
@@ -97,31 +104,48 @@ class Project(Base):
 class PurchaseOrder(Base):
     __tablename__ = 'purchase_orders'
 
-    po_surrogate_id = Column(BigInteger, primary_key=True)
-    state = Column(String(45), nullable=False, default='PENDING')
-    amount_total = Column(DECIMAL(15, 2), nullable=False, default=0.00)
-    description = Column(String(255), nullable=True)
+    po_surrogate_id = Column(MYSQL_INTEGER(unsigned=True), primary_key=True, autoincrement=True)
+    contact_id = Column(
+        MYSQL_BIGINT,
+        ForeignKey('contacts.pulse_id', onupdate='CASCADE', ondelete='RESTRICT'),
+        nullable=False,
+    )
+    pulse_id = Column(MYSQL_BIGINT, nullable=True, unique=True)
+    project_id = Column(
+        MYSQL_INTEGER(unsigned=True),
+        ForeignKey('projects.project_id', onupdate='CASCADE', ondelete='RESTRICT'),
+        nullable=False,
+    )
+    po_number = Column(MYSQL_INTEGER(unsigned=True), nullable=False)
+    po_type = Column(String(45), nullable=False)
+    state = Column(
+        Enum('APPROVED', 'TO VERIFY', 'ISSUE', 'PENDING', 'CC / PC'),
+        nullable=False,
+        default='PENDING',
+    )
+    amount_total = Column(MYSQL_DECIMAL(15, 2), nullable=False, default=0.00)
     folder_link = Column(String(255), nullable=True)
     producer = Column(String(100), nullable=True)
-    po_type = Column(String(45), nullable=False)
-    pulse_id = Column(BigInteger, nullable=False, unique=True)
     issue_type = Column(String(45), nullable=True)
     tax_form_link = Column(String(255), nullable=True)
-    contact_id = Column(BigInteger, ForeignKey('contacts.contact_surrogate_id', onupdate='CASCADE', ondelete='SET NULL'), nullable=True)
-    project_id = Column(Integer, ForeignKey('projects.project_id', onupdate='CASCADE', ondelete='RESTRICT'), nullable=False)
-    po_number = Column(BigInteger, nullable=False)
+    description = Column(String(255), nullable=True)
 
     __table_args__ = (
         UniqueConstraint('project_id', 'po_number', name='project_id_po_number'),
     )
 
     # Indexes
+    Index('purchase_orders_po_surrogate_id_uindex', 'po_surrogate_id', unique=True)
     Index('purchase_orders_pulse_id_uindex', 'pulse_id', unique=True)
     Index('fk_purchase_orders_contacts1_idx', 'contact_id')
 
     # Relationships
     project = relationship('Project', back_populates='purchase_orders')
-    contact = relationship('Contact', back_populates='purchase_orders')
+    contact = relationship(
+        'Contact',
+        back_populates='purchase_orders',
+        primaryjoin='PurchaseOrder.contact_id == Contact.pulse_id',
+    )
     detail_items = relationship('DetailItem', back_populates='purchase_order')
     invoices = relationship('Invoice', back_populates='purchase_order')
 
@@ -130,16 +154,20 @@ class PurchaseOrder(Base):
 class Invoice(Base):
     __tablename__ = 'invoices'
 
-    invoice_surrogate_id = Column(Integer, primary_key=True, autoincrement=True)
+    invoice_surrogate_id = Column(MYSQL_INTEGER, primary_key=True, autoincrement=True)
     transaction_date = Column(DateTime, nullable=True)
-    term = Column(Integer, nullable=True)
-    total = Column(DECIMAL(15, 2), nullable=True)
-    invoice_number = Column(Integer, nullable=False)
+    term = Column(MYSQL_INTEGER, nullable=True)
+    total = Column(MYSQL_DECIMAL(15, 2), nullable=True)
+    invoice_number = Column(MYSQL_INTEGER, nullable=False)
     file_link = Column(String(255), nullable=True)
-    po_surrogate_id = Column(BigInteger, ForeignKey('purchase_orders.po_surrogate_id', onupdate='CASCADE', ondelete='RESTRICT'), nullable=False)
+    po_id = Column(
+        MYSQL_INTEGER(unsigned=True),
+        ForeignKey('purchase_orders.po_surrogate_id', onupdate='CASCADE', ondelete='RESTRICT'),
+        nullable=False,
+    )
 
     __table_args__ = (
-        UniqueConstraint('po_surrogate_id', 'invoice_number', name='po_surrogate_id_invoice_number_UNIQUE'),
+        UniqueConstraint('po_id', 'invoice_number', name='po_surrogate_id_invoice_number_UNIQUE'),
     )
 
     # Relationships
@@ -151,9 +179,13 @@ class Invoice(Base):
 class XeroBill(Base):
     __tablename__ = 'xero_bills'
 
-    bill_surrogate_id = Column(Integer, primary_key=True, autoincrement=True)
+    bill_surrogate_id = Column(MYSQL_INTEGER, primary_key=True, autoincrement=True)
     state = Column(String(45), nullable=False, default='Draft')
-    invoice_id = Column(Integer, ForeignKey('invoices.invoice_surrogate_id', onupdate='CASCADE', ondelete='CASCADE'), nullable=False)
+    invoice_id = Column(
+        MYSQL_INTEGER,
+        ForeignKey('invoices.invoice_surrogate_id', onupdate='CASCADE', ondelete='CASCADE'),
+        nullable=False,
+    )
     xero_id = Column(String(45), nullable=True, unique=True)
 
     # Indexes
@@ -169,10 +201,14 @@ class XeroBill(Base):
 class BankTransaction(Base):
     __tablename__ = 'bank_transactions'
 
-    bank_transaction_id = Column(Integer, primary_key=True, autoincrement=True)
+    bank_transaction_id = Column(MYSQL_INTEGER, primary_key=True, autoincrement=True)
     mercury_transaction_id = Column(String(100), nullable=False, unique=True)
     state = Column(String(45), nullable=False, default='Pending')
-    bill_id = Column(Integer, ForeignKey('xero_bills.bill_surrogate_id', ondelete='CASCADE'), nullable=False)
+    bill_id = Column(
+        MYSQL_INTEGER,
+        ForeignKey('xero_bills.bill_surrogate_id', ondelete='CASCADE'),
+        nullable=False,
+    )
 
     # Indexes
     Index('fk_bill_id_idx', 'bill_id')
@@ -185,59 +221,72 @@ class BankTransaction(Base):
 class DetailItem(Base):
     __tablename__ = 'detail_items'
 
-    detail_item_surrogate_id = Column(BigInteger, primary_key=True)
+    detail_item_surrogate_id = Column(MYSQL_INTEGER, primary_key=True, autoincrement=True, default=1)
     transaction_date = Column(DateTime, nullable=True)
     due_date = Column(DateTime, nullable=True)
-    rate = Column(DECIMAL(15, 2), nullable=False)
-    quantity = Column(DECIMAL(15, 2), nullable=False, default=1.00)
+    pulse_id = Column(MYSQL_BIGINT, nullable=True, unique=True)
+    rate = Column(MYSQL_DECIMAL(15, 2), nullable=False)
+    quantity = Column(MYSQL_DECIMAL(15, 2), nullable=False, default=1.00)
+    sub_total = Column(
+        MYSQL_DECIMAL(15, 2),
+        Computed('ROUND(rate * quantity, 2)', persisted=True),
+        nullable=False,
+    )  # Generated column
     description = Column(String(255), nullable=True)
     file_link = Column(String(255), nullable=True, comment='Link to invoice or receipt in Dropbox')
-    is_receipt = Column(Boolean, nullable=False, default=False, comment='1 for receipts, 0 for invoices')
-    state = Column(String(45), nullable=False, default='Pending')
-    pulse_id = Column(BigInteger, nullable=True, unique=True, comment='Integration with Monday.com')
-    issue_type = Column(String(45), nullable=True, comment="'PO_LOG_MISMATCH', 'OCR_ERROR', etc.")
-    account_number_id = Column(Integer, ForeignKey('aicp_codes.account_code_id'), nullable=False)
-    project_id = Column(Integer, nullable=False)
-    po_number = Column(BigInteger, nullable=False)
-    detail_item_id = Column(Integer, nullable=False)
-
-    __table_args__ = (
-        UniqueConstraint('detail_item_id', 'po_number', 'project_id', name='project_id_po_number_detail_id'),
-        ForeignKeyConstraint(
-            ['project_id', 'po_number'],
-            ['purchase_orders.project_id', 'purchase_orders.po_number'],
-            onupdate='CASCADE',
-            ondelete='CASCADE',
-            name='project_id_po_number',
-        ),
+    is_receipt = Column(
+        MYSQL_TINYINT(unsigned=True),
+        nullable=False,
+        default=0,
+        comment='1 for receipts, 0 for invoices',
     )
+    state = Column(
+        Enum('PENDING', 'ISSUE', 'RTP', 'RECONCILED', 'PAID', 'APPROVED'),
+        nullable=False,
+        default='PENDING',
+    )
+    issue_type = Column(String(45), nullable=True, comment="'PO_LOG_MISMATCH', 'OCR_ERROR', etc.")
+    account_number_id = Column(
+        MYSQL_INTEGER, ForeignKey('aicp_codes.aicp_code_surrogate_id'), nullable=True
+    )
+    parent_id = Column(
+        MYSQL_INTEGER(unsigned=True),
+        ForeignKey('purchase_orders.po_surrogate_id'),
+        nullable=False,
+    )
+    detail_item_number = Column(MYSQL_INTEGER(unsigned=True), nullable=False, default=1)
 
     # Indexes
-    Index('detail_items_pulse_id_uindex', 'pulse_id', unique=True)
-    Index('project_id_po_number_idx', 'project_id', 'po_number')
     Index('account_number_idx', 'account_number_id')
+    Index('fk_parent_pulse_id_idx', 'parent_id')
 
     # Relationships
-    purchase_order = relationship('PurchaseOrder', back_populates='detail_items', primaryjoin='and_(DetailItem.project_id == PurchaseOrder.project_id, DetailItem.po_number == PurchaseOrder.po_number)')
+    purchase_order = relationship('PurchaseOrder', back_populates='detail_items')
     account_code = relationship('AicpCode', back_populates='detail_items')
     bill_line_items = relationship('BillLineItem', back_populates='detail_item')
     receipt = relationship('Receipt', back_populates='detail_item', uselist=False)
-
-    @hybrid_property
-    def sub_total(self):
-        return round(self.rate * self.quantity, 2)
 
 
 # BillLineItem Model
 class BillLineItem(Base):
     __tablename__ = 'bill_line_items'
 
-    bill_line_surrogate_id = Column(Integer, primary_key=True, autoincrement=True)
-    bill_id = Column(Integer, ForeignKey('xero_bills.bill_surrogate_id', onupdate='CASCADE', ondelete='CASCADE'), nullable=False)
-    tax_account_id = Column(Integer, ForeignKey('tax_accounts.tax_code_id'), nullable=False)
-    detail_item_id = Column(BigInteger, ForeignKey('detail_items.detail_item_surrogate_id', onupdate='CASCADE', ondelete='CASCADE'), nullable=False, unique=True)
+    bill_line_surrogate_id = Column(MYSQL_INTEGER, primary_key=True, autoincrement=True)
+    bill_id = Column(
+        MYSQL_INTEGER,
+        ForeignKey('xero_bills.bill_surrogate_id', onupdate='CASCADE', ondelete='CASCADE'),
+        nullable=False,
+    )
+    tax_account_id = Column(MYSQL_INTEGER, ForeignKey('tax_accounts.tax_code_id'), nullable=False)
+    detail_item_id = Column(
+        MYSQL_INTEGER,
+        ForeignKey('detail_items.detail_item_surrogate_id', onupdate='CASCADE', ondelete='CASCADE'),
+        nullable=False,
+        unique=True,
+    )
 
     # Indexes
+    Index('fk_detail_id_idx', 'detail_item_id', unique=True)
     Index('fk_bill_line_items_bills_idx', 'bill_id')
     Index('fk_tax_code_id_idx', 'tax_account_id')
 
@@ -251,27 +300,23 @@ class BillLineItem(Base):
 class Receipt(Base):
     __tablename__ = 'receipt'
 
-    receipt_surrogate_id = Column(BigInteger, primary_key=True)
-    total = Column(DECIMAL(15, 2), nullable=True)
+    receipt_surrogate_id = Column(MYSQL_INTEGER, primary_key=True, autoincrement=False)
+    total = Column(MYSQL_DECIMAL(15, 2), nullable=True)
     receipt_description = Column(String(45), nullable=True)
     purchase_date = Column(DateTime, nullable=True)
-    project_id = Column(Integer, nullable=False)
-    po_number = Column(Integer, nullable=False)
-    receipt_number = Column(Integer, nullable=False)
+    receipt_number = Column(MYSQL_INTEGER, nullable=False)
     file_link = Column(String(255), nullable=True)
-
-    __table_args__ = (
-        ForeignKeyConstraint(
-            ['receipt_surrogate_id'],
-            ['detail_items.detail_item_surrogate_id'],
-            onupdate='CASCADE',
-            ondelete='RESTRICT',
-            name='fk_detail_surrogate_id',
-        ),
+    detail_item_id = Column(
+        MYSQL_INTEGER,
+        ForeignKey('detail_items.detail_item_surrogate_id', onupdate='CASCADE', ondelete='RESTRICT'),
+        nullable=True,
     )
 
+    # Indexes
+    Index('fk_detail_surrogate_id', 'detail_item_id')
+
     # Relationships
-    detail_item = relationship('DetailItem', back_populates='receipt', uselist=False)
+    detail_item = relationship('DetailItem', back_populates='receipt')
     spend_money = relationship('SpendMoney', back_populates='receipt', uselist=False)
 
 
@@ -279,14 +324,25 @@ class Receipt(Base):
 class SpendMoney(Base):
     __tablename__ = 'spend_money'
 
-    spend_money_surrogate_id = Column(Integer, primary_key=True, autoincrement=True)
+    spend_money_surrogate_id = Column(MYSQL_INTEGER, primary_key=True, autoincrement=True)
     xero_spend_money_id = Column(String(100), nullable=True, unique=True)
-    tax_account_id = Column(Integer, ForeignKey('tax_accounts.tax_code_id', onupdate='CASCADE', ondelete='RESTRICT'), nullable=False)
+    tax_account_id = Column(
+        MYSQL_INTEGER,
+        ForeignKey('tax_accounts.tax_code_id', onupdate='CASCADE', ondelete='RESTRICT'),
+        nullable=False,
+    )
     file_link = Column(String(255), nullable=True)
     state = Column(String(45), nullable=False, default='Draft')
-    receipt_id = Column(BigInteger, ForeignKey('receipt.receipt_surrogate_id', onupdate='CASCADE', ondelete='CASCADE'), nullable=False, unique=True)
+    receipt_id = Column(
+        MYSQL_INTEGER,
+        ForeignKey('receipt.receipt_surrogate_id', onupdate='CASCADE', ondelete='CASCADE'),
+        nullable=False,
+        unique=True,
+    )
 
     # Indexes
+    Index('receipt_id_UNIQUE', 'receipt_id', unique=True)
+    Index('xero_spend_money_id_UNIQUE', 'xero_spend_money_id', unique=True)
     Index('fk_tax_account_id_idx', 'tax_account_id')
     Index('fk_receipt_id_idx', 'receipt_id')
 

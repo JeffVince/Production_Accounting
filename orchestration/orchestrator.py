@@ -66,6 +66,7 @@ class Orchestrator:
         #self.schedule_po_log_check()
         self.schedule_monday_main_items_sync()
         self.schedule_monday_sub_items_sync()
+        self.schedule_monday_contact_sync()
         #self.coordinate_state_transitions()
 
     def handle_po_in_rtp(self, po):
@@ -126,13 +127,12 @@ class Orchestrator:
 
         def sync_monday_to_main_items():
             while True:
+                time.sleep(interval)
                 logger.info("Fetching Main Item entries")
                 try:
                     self.monday_service.sync_main_items_from_monday_board()
                 except Exception as e:
                     logger.error(f"Error fetching Main Item entries: {e}")
-                time.sleep(interval)
-
         threading.Thread(target=sync_monday_to_main_items, daemon=True).start()
 
     def schedule_monday_sub_items_sync(self, interval=90000):
@@ -145,6 +145,20 @@ class Orchestrator:
                     self.monday_service.sync_sub_items_from_monday_board()
                 except Exception as e:
                     logger.error(f"Error fetching Sub Item entries and syncing them to DB: {e}")
+        threading.Thread(target=sync_monday_to_sub_items, daemon=True).start()
+
+    def schedule_monday_contact_sync(self, interval=90000):
+
+        def sync_monday_to_sub_items():
+            while True:
+                time.sleep(interval)
+
+                logger.info("Fetching Sub Item entries")
+                try:
+                    self.monday_service.sync_contacts_from_monday_board()
+                except Exception as e:
+                    logger.error(f"Error fetching Sub Item entries and syncing them to DB: {e}")
+
 
         threading.Thread(target=sync_monday_to_sub_items, daemon=True).start()
 

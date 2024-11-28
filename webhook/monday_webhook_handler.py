@@ -7,22 +7,22 @@ from sqlalchemy.exc import SQLAlchemyError
 # Import database utility functions
 from database.monday_database_util import (
     get_purchase_order_by_pulse_id,
-    update_purchase_order_in_db,
-    create_purchase_order_in_db,
     get_detail_item_by_pulse_id,
-    create_detail_item_in_db,
-    update_detail_item_in_db,
-    delete_detail_item_in_db)
+    delete_detail_item_in_db, update_db_with_sub_item_change,
+    create_or_update_main_item_in_db, create_or_update_sub_item_in_db)
 
 # Import Monday utility functions
 from utilities.monday_util import (
     get_po_number_and_data,
-    get_subitem_data,
     PO_STATUS_COLUMN_ID,
     SUBITEM_BOARD_ID,
     SUBITEM_STATUS_COLUMN_ID,
-    PO_BOARD_ID,
+    PO_BOARD_ID, prep_sub_item_event_for_db_change, prep_sub_item_event_for_db_creation,
+    prep_main_item_event_for_db_creation,
 )
+
+from monday_api import MondayAPI
+
 
 # Import logger setup
 from utilities.logger import setup_logging
@@ -36,7 +36,7 @@ monday_blueprint = Blueprint('monday', __name__)
 
 class MondayWebhookHandler:
     def __init__(self):
-        pass  # Initialize any required services or configurations here
+        self.mondayAPI = MondayAPI()
 
     @staticmethod
     def verify_challenge(event):
@@ -113,12 +113,12 @@ class MondayWebhookHandler:
                     })
 
                 # Check for main item in database
-                if get_purchase_order_by_pulse_id(item_id):
+               # if get_purchase_order_by_pulse_id(item_id):
                     # Update the Purchase Order in the database
-                    update_purchase_order_in_db(item_data)
-                else:
+                    #update_purchase_order_in_db(item_data)
+              #  else:
                     # Create a new Purchase Order in the database
-                    create_purchase_order_in_db(item_data)
+                    # create_purchase_order_in_db(item_data)
 
                 logger.info(f"Updated Main Item state to {mapped_status} for PO {po_number}.")
             else:
@@ -144,35 +144,32 @@ class MondayWebhookHandler:
                 logger.error("Missing 'event' key in the event data.")
                 return jsonify({"error": "Invalid event data: Missing 'event' key"}), 400
 
-            # Extract the subitem ID (pulseId)
-            subitem_id = event.get('pulseId')
-            logger.debug(f"Extracted SubItem ID (pulseId): {subitem_id}")
+            change_item = prep_sub_item_event_for_db_change(event)
 
-            if not subitem_id:
-                logger.error("Missing 'pulseId' in the event.")
-                return jsonify({"error": "Invalid event data: Missing 'pulseId'"}), 400
+            result = update_db_with_sub_item_change(change_item)
 
-            # Fetch subitem data from Monday.com
-            subitem_data = get_subitem_data(subitem_id)
-            if not subitem_data:
-                logger.error(f"Unable to fetch subitem data for ID {subitem_id}")
-                return jsonify({"error": f"SubItem data not found for ID {subitem_id}"}), 400
-
-            parent_id = subitem_data.get('parent_item', {}).get('id')
-            if not parent_id:
-                logger.error(f"Parent item ID not found for SubItem ID {subitem_id}")
-                return jsonify({"error": f"Parent item ID not found for SubItem ID {subitem_id}"}), 400
-
-            # Check if the DetailItem exists in the database
-            if get_detail_item_by_pulse_id(subitem_id):
-                # Update the DetailItem in the database
-                update_detail_item_in_db(subitem_data, parent_id)
-            else:
-                # Create a new DetailItem in the database
-                create_detail_item_in_db(subitem_data, parent_id)
-
-            logger.info(f"Successfully processed SubItem change for ID: {subitem_id}")
-
+            if result == "Success":
+                logger.info(f"Successfully processed SubItem change for ID: {change_item['pulse_id']}")
+            elif result == "Not Found":
+                # CREATE SUBITEM IN DB
+                print("Sub Item not found in DB, creating one.")
+                parent_id = event.get('parentItemId')
+                # check if parent exists first
+                if not get_purchase_order_by_pulse_id(parent_id):                    # add parent item to DB
+                    # get item from Monday
+                    item_data = self.mondayAPI.fetch_item_by_ID(parent_id)
+                    # format for creation
+                    create_main_item = prep_main_item_event_for_db_creation(item_data)
+                    # create in DB
+                    if not create_or_update_main_item_in_db(create_main_item):
+                        return jsonify({"error": "Failed to create new detail item"}), 400
+                item_data = self.mondayAPI.fetch_item_by_ID(change_item['pulse_id'])
+                create_item = prep_sub_item_event_for_db_creation(item_data)
+                create_item["parent_id"] = parent_id
+                create_result = create_or_update_sub_item_in_db(create_item)
+                if create_result == "Fail":
+                    return jsonify({"error": "Failed to create new detail item"}), 400
+                    # add to DB
             return jsonify({"message": "SubItem change processed successfully"}), 200
 
         except SQLAlchemyError as e:
@@ -216,6 +213,7 @@ handler = MondayWebhookHandler()
 def po_status_change():
     logger.debug("PO status change event received")
     event = request.get_json()
+    print(event)
     if not event:
         return jsonify({"error": "Invalid event data"}), 400
     # Handle the challenge
@@ -230,6 +228,7 @@ def po_status_change():
 def subitem_change():
     logger.debug("SubItem change event received")
     event = request.get_json()
+    print(event)
     if not event:
         return jsonify({"error": "Invalid event data"}), 400
     # Handle the challenge
@@ -244,6 +243,7 @@ def subitem_change():
 def subitem_delete():
     logger.debug("SubItem delete event received")
     event = request.get_json()
+    print(event)
     if not event:
         return jsonify({"error": "Invalid event data"}), 400
     # Handle the challenge

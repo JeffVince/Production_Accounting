@@ -1,8 +1,9 @@
 # services/monday_service.py
+import json
 
 import requests
 
-from monday_database_util import create_purchase_order_in_db, update_detail_item_in_db
+from monday_database_util import create_or_update_contact_item_in_db
 from utilities.config import Config
 
 import utilities.monday_util as M
@@ -18,6 +19,7 @@ class MondayService:
         self.api_token = Config.MONDAY_API_TOKEN
         self.board_id = M.PO_BOARD_ID
         self.subitem_board_id = M.SUBITEM_BOARD_ID
+        self.contact_board_id = M.CONTACT_BOARD_ID
         self.api_url = 'https://api.monday.com/v2/'
         self.monday_api = MondayAPI()
         self.monday_client = MondayClient(self.api_token)
@@ -32,24 +34,27 @@ class MondayService:
         response.raise_for_status()
         return response.json()
 
-    def update_po_status(self, po_number: str, status: str):
+    def update_po_status(self, pulse_id: int, status: str):
         """Update the status of a PO in Monday.com."""
         query = '''
-        mutation ($po_number: String!, $status: String!, $board_id: String!) {
+        mutation ($board_id: Int!, $item_id: Int!, $column_id: String!, $value: JSON!) {
             change_column_value(
                 board_id: $board_id,
-                item_id: $po_number,
-                column_id: "status",
-                value: $status
+                item_id: $item_id,
+                column_id: $column_id,
+                value: $value
             ) {
                 id
             }
         }
         '''
-        variables = {'po_number': po_number, 'status': status, 'board_id': self.board_id}
+        variables = {
+            'board_id': int(self.board_id),
+            'item_id': pulse_id,
+            'column_id': M.PO_STATUS_COLUMN_ID,
+            'value': json.dumps({'label': status})
+        }
         self._make_request(query, variables)
-        # Update local database
-        #update_monday_po_status(po_number, status)
 
     def verify_po_tax_compliance(self, po_number: str) -> bool:
         """Verify tax compliance for a PO."""
@@ -122,35 +127,71 @@ class MondayService:
         column_values = '{"contacts": {"item_ids": [' + str(contact_id) + ']}}'
         return self.update_item(item_id, column_values)
 
+    #good to go
     def sync_main_items_from_monday_board(self):
         """
         Synchronize all items from Monday.com boards to your database.
         """
         print(f"Fetching items from board {self.board_id}...")
-        all_items = self.monday_api.fetch_all_main_items(self.board_id)
+        all_items = self.monday_api.fetch_all_items(self.board_id)
         print(f"Total items fetched from board {self.board_id}: {len(all_items)}")
 
         # Now, all_items contains all items from all specified boards
         # Proceed with syncing these items to your database
-        for item in all_items:
-            create_purchase_order_in_db(item)
-
+        #for item in all_items:
+            # create_purchase_order_in_db(item)
+    #good to go
     def sync_sub_items_from_monday_board(self):
         """
-        Synchronize all items from Monday.com boards to your database.
+        Synchronize all sub-items from a Monday.com board to your database.
+        Each sub-item is associated with a parent item. This function fetches all sub-items,
+        extracts their parent IDs, and updates the database accordingly.
         """
         try:
-            print(f"Fetching items from board {self.subitem_board_id}...")
+            print(f"Fetching sub-items from board {self.subitem_board_id}...")
             all_items = self.monday_api.fetch_all_sub_items(self.subitem_board_id)
-            print(f"Total items fetched from board {self.subitem_board_id}: {len(all_items)}")
+            print(f"Total sub-items fetched from board {self.subitem_board_id}: {len(all_items)}")
         except Exception as e:
-            logger.error(f"Error fetching Sub Item from Monday: {e}")
+            logger.error(f"Error fetching Sub Items from Monday.com: {e}")
             return
 
         try:
-            update_detail_item_in_db(all_items)
+            for item in all_items:
+                # Extract the parent ID from the sub-item.
+                # Based on the provided data structure, 'parent_item' contains the parent information.
+                parent_info = item.get('parent_item', {})
+                parent_id = int(parent_info.get('id'))
+
+                if not parent_id:
+                    logger.warning(f"Sub-item {item.get('id')} does not have a parent ID. Skipping.")
+                    continue  # Skip sub-items without a parent ID.
+
+                # Pass both the sub-item and its parent ID to the update function.
+                #update_detail_item_in_db(item, parent_id)
         except Exception as e:
-            logger.error(f"Error adding Sub Item to DB: {e}")
+            logger.error(f"Error adding Sub Items to DB: {e}")
             return
 
+        print("Sub-items synchronization completed successfully.")
+        return
+
+    def sync_contacts_from_monday_board(self):
+        """
+        Synchronize all contacts from a Monday.com board to your database.
+        """
+        try:
+            print(f"Fetching contacts from board {self.contact_board_id}...")
+            all_contacts = self.monday_api.fetch_all_contacts(self.contact_board_id)
+            print(f"Total contacts fetched from board {self.subitem_board_id}: {len(all_contacts)}")
+        except Exception as e:
+            logger.error(f"Error fetching Contacts from Monday.com: {e}")
+            return
+        try:
+            for item in all_contacts:
+                prepped_item = M.prep_contact_event_for_db_creation(item)
+                create_or_update_contact_item_in_db(prepped_item)
+        except Exception as e:
+            logger.error(f"Error adding contacts to DB: {e}")
+            return
+        print("Contacts synchronization completed successfully.")
         return

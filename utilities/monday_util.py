@@ -1,7 +1,7 @@
 # utilities/Monday_util.py
+from datetime import datetime
 
 import requests
-
 
 import json
 import logging
@@ -68,6 +68,7 @@ def get_subitem_board_id(parent_board_id):
     else:
         raise Exception(f"Failed to retrieve subitem board ID: {response.text}")
 
+
 ### CONSTANTS ####
 
 
@@ -82,11 +83,11 @@ MONDAY_API_TOKEN = os.getenv("MONDAY_API_TOKEN")
 PO_PROJECT_ID_COLUMN = 'project_id'  # Monday.com Project ID column ID
 PO_NUMBER_COLUMN = 'numbers08'  # Monday.com PO Number column ID
 PO_TAX_COLUMN_ID = 'dup__of_invoice'  # TAX link column ID
-PO_DESCRIPTION_COLUMN_ID = 'text6' # Item Description column ID
-PO_CONNECTION_COLUMN_ID = 'connect_boards1'
+PO_DESCRIPTION_COLUMN_ID = 'text6'  # Item Description column ID
+PO_CONTACT_CONNECTION_COLUMN_ID = 'connect_boards1'
 PO_FOLDER_LINK_COLUMN_ID = 'dup__of_tax_form__1'
 PO_STATUS_COLUMN_ID = 'status'
-
+PO_PRODUCER_COLUMN_ID = 'people'
 
 SUBITEM_NOTES_COLUMN_ID = 'payment_notes__1'
 SUBITEM_STATUS_COLUMN_ID = 'status4'
@@ -95,20 +96,232 @@ SUBITEM_DESCRIPTION_COLUMN_ID = 'text98'  # Description column ID
 SUBITEM_QUANTITY_COLUMN_ID = 'numbers0'  # Quantity column ID
 SUBITEM_RATE_COLUMN_ID = 'numbers9'  # Rate column ID
 SUBITEM_DATE_COLUMN_ID = 'date'  # Date column ID
-SUBITEM_DUE_DATE_COLUMN_ID ='date_1__1'
+SUBITEM_DUE_DATE_COLUMN_ID = 'date_1__1'
 SUBITEM_ACCOUNT_NUMBER_COLUMN_ID = 'dropdown'  # Account Number column ID
-SUBITEM_LINK_COLUMN_ID ='link' # link column ID
+SUBITEM_LINK_COLUMN_ID = 'link'  # link column ID
 
+CONTACT_NAME = 'name'
 CONTACT_PHONE = 'phone'
 CONTACT_EMAIL = 'email'
 CONTACT_ADDRESS_LINE_1 = 'text1'
 CONTACT_ADDRESS_CITY = 'text3'
 CONTACT_ADDRESS_ZIP = 'text84'
 CONTACT_ADDRESS_COUNTRY = 'text6'
-CONTACT_ADDRESS_TAX_TYPE = 'text14'
-CONTACT_ADDRESS_TAX_NUMBER = 'text2'
+CONTACT_TAX_TYPE = 'text14'
+CONTACT_TAX_NUMBER = 'text2'
+CONTACT_PAYMENT_DETAILS = 'status__1'
+
+MAIN_ITEM_COLUMN_ID_TO_DB_FIELD = {
+    # Monday Subitem Columns -> DB DetailItem Columns
+    "id": "pulse_id",
+    PO_PROJECT_ID_COLUMN: "project_id",  #
+    PO_NUMBER_COLUMN: "po_number",  #
+    PO_TAX_COLUMN_ID: "tax_form_link",  #
+    PO_DESCRIPTION_COLUMN_ID: "description",  #
+    PO_CONTACT_CONNECTION_COLUMN_ID: "contact_id",  #
+    PO_FOLDER_LINK_COLUMN_ID: "folder_link",  #
+    PO_STATUS_COLUMN_ID: "state",  #
+    PO_PRODUCER_COLUMN_ID: "producer"
+}
+
+SUB_ITEM_COLUMN_ID_TO_DB_FIELD = {
+    # Monday Subitem Columns -> DB DetailItem Columns
+    SUBITEM_STATUS_COLUMN_ID: "state",  # Maps to the state ENUM in the DB
+    SUBITEM_ID_COLUMN_ID: "detail_item_number",  # Maps to file_link in the DB
+    SUBITEM_DESCRIPTION_COLUMN_ID: "description",  # Maps to description in the DB
+    SUBITEM_QUANTITY_COLUMN_ID: "quantity",  # Maps to quantity in the DB
+    SUBITEM_RATE_COLUMN_ID: "rate",  # Maps to rate in the DB
+    SUBITEM_DATE_COLUMN_ID: "transaction_date",  # Maps to transaction_date in the DB
+    SUBITEM_ACCOUNT_NUMBER_COLUMN_ID: "account_number_id",  # Maps to account_number_id in the DB
+    SUBITEM_LINK_COLUMN_ID: "file_link"  # Maps to file_link for link references in the DB
+}
+
+CONTACT_COLUMN_ID_TO_DB_FIELD = {
+    # Monday.com Columns -> DB Contact Model Fields
+    CONTACT_PHONE: 'phone',
+    CONTACT_EMAIL: 'email',
+    CONTACT_ADDRESS_LINE_1: 'address_line_1',
+    CONTACT_ADDRESS_CITY: 'city',
+    CONTACT_ADDRESS_ZIP: 'zip',
+    CONTACT_TAX_TYPE: 'tax_type',
+    CONTACT_TAX_NUMBER: 'tax_ID',
+    CONTACT_PAYMENT_DETAILS: 'payment_details'
+}
 
 
+# MAIN ITEM UTILS
+def prep_main_item_event_for_db_creation(event):
+    """
+    Prepares the Monday event payload into a database creation item.
+
+    Args:
+        event (dict): The Monday event payload.
+
+    Returns:
+        dict: A dictionary representing the database creation item.
+    """
+    if not event or "data" not in event or "items" not in event["data"]:
+        raise ValueError("Invalid event structure. Ensure the event payload is properly formatted.")
+
+    # Extract the first item from the event payload (assuming a single subitem event)
+    item = event["data"]["items"][0]
+    print("MAIN ITEM FOR CREATION:    ", item)
+
+    # Prepare the database creation item
+    creation_item = {
+        "pulse_id": int(item["id"]),  # Monday subitem ID
+    }
+
+    po_type = "Vendor"  # Default po_type value
+
+    for column in item["column_values"]:
+        column_id = column.get("id")
+        db_field = MAIN_ITEM_COLUMN_ID_TO_DB_FIELD.get(column_id)
+
+        if db_field:
+            # Map the corresponding value to the database field
+            value = column.get("text") or column.get("value")
+
+            # Handle cases where value is a JSON string
+            if isinstance(value, str):
+                try:
+                    value = json.loads(value)
+                except (ValueError, TypeError):
+                    pass
+
+            # Special handling for specific fields
+            if db_field == "contact_id" and isinstance(value, dict):
+                # Extract the first linkedPulseId if present
+                linked_pulse_ids = value.get("linkedPulseIds", [])
+                value = linked_pulse_ids[0]["linkedPulseId"] if linked_pulse_ids else None
+
+            # Check status to determine po_type
+            if db_field == "state" and value == "CC / PC":
+                po_type = "CC / PC"
+
+            # Assign processed value
+            creation_item[db_field] = value
+
+    # Add po_type to the creation item
+    creation_item["po_type"] = po_type
+
+    return creation_item
+
+
+# SUBITEM UTILS
+
+def prep_sub_item_event_for_db_change(event):
+    """
+    Prepares the Monday event into a database change item.
+
+    Args:
+        event (dict): The Monday event payload.
+        column_mapping (dict): Mapping of Monday column IDs to DB field names.
+
+    Returns:
+        dict: A prepared database change item.
+    """
+    column_id = event.get('columnId')
+    db_field = SUB_ITEM_COLUMN_ID_TO_DB_FIELD.get(column_id)
+    if not db_field:
+        raise ValueError(f"Column ID '{column_id}' is not mapped to a database field.")
+
+    change_item = {
+        "pulse_id": int(event.get('pulseId')),  # Monday pulse ID (subitem ID)
+        "db_field": db_field,  # Corresponding DB field
+        "new_value": event['value'].get('label', {}).get('text'),  # Extract new value
+        "changed_at": datetime.fromtimestamp(event.get('changedAt', 0)),
+    }
+    return change_item
+
+
+def prep_sub_item_event_for_db_creation(event):
+    """
+    Prepares the Monday event payload into a database creation item.
+
+    Args:
+        event (dict): The Monday event payload.
+        column_mapping (dict): Mapping of Monday column IDs to database fields.
+
+    Returns:
+        dict: A dictionary representing the database creation item.
+    """
+    if not event or "data" not in event or "items" not in event["data"]:
+        raise ValueError("Invalid event structure. Ensure the event payload is properly formatted.")
+
+    # Extract the first item from the event payload (assuming a single subitem event)
+    item = event["data"]["items"][0]
+
+    # Prepare the database creation item
+    creation_item = {
+        "pulse_id": int(item["id"]),  # Monday subitem ID
+    }
+
+    for column in item["column_values"]:
+        column_id = column.get("id")
+        db_field = SUB_ITEM_COLUMN_ID_TO_DB_FIELD.get(column_id)
+
+        if db_field:
+            value = column.get("text") or column.get("value")
+
+            if isinstance(value, str):
+                try:
+                    value = json.loads(value)
+                except (ValueError, TypeError):
+                    pass
+
+            creation_item[db_field] = value
+
+    return creation_item
+
+
+# CONTACT UTILS
+
+def prep_contact_event_for_db_creation(event):
+    """
+    Prepares the Monday event payload into a database creation item.
+
+    Args:
+        event (dict): The Monday event payload.
+        column_mapping (dict): Mapping of Monday column IDs to database fields.
+
+    Returns:
+        dict: A dictionary representing the database creation item.
+    """
+    if not event or "id" not in event:
+        print("ERROR EVENT DATA: ", event)
+        raise ValueError("Invalid event structure. Ensure the event payload is properly formatted.")
+
+    # Extract the first item from the event payload (assuming a single contact event)
+    item = event
+    print(item)
+    # Prepare the database creation item
+    creation_item = {
+        "pulse_id": int(item["id"]),
+        "name": item['name']
+    }
+
+    for column in item["column_values"]:
+        column_id = column.get("id")
+        db_field = CONTACT_COLUMN_ID_TO_DB_FIELD.get(column_id)
+
+        if db_field:
+            # Map the corresponding value to the database field
+            value = column.get("text") or column.get("value")
+
+            # Handle cases where value is a JSON string
+            if isinstance(value, str):
+                try:
+                    value = json.loads(value)
+                except (ValueError, TypeError):
+                    pass
+
+            creation_item[db_field] = value
+
+    return creation_item
+
+
+# delete these ones--
 def get_po_number_and_data(self, item_id):
     """
     Fetches the PO number and item data for a given item ID.
@@ -144,53 +357,6 @@ def get_po_number_and_data(self, item_id):
     return None, None
 
 
-# FIND PROJECT GROUP IN MONDAY
-def get_group_id_by_project_id(project_id):
-    """
-    Retrieves the group ID in Monday.com based on the project ID.
-    """
-    query = f'''
-    query {{
-        boards(ids: {PO_BOARD_ID}) {{
-            groups {{
-                id
-                title
-            }}
-        }}
-    }}
-    '''
-
-    headers = {
-        'Authorization': os.getenv("MONDAY_API_TOKEN"),
-        'Content-Type': 'application/json',
-        'API-Version': '2023-10'
-    }
-
-    response = requests.post(MONDAY_API_URL, headers=headers, json={'query': query})
-    data = response.json()
-
-    if response.status_code == 200:
-        if 'data' in data and 'boards' in data['data']:
-            groups = data['data']['boards'][0]['groups']
-            for group in groups:
-                title_prefix = group['title'][:len(project_id)]
-                logging.info(f"Comparing group title prefix '{title_prefix}' with prefix '{project_id}'")
-                if title_prefix == project_id:
-                    logging.info(f"Found matching group: {group['title']} with ID {group['id']}")
-                    return group['id']
-            logging.error(f"No group found with title prefix '{project_id}'")
-        elif 'errors' in data:
-            logging.error(f"Error fetching groups from Monday.com: {data['errors']}")
-            return None
-        else:
-            logging.error(f"Unexpected response structure: {data}")
-            return None
-    else:
-        logging.error(f"HTTP Error {response.status_code}: {response.text}")
-        return None
-
-
-# FIND PO ITEM
 def find_item_by_project_and_po(project_id, po_number):
     """
     Finds an item in Monday.com based on the provided Project ID and PO Number.
@@ -250,7 +416,7 @@ def find_item_by_project_and_po(project_id, po_number):
         if 'data' in data and 'items_page_by_column_values' in data['data']:
             # Extract items from the response
             items = data['data']['items_page_by_column_values']['items']
-            #logging.debug(f"Retrieved items: {json.dumps(items, indent=2)}")
+            # logging.debug(f"Retrieved items: {json.dumps(items, indent=2)}")
 
             # Search for an item with the matching PO number
             for item in items:
@@ -279,6 +445,52 @@ def find_item_by_project_and_po(project_id, po_number):
     else:
         logging.error(f"HTTP Error {response.status_code}: {response.text}")
         raise Exception(f"HTTP Error {response.status_code}")
+
+
+# FIND PROJECT GROUP IN MONDAY
+def get_group_id_by_project_id(project_id):
+    """
+    Retrieves the group ID in Monday.com based on the project ID.
+    """
+    query = f'''
+    query {{
+        boards(ids: {PO_BOARD_ID}) {{
+            groups {{
+                id
+                title
+            }}
+        }}
+    }}
+    '''
+
+    headers = {
+        'Authorization': os.getenv("MONDAY_API_TOKEN"),
+        'Content-Type': 'application/json',
+        'API-Version': '2023-10'
+    }
+
+    response = requests.post(MONDAY_API_URL, headers=headers, json={'query': query})
+    data = response.json()
+
+    if response.status_code == 200:
+        if 'data' in data and 'boards' in data['data']:
+            groups = data['data']['boards'][0]['groups']
+            for group in groups:
+                title_prefix = group['title'][:len(project_id)]
+                logging.info(f"Comparing group title prefix '{title_prefix}' with prefix '{project_id}'")
+                if title_prefix == project_id:
+                    logging.info(f"Found matching group: {group['title']} with ID {group['id']}")
+                    return group['id']
+            logging.error(f"No group found with title prefix '{project_id}'")
+        elif 'errors' in data:
+            logging.error(f"Error fetching groups from Monday.com: {data['errors']}")
+            return None
+        else:
+            logging.error(f"Unexpected response structure: {data}")
+            return None
+    else:
+        logging.error(f"HTTP Error {response.status_code}: {response.text}")
+        return None
 
 
 # FIND PO SUB-ITEMS
@@ -468,8 +680,8 @@ def find_contact_item_by_name(contact_name):
                     "{CONTACT_ADDRESS_CITY}",
                     "{CONTACT_ADDRESS_ZIP}",
                     "{CONTACT_ADDRESS_COUNTRY}",
-                    "{CONTACT_ADDRESS_TAX_TYPE}",
-                    "{CONTACT_ADDRESS_TAX_NUMBER}"
+                    "{CONTACT_TAX_TYPE}",
+                    "{CONTACT_TAX_NUMBER}"
                 ]) {{
                     id
                     text
@@ -518,7 +730,8 @@ def find_contact_item_by_name(contact_name):
 
 
 # FORMAT ITEM COLUMN VALUES
-def column_values_formatter(project_id=None, po_number=None, vendor_name=None, folder_link=None,  status=None, contact_id=None, tax_file_link=None, tax_file_type=None, description=None):
+def column_values_formatter(project_id=None, po_number=None, vendor_name=None, folder_link=None, status=None,
+                            contact_id=None, tax_file_link=None, tax_file_type=None, description=None):
     """
     Formats the column values for updating a PO item.
 
@@ -547,7 +760,8 @@ def column_values_formatter(project_id=None, po_number=None, vendor_name=None, f
     if status:
         column_values[PO_STATUS_COLUMN_ID] = {'label': status}
     if contact_id:
-        column_values[PO_CONNECTION_COLUMN_ID] = {"item_ids": [contact_id]}  # Link contact directly in the column
+        column_values[PO_CONTACT_CONNECTION_COLUMN_ID] = {
+            "item_ids": [contact_id]}  # Link contact directly in the column
     logging.info(column_values)
     return column_values
 
@@ -657,7 +871,8 @@ def update_item_columns(item_id, column_values):
 
 
 # FORMAT SUBITEM COLUMN VALUES
-def subitem_column_values_formatter(notes=None, status=None, file_id=None, description=None, quantity=None, rate=None, date=None, due_date=None, account_number=None, link=None):
+def subitem_column_values_formatter(notes=None, status=None, file_id=None, description=None, quantity=None, rate=None,
+                                    date=None, due_date=None, account_number=None, link=None):
     """
     Formats the column values for creating or updating a subitem.
 
@@ -838,23 +1053,12 @@ def is_contact_info_complete(column_values):
         CONTACT_ADDRESS_LINE_1,
         CONTACT_ADDRESS_CITY,
         CONTACT_ADDRESS_ZIP,
-        CONTACT_ADDRESS_TAX_NUMBER
+        CONTACT_TAX_NUMBER
     ]
     for field in required_fields:
         if not column_values.get(field):
             return False
     return True
-
-
-# UPDATE VENDOR DESCRIPTION
-def update_vendor_description_in_monday(item_id, vendor_description):
-    # Create the column values dictionary with the vendor description
-    column_values = {
-        'text6': vendor_description  # Using the column ID 'text6' as provided for PO_DESCRIPTION_COLUMN_ID
-    }
-
-    # Call the update function to apply this change in Monday.com
-    return update_item_columns(item_id, column_values)
 
 
 # LINK CONTACT TO PO
@@ -1059,10 +1263,6 @@ def get_all_subitems_for_item(parent_item_id):
         return []
 
 
-def process_monday_update(event_data):
-    print("SUCCESS")
-
-
 def validate_monday_request(request):
     """
     Validate incoming webhook requests from Monday.com using the API token.
@@ -1076,124 +1276,3 @@ def validate_monday_request(request):
         logging.warning("Invalid API token.")
         return False
     return True
-
-
-def get_all_items_from_board(board_id):
-    """
-    Retrieves all items from a specified board using pagination.
-
-    Args:
-        board_id (str): The ID of the board (as a string).
-
-    Returns:
-        list: A list of dictionaries, each representing an item with its details.
-    """
-    query = '''
-    query ($board_id: [ID!], $cursor: String) {
-        boards(ids: $board_id) {
-            items_page(cursor: $cursor) {
-                cursor
-                items {
-                    id
-                    name
-                    column_values {
-                        id
-                        text
-                    }
-                }
-            }
-        }
-    }
-    '''
-
-    headers = {
-        'Authorization': os.getenv("MONDAY_API_TOKEN"),
-        'Content-Type': 'application/json',
-        'API-Version': '2023-10'
-    }
-
-    items = []
-    cursor = None
-
-    while True:
-        variables = {'board_id': [board_id], 'cursor': cursor}  # Ensure board_id is passed as a list of strings
-        response = requests.post(MONDAY_API_URL, headers=headers, json={'query': query, 'variables': variables})
-        data = response.json()
-
-        if response.status_code == 200 and 'data' in data:
-            items_page = data['data']['boards'][0]['items_page']
-            items.extend(items_page['items'])
-            cursor = items_page['cursor']
-            if not cursor:
-                break
-        else:
-            logging.error(f"Error fetching items: {response.text}")
-            break
-
-    return items
-
-
-def get_po_number_and_data(item_id):
-    """
-    Fetches the PO number and item data for a given item ID.
-    """
-    query = f'''
-    query {{
-        items(ids: {item_id}) {{
-            id
-            name
-            column_values {{
-                id
-                text
-                value
-            }}
-        }}
-    }}
-    '''
-    response = requests.post(MONDAY_API_URL, headers=headers, json={'query': query})
-    data = response.json()
-
-    if response.status_code == 200 and 'data' in data:
-        items = data['data']['items']
-        if items:
-            item = items[0]
-            # Extract PO number based on your specific column ID
-            po_number = None
-            for col in item['column_values']:
-                if col['id'] == PO_NUMBER_COLUMN:
-                    po_number = col.get('text')
-                    break
-            return po_number, item
-    logging.error(f"Failed to fetch item data for Item ID {item_id}: {data.get('errors')}")
-    return None, None
-
-def get_subitem_data(subitem_id):
-    """
-    Fetches the subitem data for a given subitem ID.
-    """
-    query = f'''
-    query {{
-        items(ids: {subitem_id}) {{
-            id
-            name
-            parent_item {{
-                id
-            }}
-            column_values {{
-                id
-                text
-                value
-            }}
-        }}
-    }}
-    '''
-    response = requests.post(MONDAY_API_URL, headers=headers, json={'query': query})
-    data = response.json()
-
-    if response.status_code == 200 and 'data' in data:
-        items = data['data']['items']
-        if items:
-            subitem = items[0]
-            return subitem
-    logging.error(f"Failed to fetch subitem data for SubItem ID {subitem_id}: {data.get('errors')}")
-    return None
