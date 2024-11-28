@@ -15,13 +15,13 @@ from AppKit import NSWorkspace
 import cv2
 
 # Import Monday_util and file_util modules
-from utilities.monday_util import (
+from monday_files.monday_util import (
     MONDAY_API_URL,
     PO_BOARD_ID,
     MONDAY_API_TOKEN
 )
 
-from integrations.dropbox_client import ( get_dropbox_client, create_share_link)
+from integrations.dropbox_client import (get_dropbox_client)
 
 
 # Configure logging

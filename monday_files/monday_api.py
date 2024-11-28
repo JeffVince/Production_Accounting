@@ -1,10 +1,7 @@
-# integrations/monday_api.py
-import logging
-import os
+# monday_files/monday_api.py
 from dotenv import load_dotenv
 import requests
 from utilities.config import Config
-import monday_util
 from monday import MondayClient
 
 load_dotenv()

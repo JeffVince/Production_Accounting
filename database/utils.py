@@ -3,11 +3,11 @@ import json
 from datetime import datetime
 
 from sqlalchemy.exc import SQLAlchemyError
-from database.models import PurchaseOrder, PurchaseOrder, DetailItem
+from database.models import PurchaseOrder
 from database.db_util import get_db_session
 import logging
 
-from monday_util import SUBITEM_RATE_COLUMN_ID, SUBITEM_QUANTITY_COLUMN_ID
+from monday_files.monday_util import SUBITEM_RATE_COLUMN_ID, SUBITEM_QUANTITY_COLUMN_ID
 
 logger = logging.getLogger(__name__)
 

@@ -10,7 +10,7 @@ os.makedirs(LOGS_DIR, exist_ok=True)
 # Configure logger
 def setup_logging():
     logger = logging.getLogger("app_logger")
-    logger.setLevel(logging.ERROR)
+    logger.setLevel(logging.DEBUG)
     # Suppress SQLAlchemy engine logs
     logging.getLogger("sqlalchemy.engine").setLevel(logging.ERROR)
     # Formatter for the logs

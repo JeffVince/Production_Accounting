@@ -3,7 +3,7 @@
 import unittest
 from sqlalchemy.exc import IntegrityError
 from tests.base_test import BaseTestCase
-from database.monday_database_util import (
+from monday_files.monday_database_util import (
     insert_main_item, insert_subitem,
     fetch_all_main_items, fetch_subitems_for_main_item,
     fetch_main_items_by_status, fetch_subitems_by_main_item_and_status

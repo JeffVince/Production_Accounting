@@ -1,31 +1,14 @@
 # monday_webhook_handler.py
 
-import json
 import logging
 from flask import Blueprint, request, jsonify
 from sqlalchemy.exc import SQLAlchemyError
 
-# Import database utility functions
-from database.monday_database_util import (
-    get_purchase_order_by_pulse_id,
-    get_detail_item_by_pulse_id,
-    delete_detail_item_in_db,
-    update_db_with_sub_item_change,
-    create_or_update_main_item_in_db,
-    create_or_update_sub_item_in_db
-)
+# Import the MondayDatabaseUtil class
+from monday_files.monday_database_util import MondayDatabaseUtil
 
 # Import Monday utility functions
-from utilities.monday_util import (
-    get_po_number_and_data,
-    PO_STATUS_COLUMN_ID,
-    SUBITEM_BOARD_ID,
-    SUBITEM_STATUS_COLUMN_ID,
-    PO_BOARD_ID,
-    prep_sub_item_event_for_db_change,
-    prep_sub_item_event_for_db_creation,
-    prep_main_item_event_for_db_creation,
-)
+from monday_files.monday_util import MondayUtil
 
 from monday_api import MondayAPI
 
@@ -37,12 +20,20 @@ logger = logging.getLogger(__name__)
 setup_logging()
 
 # Create a Flask Blueprint for Monday webhooks
-monday_blueprint = Blueprint('monday', __name__)
+monday_blueprint = Blueprint('monday_files', __name__)
+
 
 class MondayWebhookHandler:
     def __init__(self):
+        # Set up logging
+        self.logger = logging.getLogger(self.__class__.__name__)
+        logging.basicConfig(level=logging.DEBUG)
         # Initialize the Monday API client
         self.mondayAPI = MondayAPI()
+        # Initialize the MondayDatabaseUtil instance
+        self.db_util = MondayDatabaseUtil()
+        # Initialize the MondayUtil instance
+        self.monday_util = MondayUtil()
 
     @staticmethod
     def verify_challenge(event):
@@ -101,7 +92,7 @@ class MondayWebhookHandler:
                 return jsonify({"error": "Invalid status"}), 400
 
             # Fetch the PO number and item data using the item ID
-            po_number, item_data = get_po_number_and_data(item_id)
+            po_number, item_data = self.monday_util.get_po_number_and_data(item_id)
             logger.debug(f"Retrieved PO number: {po_number}")
 
             if not po_number or not item_data:
@@ -136,40 +127,43 @@ class MondayWebhookHandler:
                 return jsonify({"error": "Invalid event data: Missing 'event' key"}), 400
 
             # Prepare the SubItem event for database change
-            change_item = prep_sub_item_event_for_db_change(event)
+            change_item = self.monday_util.prep_sub_item_event_for_db_change(event)
 
-            # Update the database with the SubItem change
-            result = update_db_with_sub_item_change(change_item)
+            # Update the database with the SubItem change using the MondayDatabaseUtil instance
+            result = self.db_util.update_db_with_sub_item_change(change_item)
 
             if result == "Success":
                 logger.info(f"Successfully processed SubItem change for ID: {change_item['pulse_id']}")
             elif result == "Not Found":
                 # SubItem not found in DB, proceed to create it
-                print("SubItem not found in DB, creating one.")
+                logger.info("SubItem not found in DB, creating one.")
                 parent_id = event.get('parentItemId')
 
                 # Check if the parent item exists in the database
-                if not get_purchase_order_by_pulse_id(parent_id):
+                if not self.db_util.get_purchase_order_by_pulse_id(parent_id):
                     # Fetch the parent item from Monday.com
                     item_data = self.mondayAPI.fetch_item_by_ID(parent_id)
 
                     # Prepare the main item event for DB creation
-                    create_main_item = prep_main_item_event_for_db_creation(item_data)
+                    create_main_item = self.monday_util.prep_main_item_event_for_db_creation(item_data)
 
                     # Create or update the main item in the database
-                    if not create_or_update_main_item_in_db(create_main_item):
+                    status = self.db_util.create_or_update_main_item_in_db(create_main_item)
+                    if status not in ["Created", "Updated"]:
+                        logger.error("Failed to create or update the main PurchaseOrder item in the database.")
                         return jsonify({"error": "Failed to create new main item"}), 400
 
                 # Fetch the SubItem data from Monday.com
                 item_data = self.mondayAPI.fetch_item_by_ID(change_item['pulse_id'])
 
                 # Prepare the SubItem event for DB creation
-                create_item = prep_sub_item_event_for_db_creation(item_data)
+                create_item = self.monday_util.prep_sub_item_event_for_db_creation(item_data)
                 create_item["parent_id"] = parent_id
 
                 # Create or update the SubItem in the database
-                create_result = create_or_update_sub_item_in_db(create_item)
-                if create_result == "Fail":
+                create_result = self.db_util.create_or_update_sub_item_in_db(create_item)
+                if create_result.get("status") == "Fail":
+                    logger.error("Failed to create new SubItem in the database.")
                     return jsonify({"error": "Failed to create new SubItem"}), 400
 
             return jsonify({"message": "SubItem change processed successfully"}), 200
@@ -206,8 +200,8 @@ class MondayWebhookHandler:
                 logger.error("Missing 'pulseId' in the event.")
                 return jsonify({"error": "Invalid event data: Missing 'pulseId'"}), 400
 
-            # Delete the SubItem from the database
-            success = delete_detail_item_in_db(pulse_id)
+            # Delete the SubItem from the database using the MondayDatabaseUtil instance
+            success = self.db_util.delete_detail_item_in_db(pulse_id)
             if not success:
                 logger.error(f"Error deleting SubItem with ID {pulse_id}")
                 return jsonify({"error": f"Failed to delete SubItem with ID {pulse_id}"}), 500
@@ -241,6 +235,7 @@ def po_status_change():
     else:
         return handler.process_po_status_change(event)
 
+
 @monday_blueprint.route('/subitem_change', methods=['POST'])
 def subitem_change():
     """
@@ -257,6 +252,7 @@ def subitem_change():
         return challenge_response
     else:
         return handler.process_sub_item_change(event)
+
 
 @monday_blueprint.route('/subitem_delete', methods=['POST'])
 def subitem_delete():

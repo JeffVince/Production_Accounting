@@ -15,7 +15,7 @@ from utilities.openai_util import (
 )
 
 from database.dropbox_database_util import update_event_status
-from utilities.monday_util import (
+from monday_files.monday_util import (
     find_item_by_project_and_po,
     find_contact_item_by_name,
     is_contact_info_complete,

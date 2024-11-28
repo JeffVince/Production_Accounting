@@ -3,13 +3,9 @@
 import threading
 import time
 import logging
-from integrations.dropbox_api import DropboxAPI
-from integrations.monday_api import MondayAPI
-from integrations.xero_api import XeroAPI
-from integrations.mercury_bank_api import MercuryBankAPI
 from services.dropbox_service import DropboxService
-from services.monday_service import MondayService
 from services.ocr_service import OCRService
+from monday_files.monday_service import MondayService
 
 from utilities.logger import setup_logging
 
@@ -23,21 +19,6 @@ class Orchestrator:
         self.dropbox_service = DropboxService()
         self.monday_service = MondayService()
         self.ocr_service = OCRService()
-
-    def schedule_po_log_check(self, interval=60):
-        """Periodically check the PO Log for updates."""
-
-        def check_po_log():
-            while True:
-                logger.info("Fetching PO Log entries...")
-                try:
-                    entries = self.po_log_service.fetch_po_log_entries()
-                    self.po_log_service.process_po_log_entries(entries)
-                except Exception as e:
-                    logger.error(f"Error fetching PO Log entries: {e}")
-                time.sleep(interval)
-
-        threading.Thread(target=check_po_log, daemon=True).start()
 
     def start_background_tasks(self):
         """Start any necessary background tasks."""
@@ -89,5 +70,3 @@ class Orchestrator:
 
 
         threading.Thread(target=sync_monday_to_sub_items, daemon=True).start()
-
-    # Additional methods can be added to handle other state transitions

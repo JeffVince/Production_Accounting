@@ -1,6 +1,5 @@
-import monday_service
-from monday import MondayClient
-from monday_api import MondayAPI
+from monday_files import MondayClient, monday_service
+from monday_files.monday_api import MondayAPI
 
 
 

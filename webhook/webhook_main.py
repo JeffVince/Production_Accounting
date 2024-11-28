@@ -2,7 +2,7 @@
 
 import logging
 from flask import Flask, jsonify
-from monday_webhook_handler import monday_blueprint
+from monday_files.monday_webhook_handler import monday_blueprint
 from dropbox_webhook_handler import dropbox_blueprint
 from utilities.logger import setup_logging
 

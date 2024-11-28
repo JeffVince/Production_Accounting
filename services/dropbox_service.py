@@ -5,7 +5,6 @@ import dropbox
 from typing import Dict
 from utilities.config import Config
 from ocr_service import OCRService
-from monday_service import MondayService
 import logging
 
 logger = logging.getLogger(__name__)
@@ -18,7 +17,6 @@ class DropboxService:
             app_secret=Config.DROPBOX_APP_SECRET,
         )
         self.ocr_service = OCRService()
-        self.monday_service = MondayService()
 
     def handle_new_file(self, file_path: str):
         """Handle a new file uploaded to Dropbox."""

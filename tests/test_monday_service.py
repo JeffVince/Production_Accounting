@@ -1,8 +1,8 @@
 # tests/test_monday_service.py
 
 import unittest
-from services.monday_service import MondayService
-from unittest.mock import patch, MagicMock
+from monday_files.monday_service import MondayService
+from unittest.mock import patch
 from utilities.config import Config
 
 class TestMondayService(unittest.TestCase):

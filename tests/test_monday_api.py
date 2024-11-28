@@ -2,7 +2,7 @@
 
 import unittest
 from unittest.mock import patch
-from integrations.monday_api import MondayAPI
+from monday_files.monday_api import MondayAPI
 
 class TestMondayAPI(unittest.TestCase):
     def setUp(self):

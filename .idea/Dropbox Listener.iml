@@ -9,6 +9,7 @@
       <sourceFolder url="file://$MODULE_DIR$/integrations" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/orchestration" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/webhook" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/monday_files" isTestSource="false" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
