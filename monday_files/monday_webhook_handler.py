@@ -137,28 +137,24 @@ class MondayWebhookHandler:
             elif result == "Not Found":
                 # SubItem not found in DB, proceed to create it
                 logger.info("SubItem not found in DB, creating one.")
-                parent_id = event.get('parentItemId')
+                response = self.mondayAPI.fetch_item_by_ID(change_item['pulse_id'])
+                subitem_data = response.get("data", {}).get("items", [])[0]
+                subitem_data["parent_item"] = {"id": event["parentItemId"]}
 
-                # Check if the parent item exists in the database
-                if not self.db_util.get_purchase_order_by_pulse_id(parent_id):
+                # # # # Check if the parent item exists in the database
+                if not self.db_util.get_purchase_order_surrogate_id_by_pulse_id(event["parentItemId"]):
                     # Fetch the parent item from Monday.com
-                    item_data = self.mondayAPI.fetch_item_by_ID(parent_id)
-
+                    item_data = self.mondayAPI.fetch_item_by_ID(event["parentItemId"])
                     # Prepare the main item event for DB creation
                     create_main_item = self.monday_util.prep_main_item_event_for_db_creation(item_data)
-
-                    # Create or update the main item in the database
+                    # # # # Create or update the main item in the database
                     status = self.db_util.create_or_update_main_item_in_db(create_main_item)
                     if status not in ["Created", "Updated"]:
                         logger.error("Failed to create or update the main PurchaseOrder item in the database.")
                         return jsonify({"error": "Failed to create new main item"}), 400
 
-                # Fetch the SubItem data from Monday.com
-                item_data = self.mondayAPI.fetch_item_by_ID(change_item['pulse_id'])
-
                 # Prepare the SubItem event for DB creation
-                create_item = self.monday_util.prep_sub_item_event_for_db_creation(item_data)
-                create_item["parent_id"] = parent_id
+                create_item = self.monday_util.prep_sub_item_event_for_db_creation(subitem_data)
 
                 # Create or update the SubItem in the database
                 create_result = self.db_util.create_or_update_sub_item_in_db(create_item)

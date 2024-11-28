@@ -92,18 +92,23 @@ class MondayDatabaseUtil:
         with get_db_session() as session:
             try:
                 # Fetch the parent PurchaseOrder using the pulse_id
-                po_surrogate_id = self.get_purchase_order_by_pulse_id(parent_id)
-                aicp_code_entry = self.get_account_number_id(account_number)
-
+                po_surrogate_id = self.get_purchase_order_surrogate_id_by_pulse_id(parent_id)
+                aicp_code_surrogate_id = self.get_aicp_code_surrogate_id(account_number)
+                po_type = self.get_purchase_order_type_by_pulse_id(parent_id)
                 if not po_surrogate_id:
                     raise ValueError(f"No PurchaseOrder found with pulse_id: {parent_id}")
-                if not aicp_code_entry:
+                if not aicp_code_surrogate_id:
                     raise ValueError(f"No AICP Line found with surrogate id: {account_number}")
 
                 # Set the account number to account surrogate id
-                item_data['account_number_id'] = aicp_code_entry.aicp_code_surrogate_id
+                item_data['account_number_id'] = aicp_code_surrogate_id
                 # Set the parent_id to the po_surrogate_id
-                item_data['parent_id'] = po_surrogate_id.po_surrogate_id
+                item_data['parent_id'] = po_surrogate_id
+                # Set is receipt?
+                if po_type ==  "Vendor":
+                     item_data["is_receipt"] = 0
+                else:
+                    item_data["is_receipt"] = 1
 
                 # Create the new DetailItem
                 new_detail_item = DetailItem(**item_data)
@@ -170,7 +175,7 @@ class MondayDatabaseUtil:
 
     # --------------------- READ METHODS ---------------------
 
-    def get_purchase_order_by_pulse_id(self, pulse_id):
+    def get_purchase_order_surrogate_id_by_pulse_id(self, pulse_id):
         """
         Retrieve a PurchaseOrder by its pulse_id.
 
@@ -181,7 +186,20 @@ class MondayDatabaseUtil:
             PurchaseOrder or None: The PurchaseOrder object if found, else None.
         """
         with get_db_session() as session:
-            return session.query(PurchaseOrder).filter_by(pulse_id=pulse_id).one_or_none()
+            return session.query(PurchaseOrder).filter_by(pulse_id=pulse_id).one_or_none().po_surrogate_id
+
+    def get_purchase_order_type_by_pulse_id(self, pulse_id):
+        """
+        Retrieve a PurchaseOrder by its pulse_id.
+
+        Args:
+            pulse_id (str): The pulse_id of the PurchaseOrder.
+
+        Returns:
+            PurchaseOrder or None: The PurchaseOrder object if found, else None.
+        """
+        with get_db_session() as session:
+            return session.query(PurchaseOrder).filter_by(pulse_id=pulse_id).one_or_none().po_type
 
     def get_detail_item_by_pulse_id(self, pulse_id):
         """
@@ -195,28 +213,6 @@ class MondayDatabaseUtil:
         """
         with get_db_session() as session:
             return session.query(DetailItem).filter_by(detail_item_surrogate_id=pulse_id).first()
-
-    def get_account_number_id(self, account_number_text):
-        """
-        Retrieve the AicpCode entry based on the account number text.
-
-        Args:
-            account_number_text (str): The text representing the account number.
-
-        Returns:
-            AicpCode or None: The corresponding AicpCode object, or None if not found.
-        """
-        if not account_number_text:
-            self.logger.error("Account number text is empty.")
-            return None
-
-        with get_db_session() as session:
-            account = session.query(AicpCode).filter_by(line_number=account_number_text).first()
-            if account:
-                return account
-            else:
-                self.logger.error(f"AicpCode with line_number '{account_number_text}' not found.")
-                return None
 
     def get_aicp_code_surrogate_id(self, aicp_code):
         """

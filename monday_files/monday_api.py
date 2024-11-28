@@ -3,10 +3,9 @@ from dotenv import load_dotenv
 import requests
 from utilities.config import Config
 from monday import MondayClient
+from monday_files.monday_util import MondayUtil
 
 load_dotenv()
-
-
 
 
 class MondayAPI:
@@ -15,6 +14,8 @@ class MondayAPI:
         self.api_token = Config.MONDAY_API_TOKEN
         self.api_url = 'https://api.monday.com/v2/'
         self.client = MondayClient(self.api_token)
+        self.monday_util = MondayUtil()
+        self.SUBITEM_BOARD_ID = self.monday_util.SUBITEM_BOARD_ID
 
     def _make_request(self, query: str, variables: dict = None):
         headers = {"Authorization": self.api_token}
@@ -347,3 +348,4 @@ class MondayAPI:
 
     def fetch_item_by_ID(self, id: str):
         return self.client.items.fetch_items_by_id(id)
+

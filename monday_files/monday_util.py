@@ -8,8 +8,6 @@ from datetime import datetime
 import requests
 from dotenv import load_dotenv
 
-from monday_files.monday_database_util import MondayDatabaseUtil  # Updated import
-
 
 class MondayUtil:
     """
@@ -103,7 +101,9 @@ class MondayUtil:
     COLUMN_TYPE_HANDLERS = {
         "dropdown": "handle_dropdown_column",
         "default": "handle_default_column",
-        "date": "handle_date_column"
+        "date": "handle_date_column",
+        "color": "handle_status_column",
+        "link": "handle_link_column"
     }
 
     # --------------------- INITIALIZATION ---------------------
@@ -127,7 +127,6 @@ class MondayUtil:
         self.SUBITEM_BOARD_ID = self.get_subitem_board_id(self.PO_BOARD_ID)
 
         # Initialize MondayDatabaseUtil instance
-        self.db_util = MondayDatabaseUtil()
 
     # --------------------- HELPER METHODS ---------------------
 
@@ -136,6 +135,16 @@ class MondayUtil:
         Date handler for columns, extracting a single date.
         """
         return event.get('value', {}).get('date', {})
+
+    def _handle_link_column(self, event):
+        """
+        Handles dropdown column type and extracts chosen values.
+        """
+        try:
+            return event.get('value', {}).get('url', {})
+        except Exception as e:
+            self.logger.warning("Setting Account ID to None because of unexpected Monday Account Value.")
+            return None
 
     def _handle_dropdown_column(self, event):
         """
@@ -152,7 +161,11 @@ class MondayUtil:
         """
         Default handler for columns, extracting a single text label.
         """
+        return event.get('value', {}).get('value', {})
+
+    def _handle_status_column(self, event):
         return event.get('value', {}).get('label', {}).get('text')
+
 
     def _get_column_handler(self, column_type):
         """
@@ -266,9 +279,9 @@ class MondayUtil:
         """
         item = event
         self.logger.debug(f"ITEM DATA: {item}")
-
+        parent_id = item["parent_item"]['id']
         # Remove orphan detail items
-        if not item.get("parent_item"):
+        if not parent_id:
             self.logger.warning("Orphan detail item detected; skipping creation.")
             return None
 
@@ -281,16 +294,13 @@ class MondayUtil:
         for column in item.get("column_values", []):
             column_id = column.get("id")
             db_field = self.SUB_ITEM_COLUMN_ID_TO_DB_FIELD.get(column_id)
-
             if db_field:
                 value = column.get("text") or column.get("value")
-
                 if isinstance(value, str):
                     try:
                         value = json.loads(value)
                     except (ValueError, TypeError):
                         pass
-
                 creation_item[db_field] = value
 
         self.logger.debug(f"Prepared subitem creation item: {creation_item}")
