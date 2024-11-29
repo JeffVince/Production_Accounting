@@ -7,7 +7,7 @@ import logging
 import re
 import requests
 
-import dropbox
+import dropbox_files
 import psutil
 import pyautogui
 from AppKit import NSWorkspace
@@ -21,7 +21,7 @@ from monday_files.monday_util import (
     MONDAY_API_TOKEN
 )
 
-from integrations.dropbox_client import (get_dropbox_client)
+from dropbox_files.dropbox_client import (get_dropbox_client)
 
 
 # Configure logging
@@ -669,11 +669,11 @@ def find_mbb_files(project_folder_path):
         # List all files in the directory
         dbx_client = get_dropbox_client()
         result = dbx_client.dbx.files_list_folder(project_folder_path)
-        mbb_files = [entry.path_display for entry in result.entries if isinstance(entry, dropbox.files.FileMetadata) and entry.name.lower().endswith('.mbb')]
+        mbb_files = [entry.path_display for entry in result.entries if isinstance(entry, dropbox_files.files.FileMetadata) and entry.name.lower().endswith('.mbb')]
         logging.info(f"Found {len(mbb_files)} .mbb file(s) in '{project_folder_path}'.")
         return mbb_files
-    except dropbox.exceptions.ApiError as e:
-        if isinstance(e.error, dropbox.files.ListFolderError) and e.error.is_path() and e.error.get_path().is_not_found():
+    except dropbox_files.exceptions.ApiError as e:
+        if isinstance(e.error, dropbox_files.files.ListFolderError) and e.error.is_path() and e.error.get_path().is_not_found():
             logging.error(f"Directory '{project_folder_path}' not found in Dropbox.")
         else:
             logging.error(f"Error accessing Dropbox folder '{project_folder_path}': {e}")

@@ -2,14 +2,14 @@
 
 import logging
 from flask import Blueprint, request, jsonify
-from services.dropbox_service import DropboxService
+from dropbox_files.dropbox_service import DropboxService
 from services.ocr_service import OCRService
 from utilities.logger import setup_logging
 
 logger = logging.getLogger(__name__)
 setup_logging()
 
-dropbox_blueprint = Blueprint('dropbox', __name__)
+dropbox_blueprint = Blueprint('dropbox_files', __name__)
 
 
 class DropboxWebhookHandler:

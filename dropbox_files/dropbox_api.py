@@ -1,12 +1,12 @@
 # integrations/dropbox_api.py
 
-import dropbox
-from dropbox.exceptions import ApiError
+import dropbox_files
+from dropbox_files.exceptions import ApiError
 from utilities.config import Config
 
 class DropboxAPI:
     def __init__(self):
-        self.dbx = dropbox.Dropbox(
+        self.dbx = dropbox_files.Dropbox(
             oauth2_refresh_token=Config.DROPBOX_REFRESH_TOKEN,
             app_key=Config.DROPBOX_APP_KEY,
             app_secret=Config.DROPBOX_APP_SECRET,

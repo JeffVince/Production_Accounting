@@ -40,7 +40,7 @@ def main():
     orchestrator.start_background_tasks()
     # logger.info("Orchestrator background tasks started.")
 
-    # Start Flask server in a thread
+    # Start webhook server in a thread
     flask_thread = threading.Thread(target=run_flask_app)
     flask_thread.start()
 

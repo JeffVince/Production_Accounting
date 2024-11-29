@@ -3,7 +3,7 @@ import json
 import time
 import logging
 import requests
-import dropbox
+import dropbox_files
 from dropbox import DropboxTeam, common, files
 import sqlite3
 import tempfile
@@ -192,7 +192,7 @@ class DropboxClientSingleton:
                     changes.extend(result.entries)
                 logging.info(f"Fetched {len(changes)} changes.")
                 return changes, result.cursor
-            except dropbox.exceptions.ApiError as e:
+            except dropbox_files.exceptions.ApiError as e:
                 logging.error(f"Error listing folder changes: {e}", exc_info=True)
                 return [], cursor
 
@@ -316,12 +316,12 @@ def create_share_link(dbx_client, dropbox_path):
             return links[0].url
         else:
             # Create a new shared link
-            settings = dropbox.sharing.SharedLinkSettings(
-                requested_visibility=dropbox.sharing.RequestedVisibility.public
+            settings = dropbox_files.sharing.SharedLinkSettings(
+                requested_visibility=dropbox_files.sharing.RequestedVisibility.public
             )
             shared_link = dbx_sharing.sharing_create_shared_link_with_settings(dropbox_path, settings)
             logging.info(f"Created new shared link for '{dropbox_path}': {shared_link.url}")
             return shared_link.url
-    except dropbox.exceptions.ApiError as e:
+    except dropbox_files.exceptions.ApiError as e:
         logging.error(f"Error creating shared link for '{dropbox_path}': {e}")
         return None
