@@ -36,14 +36,12 @@ BEGIN
     FROM `virtual_pm`.`purchase_orders`
     WHERE `po_surrogate_id` = NEW.`parent_id`
     LIMIT 1;
-
     -- Set is_receipt based on po_type
     IF parent_po_type = 'Vendor' THEN
         SET NEW.`is_receipt` = 0; -- Bill/Invoice
     ELSE
         SET NEW.`is_receipt` = 1; -- Receipt
     END IF;
-
     -- Set due_date based on is_receipt
     IF NEW.`is_receipt` = 1 THEN
         -- If it is a receipt, due_date is the same as transaction_date
@@ -55,11 +53,37 @@ BEGIN
 END$$
 DELIMITER ;
 
+
+
+
 DELIMITER $$
 
 CREATE DEFINER=`root`@`localhost`
 TRIGGER `virtual_pm`.`detail_items_AFTER_INSERT_update_po_total`
 AFTER INSERT ON `virtual_pm`.`detail_items`
+FOR EACH ROW
+BEGIN
+    DECLARE total DECIMAL(15,2);
+
+    -- Calculate the sum of sub_totals for the parent purchase order
+    SELECT SUM(`sub_total`) INTO total
+    FROM `virtual_pm`.`detail_items`
+    WHERE `parent_id` = NEW.`parent_id`;
+
+    -- Update the amount_total in purchase_orders
+    UPDATE `virtual_pm`.`purchase_orders`
+    SET `amount_total` = IFNULL(total, 0.00)
+    WHERE `po_surrogate_id` = NEW.`parent_id`;
+END$$
+
+DELIMITER ;
+
+
+DELIMITER $$
+
+CREATE DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`detail_items_AFTER_UPDATE_update_po_total`
+AFTER UPDATE ON `virtual_pm`.`detail_items`
 FOR EACH ROW
 BEGIN
     DECLARE total DECIMAL(15,2);
