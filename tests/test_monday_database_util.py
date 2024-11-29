@@ -1,327 +1,511 @@
-# tests/test_monday_database_util.py
+# test_monday_database_util.py
 
 import unittest
-from sqlalchemy.exc import IntegrityError
-from tests.base_test import BaseTestCase
-from monday_files.monday_database_util import (
-    insert_main_item, insert_subitem,
-    fetch_all_main_items, fetch_subitems_for_main_item,
-    fetch_main_items_by_status, fetch_subitems_by_main_item_and_status
-)
-from sqlalchemy import inspect
+from unittest.mock import patch, MagicMock
+from datetime import datetime
+from monday_database_util import MondayDatabaseUtil
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from database.models import PurchaseOrder, DetailItem, Contact, AicpCode
 
-class TestMondayDatabaseUtil(BaseTestCase):
+class TestMondayDatabaseUtil(unittest.TestCase):
+    def setUp(self):
+        """
+        Initialize the MondayDatabaseUtil instance and patch external dependencies.
+        """
+        # Patch 'get_db_session' before instantiating MondayDatabaseUtil
+        patcher = patch('monday_database_util.get_db_session', autospec=True)
+        self.mock_get_db_session = patcher.start()
+        self.addCleanup(patcher.stop)
 
-    def test_initialize_database(self):
-        """
-        Test that the database initializes correctly with required tables.
-        """
-        inspector = inspect(self.engine)
-        tables = inspector.get_table_names()
-        self.assertIn('main_items', tables)
-        self.assertIn('sub_items', tables)
+        # Create a mock session
+        self.mock_session = MagicMock()
+        self.mock_get_db_session.return_value.__enter__.return_value = self.mock_session
 
-    def test_insert_main_item(self):
+        # Initialize the MondayDatabaseUtil instance
+        self.db_util = MondayDatabaseUtil()
+
+    def test_prep_main_item_event_for_db_creation(self):
         """
-        Test inserting a main item into the database.
+        Test preparing main item event for database creation.
         """
-        main_item = {
-            'item_id': 'MI001',
-            'name': 'Main Item 1',
-            'project_id': 'P001',
-            'numbers': '12345',
-            'description': 'Description of Main Item 1',
-            'tax_form': 'Form A',
-            'folder': 'Folder1',
-            'amount': '1000',
-            'po_status': 'Pending',
-            'producer_pm': 'Producer1',
-            'updated_date': '2023-10-20'
+        event = {
+            "id": "123",
+            "column_values": [
+                {"id": "project_id", "text": "Project123"},
+                {"id": "numbers08", "text": "PO123"},
+                {"id": "status", "text": "CC / PC"}
+            ]
         }
-
-        # Insert the main item
-        insert_main_item(main_item)
-
-        # Fetch all main items and verify
-        main_items = fetch_all_main_items()
-        self.assertEqual(len(main_items), 1)
-        fetched_item = main_items[0]
-        self.assertEqual(fetched_item.item_id, main_item['item_id'])
-        self.assertEqual(fetched_item.name, main_item['name'])
-
-        # Update the main item
-        updated_main_item = main_item.copy()
-        updated_main_item['name'] = 'Main Item 1 Updated'
-        insert_main_item(updated_main_item)
-
-        # Verify the update
-        main_items = fetch_all_main_items()
-        self.assertEqual(len(main_items), 1)
-        fetched_item = main_items[0]
-        self.assertEqual(fetched_item.name, 'Main Item 1 Updated')
-
-    def test_insert_subitem(self):
-        """
-        Test inserting a subitem linked to a main item.
-        """
-        # Insert a main item
-        main_item = {
-            'item_id': 'MI002',
-            'name': 'Main Item 2',
-            'project_id': 'P002',
-            'numbers': '67890',
-            'description': 'Description of Main Item 2',
-            'tax_form': 'Form B',
-            'folder': 'Folder2',
-            'amount': '2000',
-            'po_status': 'Approved',
-            'producer_pm': 'Producer2',
-            'updated_date': '2023-10-21'
-        }
-        insert_main_item(main_item)
-
-        # Insert a valid subitem
-        subitem = {
-            'subitem_id': 'SI001',
-            'main_item_id': 'MI002',
-            'status': 'In Progress',
-            'invoice_number': 'INV001',
-            'description': 'Description of Subitem 1',
-            'amount': 500.0,
-            'quantity': 10,
-            'account_number': 'ACC123',
-            'invoice_date': '2023-10-22',
-            'link': 'http://example.com/inv001',
-            'due_date': '2023-11-22',
-            'creation_log': 'Created by user X'
-        }
-        insert_subitem(subitem)
-
-        # Verify insertion
-        subitems = fetch_subitems_for_main_item('MI002')
-        self.assertEqual(len(subitems), 1)
-        self.assertEqual(subitems[0].subitem_id, 'SI001')
-
-        # Attempt to insert a subitem with a non-existent main_item_id
-        invalid_subitem = subitem.copy()
-        invalid_subitem['subitem_id'] = 'SI002'
-        invalid_subitem['main_item_id'] = 'MI999'  # Non-existent
-
-        with self.assertRaises(IntegrityError):
-            insert_subitem(invalid_subitem)
-
-    def test_fetch_all_main_items(self):
-        """
-        Test fetching all main items from the database.
-        """
-        # Insert multiple main items
-        main_items_data = [
-            {
-                'item_id': 'MI003',
-                'name': 'Main Item 3',
-                'project_id': 'P003',
-                'numbers': '11111',
-                'description': 'Description of Main Item 3',
-                'tax_form': 'Form C',
-                'folder': 'Folder3',
-                'amount': '3000',
-                'po_status': 'To Verify',
-                'producer_pm': 'Producer3',
-                'updated_date': '2023-10-22'
-            },
-            {
-                'item_id': 'MI004',
-                'name': 'Main Item 4',
-                'project_id': 'P004',
-                'numbers': '22222',
-                'description': 'Description of Main Item 4',
-                'tax_form': 'Form D',
-                'folder': 'Folder4',
-                'amount': '4000',
-                'po_status': 'Issued',
-                'producer_pm': 'Producer4',
-                'updated_date': '2023-10-23'
+        # Mock the mapping in MondayUtil
+        with patch.object(self.db_util.monday_util, 'MAIN_ITEM_COLUMN_ID_TO_DB_FIELD', {
+            'project_id': 'project_id',
+            'numbers08': 'po_number',
+            'status': 'state'
+        }):
+            result = self.db_util.prep_main_item_event_for_db_creation(event)
+            expected = {
+                "pulse_id": 123,
+                "project_id": "Project123",
+                "po_number": "PO123",
+                "state": "CC / PC",
+                "po_type": "CC / PC"
             }
-        ]
-        for item in main_items_data:
-            insert_main_item(item)
+            self.assertEqual(result, expected)
 
-        # Fetch and verify
-        main_items = fetch_all_main_items()
-        self.assertEqual(len(main_items), 2)
-        item_ids = {item.item_id for item in main_items}
-        self.assertSetEqual(item_ids, {'MI003', 'MI004'})
-
-    def test_fetch_subitems_for_main_item(self):
+    def test_prep_sub_item_event_for_db_change_valid(self):
         """
-        Test fetching all subitems for a specific main item.
+        Test preparing sub-item event for database change with valid data.
         """
-        # Insert a main item and subitems
-        main_item = {
-            'item_id': 'MI005',
-            'name': 'Main Item 5',
-            'project_id': 'P005',
-            'numbers': '33333',
-            'description': 'Description of Main Item 5',
-            'tax_form': 'Form E',
-            'folder': 'Folder5',
-            'amount': '5000',
-            'po_status': 'Approved',
-            'producer_pm': 'Producer5',
-            'updated_date': '2023-10-24'
+        event = {
+            'pulseId': '456',
+            'columnId': 'text0',
+            'columnType': 'text',
+            'value': 'New Value',
+            'changedAt': datetime.utcnow().timestamp()
         }
-        insert_main_item(main_item)
 
-        subitems_data = [
-            {
-                'subitem_id': 'SI003',
-                'main_item_id': 'MI005',
-                'status': 'Completed',
-                'invoice_number': 'INV003',
-                'description': 'Description of Subitem 3',
-                'amount': 750.0,
-                'quantity': 15,
-                'account_number': 'ACC456',
-                'invoice_date': '2023-10-25',
-                'link': 'http://example.com/inv003',
-                'due_date': '2023-11-25',
-                'creation_log': 'Created by user Y'
-            },
-            {
-                'subitem_id': 'SI004',
-                'main_item_id': 'MI005',
-                'status': 'Pending',
-                'invoice_number': 'INV004',
-                'description': 'Description of Subitem 4',
-                'amount': 1250.0,
-                'quantity': 20,
-                'account_number': 'ACC789',
-                'invoice_date': '2023-10-26',
-                'link': 'http://example.com/inv004',
-                'due_date': '2023-11-26',
-                'creation_log': 'Created by user Z'
-            }
-        ]
-        for subitem in subitems_data:
-            insert_subitem(subitem)
+        with patch.object(self.db_util.monday_util, 'SUB_ITEM_COLUMN_ID_TO_DB_FIELD', {'text0': 'description'}):
+            with patch.object(self.db_util.monday_util, 'get_column_handler', return_value=lambda x: x.get('value')):
+                result = self.db_util.prep_sub_item_event_for_db_change(event)
+                expected = {
+                    'pulse_id': 456,
+                    'db_field': 'description',
+                    'new_value': 'New Value',
+                    'changed_at': unittest.mock.ANY  # Since we cannot predict the exact timestamp
+                }
+                self.assertEqual(result['pulse_id'], expected['pulse_id'])
+                self.assertEqual(result['db_field'], expected['db_field'])
+                self.assertEqual(result['new_value'], expected['new_value'])
+                self.assertIsInstance(result['changed_at'], datetime)
 
-        # Fetch and verify
-        subitems = fetch_subitems_for_main_item('MI005')
-        self.assertEqual(len(subitems), 2)
-        subitem_ids = {subitem.subitem_id for subitem in subitems}
-        self.assertSetEqual(subitem_ids, {'SI003', 'SI004'})
-
-    def test_fetch_main_items_by_status(self):
+    def test_prep_sub_item_event_for_db_change_missing_keys(self):
         """
-        Test fetching main items by status.
+        Test preparing sub-item event for database change with missing keys.
         """
-        # Insert main items
-        main_items_data = [
-            {
-                'item_id': 'MI006',
-                'name': 'Main Item 6',
-                'project_id': 'P006',
-                'numbers': '44444',
-                'description': 'Description of Main Item 6',
-                'tax_form': 'Form F',
-                'folder': 'Folder6',
-                'amount': '6000',
-                'po_status': 'Pending',
-                'producer_pm': 'Producer6',
-                'updated_date': '2023-10-25'
-            },
-            {
-                'item_id': 'MI007',
-                'name': 'Main Item 7',
-                'project_id': 'P007',
-                'numbers': '55555',
-                'description': 'Description of Main Item 7',
-                'tax_form': 'Form G',
-                'folder': 'Folder7',
-                'amount': '7000',
-                'po_status': 'Approved',
-                'producer_pm': 'Producer7',
-                'updated_date': '2023-10-26'
-            }
-        ]
-        for item in main_items_data:
-            insert_main_item(item)
-
-        # Fetch and verify
-        pending_items = fetch_main_items_by_status('Pending')
-        self.assertEqual(len(pending_items), 1)
-        self.assertEqual(pending_items[0].item_id, 'MI006')
-
-    def test_fetch_subitems_by_main_item_and_status(self):
-        """
-        Test fetching subitems by main item and status.
-        """
-        # Insert main item and subitems
-        main_item = {
-            'item_id': 'MI008',
-            'name': 'Main Item 8',
-            'project_id': 'P008',
-            'numbers': '66666',
-            'description': 'Description of Main Item 8',
-            'tax_form': 'Form H',
-            'folder': 'Folder8',
-            'amount': '8000',
-            'po_status': 'Approved',
-            'producer_pm': 'Producer8',
-            'updated_date': '2023-10-27'
+        event = {
+            'pulseId': '456',
+            # 'columnId' is missing
+            'columnType': 'text',
+            'value': 'New Value',
+            'changedAt': datetime.utcnow().timestamp()
         }
-        insert_main_item(main_item)
 
-        subitems_data = [
-            {
-                'subitem_id': 'SI005',
-                'main_item_id': 'MI008',
-                'status': 'Completed',
-                'invoice_number': 'INV005',
-                'description': 'Description of Subitem 5',
-                'amount': 850.0,
-                'quantity': 17,
-                'account_number': 'ACC012',
-                'invoice_date': '2023-10-28',
-                'link': 'http://example.com/inv005',
-                'due_date': '2023-11-28',
-                'creation_log': 'Created by user A'
-            },
-            {
-                'subitem_id': 'SI006',
-                'main_item_id': 'MI008',
-                'status': 'Pending',
-                'invoice_number': 'INV006',
-                'description': 'Description of Subitem 6',
-                'amount': 950.0,
-                'quantity': 19,
-                'account_number': 'ACC345',
-                'invoice_date': '2023-10-29',
-                'link': 'http://example.com/inv006',
-                'due_date': '2023-11-29',
-                'creation_log': 'Created by user B'
+        result = self.db_util.prep_sub_item_event_for_db_change(event)
+        self.assertIsNone(result)
+
+    def test_prep_sub_item_event_for_db_change_unmapped_column(self):
+        """
+        Test preparing sub-item event with unmapped column ID.
+        """
+        event = {
+            'pulseId': '456',
+            'columnId': 'unknown_column',
+            'columnType': 'text',
+            'value': 'New Value',
+            'changedAt': datetime.utcnow().timestamp()
+        }
+
+        with patch.object(self.db_util.monday_util, 'SUB_ITEM_COLUMN_ID_TO_DB_FIELD', {}):
+            result = self.db_util.prep_sub_item_event_for_db_change(event)
+            self.assertIsNone(result)
+
+    def test_prep_sub_item_event_for_db_creation(self):
+        """
+        Test preparing sub-item event for database creation.
+        """
+        event = {
+            "id": "456",
+            "parent_item": {"id": "123"},
+            "column_values": [
+                {"id": "text0", "text": "FileID123"},
+                {"id": "text98", "text": "Description"},
+                {"id": "numbers0", "text": "2"}
+            ]
+        }
+        # Mock necessary methods and data
+        with patch.object(self.db_util.monday_util, 'SUB_ITEM_COLUMN_ID_TO_DB_FIELD', {
+            'text0': 'detail_item_number',
+            'text98': 'description',
+            'numbers0': 'quantity'
+        }):
+            with patch.object(self.db_util, 'get_purchase_order_surrogate_id_by_pulse_id', return_value=1):
+                with patch.object(self.db_util, 'get_aicp_code_surrogate_id', return_value=1):
+                    with patch.object(self.db_util, 'get_purchase_order_type_by_pulse_id', return_value='Vendor'):
+                        result = self.db_util.prep_sub_item_event_for_db_creation(event)
+                        expected = {
+                            "pulse_id": 456,
+                            "parent_id": 1,
+                            "detail_item_number": "FileID123",
+                            "description": "Description",
+                            "quantity": 2.0,
+                            "account_number_id": 1,
+                            "is_receipt": 0
+                        }
+                        self.assertEqual(result, expected)
+
+    def test_prep_contact_event_for_db_creation(self):
+        """
+        Test preparing contact event for database creation.
+        """
+        event = {
+            'id': '789',
+            'name': 'John Doe',
+            'column_values': [
+                {'id': 'email', 'text': 'john.doe@example.com'},
+                {'id': 'phone', 'text': '+1234567890'}
+            ]
+        }
+
+        with patch.object(self.db_util.monday_util, 'CONTACT_COLUMN_ID_TO_DB_FIELD', {'email': 'email', 'phone': 'phone_number'}):
+            result = self.db_util.prep_contact_event_for_db_creation(event)
+            expected = {
+                'pulse_id': 789,
+                'name': 'John Doe',
+                'email': 'john.doe@example.com',
+                'phone_number': '+1234567890'
             }
-        ]
-        for subitem in subitems_data:
-            insert_subitem(subitem)
+            self.assertEqual(result, expected)
 
-        # Fetch and verify
-        pending_subitems = fetch_subitems_by_main_item_and_status('MI008', 'Pending')
-        self.assertEqual(len(pending_subitems), 1)
-        self.assertEqual(pending_subitems[0].subitem_id, 'SI006')
-
-    def test_database_schema(self):
+    @patch('monday_database_util.get_db_session')
+    def test_create_or_update_main_item_in_db_create(self, mock_get_db_session):
         """
-        Test that the sub_items table has the correct foreign key constraint.
+        Test creating a new main item in the database.
         """
-        inspector = inspect(self.engine)
-        foreign_keys = inspector.get_foreign_keys('sub_items')
-        self.assertEqual(len(foreign_keys), 1, "Foreign key constraint not found.")
-        fk = foreign_keys[0]
-        self.assertEqual(fk['referred_table'], 'main_items')
-        self.assertEqual(fk['constrained_columns'], ['main_item_id'])
-        self.assertEqual(fk['referred_columns'], ['item_id'])
+        # Mock session
+        session = mock_get_db_session.return_value.__enter__.return_value
 
+        # Mock item data
+        item_data = {'pulse_id': 1, 'po_number': 'PO123', 'state': 'Open'}
+
+        # Mock query result to return None (item does not exist)
+        session.query.return_value.filter_by.return_value.one_or_none.return_value = None
+
+        # Call the method under test
+        status = self.db_util.create_or_update_main_item_in_db(item_data)
+
+        # Assertions
+        self.assertEqual(status, 'Created')
+        session.add.assert_called()
+        session.commit.assert_called()
+
+    @patch('monday_database_util.get_db_session')
+    def test_create_or_update_main_item_in_db_update(self, mock_get_db_session):
+        """
+        Test updating an existing main item in the database.
+        """
+        # Mock session behavior
+        session = mock_get_db_session.return_value.__enter__.return_value
+
+        # Mock existing item
+        existing_item = PurchaseOrder(pulse_id=1, po_number='PO123', state='Open')
+        session.query.return_value.filter_by.return_value.one_or_none.return_value = existing_item
+
+        # Mock item data with updated state
+        item_data = {'pulse_id': 1, 'po_number': 'PO123', 'state': 'Closed'}
+
+        # Call the method under test
+        status = self.db_util.create_or_update_main_item_in_db(item_data)
+
+        # Assertions
+        self.assertEqual(status, 'Updated')
+        self.assertEqual(existing_item.state, 'Closed')
+        session.commit.assert_called()
+
+    @patch('monday_database_util.get_db_session')
+    def test_create_or_update_main_item_in_db_exception(self, mock_get_db_session):
+        """
+        Test handling exceptions when creating or updating a main item.
+        """
+        # Mock session behavior to raise an exception on commit
+        session = mock_get_db_session.return_value.__enter__.return_value
+        session.commit.side_effect = Exception('DB Error')
+
+        # Mock item data
+        item_data = {'pulse_id': 1, 'po_number': 'PO123', 'state': 'Open'}
+
+        # Call the method under test
+        status = self.db_util.create_or_update_main_item_in_db(item_data)
+
+        # Assertions
+        self.assertEqual(status, 'Fail')
+        session.rollback.assert_called()
+
+    @patch('monday_database_util.get_db_session')
+    def test_create_or_update_sub_item_in_db_create(self, mock_get_db_session):
+        """
+        Test creating a new sub-item in the database.
+        """
+        # Mock session
+        session = mock_get_db_session.return_value.__enter__.return_value
+
+        # Mock item data
+        item_data = {'pulse_id': 456, 'description': 'New SubItem'}
+
+        # Mock query to return None (sub-item does not exist)
+        session.query.return_value.filter_by.return_value.one_or_none.return_value = None
+
+        # Call the method under test
+        result = self.db_util.create_or_update_sub_item_in_db(item_data)
+
+        # Assertions
+        self.assertEqual(result['status'], 'Created')
+        session.add.assert_called()
+        session.commit.assert_called()
+
+    @patch('monday_database_util.get_db_session')
+    def test_create_or_update_sub_item_in_db_update(self, mock_get_db_session):
+        """
+        Test updating an existing sub-item in the database.
+        """
+        # Mock session
+        session = mock_get_db_session.return_value.__enter__.return_value
+
+        # Mock existing detail item
+        detail_item = DetailItem(pulse_id=456, description='Old Description')
+        session.query.return_value.filter_by.return_value.one_or_none.return_value = detail_item
+
+        # Mock item data
+        item_data = {'pulse_id': 456, 'description': 'Updated Description'}
+
+        # Call the method under test
+        result = self.db_util.create_or_update_sub_item_in_db(item_data)
+
+        # Assertions
+        self.assertEqual(result['status'], 'Updated')
+        self.assertEqual(detail_item.description, 'Updated Description')
+        session.commit.assert_called()
+
+    @patch('monday_database_util.get_db_session')
+    def test_create_or_update_sub_item_in_db_exception(self, mock_get_db_session):
+        """
+        Test handling exception during sub-item creation/update.
+        """
+        # Mock session
+        session = mock_get_db_session.return_value.__enter__.return_value
+
+        # Mock item data
+        item_data = {'pulse_id': 456, 'description': 'New SubItem'}
+
+        # Mock exception on commit
+        session.commit.side_effect = Exception('DB Error')
+
+        # Call the method under test
+        result = self.db_util.create_or_update_sub_item_in_db(item_data)
+
+        # Assertions
+        self.assertEqual(result['status'], 'Fail')
+        session.rollback.assert_called()
+
+    @patch('monday_database_util.get_db_session')
+    def test_get_purchase_order_surrogate_id_by_pulse_id_found(self, mock_get_db_session):
+        """
+        Test retrieving PurchaseOrder surrogate ID when found.
+        """
+        # Mock session
+        session = mock_get_db_session.return_value.__enter__.return_value
+
+        # Mock PurchaseOrder
+        po = PurchaseOrder(pulse_id=123, po_surrogate_id=1)
+        session.query.return_value.filter_by.return_value.one_or_none.return_value = po
+
+        result = self.db_util.get_purchase_order_surrogate_id_by_pulse_id(123)
+        self.assertEqual(result, 1)
+
+    @patch('monday_database_util.get_db_session')
+    def test_get_purchase_order_surrogate_id_by_pulse_id_not_found(self, mock_get_db_session):
+        """
+        Test retrieving PurchaseOrder surrogate ID when not found.
+        """
+        # Mock session
+        session = mock_get_db_session.return_value.__enter__.return_value
+
+        # Mock query to return None
+        session.query.return_value.filter_by.return_value.one_or_none.return_value = None
+
+        result = self.db_util.get_purchase_order_surrogate_id_by_pulse_id(123)
+        self.assertIsNone(result)
+
+    @patch('monday_database_util.get_db_session')
+    def test_get_aicp_code_surrogate_id_found(self, mock_get_db_session):
+        """
+        Test retrieving AICP code surrogate ID when found.
+        """
+        # Mock session
+        session = mock_get_db_session.return_value.__enter__.return_value
+
+        # Mock AicpCode
+        aicp_code_entry = AicpCode(code='5000', aicp_code_surrogate_id=1)
+        session.query.return_value.filter_by.return_value.one_or_none.return_value = aicp_code_entry
+
+        result = self.db_util.get_aicp_code_surrogate_id('5000')
+        self.assertEqual(result, 1)
+
+    @patch('monday_database_util.get_db_session')
+    def test_get_aicp_code_surrogate_id_not_found(self, mock_get_db_session):
+        """
+        Test retrieving AICP code surrogate ID when not found.
+        """
+        # Mock session
+        session = mock_get_db_session.return_value.__enter__.return_value
+
+        # Mock query to return None
+        session.query.return_value.filter_by.return_value.one_or_none.return_value = None
+
+        result = self.db_util.get_aicp_code_surrogate_id('9999')
+        self.assertIsNone(result)
+
+    @patch('monday_database_util.get_db_session')
+    def test_update_db_with_sub_item_change_success(self, mock_get_db_session):
+        """
+        Test successfully updating a sub-item in the database.
+        """
+        # Mock session and detail item
+        session = mock_get_db_session.return_value.__enter__.return_value
+        detail_item = DetailItem(pulse_id=456, description='Old Description')
+        session.query.return_value.filter_by.return_value.one_or_none.return_value = detail_item
+
+        # Change item data
+        change_item = {
+            'pulse_id': 456,
+            'db_field': 'description',
+            'new_value': 'New Description'
+        }
+        result = self.db_util.update_db_with_sub_item_change(change_item)
+
+        # Assertions
+        self.assertEqual(result, 'Success')
+        self.assertEqual(detail_item.description, 'New Description')
+        session.commit.assert_called()
+
+    @patch('monday_database_util.get_db_session')
+    def test_update_db_with_sub_item_change_not_found(self, mock_get_db_session):
+        """
+        Test updating a sub-item that does not exist in the database.
+        """
+        # Mock session with no detail item found
+        session = mock_get_db_session.return_value.__enter__.return_value
+        session.query.return_value.filter_by.return_value.one_or_none.return_value = None
+
+        # Change item data
+        change_item = {
+            'pulse_id': 456,
+            'db_field': 'description',
+            'new_value': 'New Description'
+        }
+        result = self.db_util.update_db_with_sub_item_change(change_item)
+
+        # Assertions
+        self.assertEqual(result, 'Not Found')
+
+    @patch('monday_database_util.get_db_session')
+    def test_update_db_with_sub_item_change_exception(self, mock_get_db_session):
+        """
+        Test handling exceptions when updating a sub-item.
+        """
+        # Mock session to raise exception on commit
+        session = mock_get_db_session.return_value.__enter__.return_value
+        session.commit.side_effect = Exception('DB Error')
+
+        # Mock existing detail item
+        detail_item = DetailItem(pulse_id=456, description='Old Description')
+        session.query.return_value.filter_by.return_value.one_or_none.return_value = detail_item
+
+        # Change item data
+        change_item = {
+            'pulse_id': 456,
+            'db_field': 'description',
+            'new_value': 'New Description'
+        }
+        result = self.db_util.update_db_with_sub_item_change(change_item)
+
+        # Assertions
+        self.assertEqual(result, 'Fail')
+        session.rollback.assert_called()
+
+    @patch('monday_database_util.get_db_session')
+    def test_delete_purchase_order_in_db_success(self, mock_get_db_session):
+        """
+        Test successful deletion of a PurchaseOrder.
+        """
+        # Mock session
+        session = mock_get_db_session.return_value.__enter__.return_value
+
+        # Mock PurchaseOrder
+        po = PurchaseOrder(pulse_id=123, po_surrogate_id=1)
+        session.query.return_value.filter_by.return_value.first.return_value = po
+
+        result = self.db_util.delete_purchase_order_in_db(1)
+        self.assertTrue(result)
+        session.delete.assert_called_with(po)
+        session.commit.assert_called()
+
+    @patch('monday_database_util.get_db_session')
+    def test_delete_purchase_order_in_db_not_found(self, mock_get_db_session):
+        """
+        Test deletion of a PurchaseOrder that does not exist.
+        """
+        # Mock session
+        session = mock_get_db_session.return_value.__enter__.return_value
+
+        # Mock query to return None
+        session.query.return_value.filter_by.return_value.first.return_value = None
+
+        result = self.db_util.delete_purchase_order_in_db(1)
+        self.assertFalse(result)
+        session.commit.assert_not_called()
+
+    @patch('monday_database_util.get_db_session')
+    def test_delete_detail_item_in_db_success(self, mock_get_db_session):
+        """
+        Test successful deletion of a DetailItem.
+        """
+        # Mock session
+        session = mock_get_db_session.return_value.__enter__.return_value
+
+        # Mock DetailItem
+        detail_item = DetailItem(pulse_id=456, detail_item_surrogate_id=2)
+        session.query.return_value.filter_by.return_value.first.return_value = detail_item
+
+        result = self.db_util.delete_detail_item_in_db(2)
+        self.assertTrue(result)
+        session.delete.assert_called_with(detail_item)
+        session.commit.assert_called()
+
+    @patch('monday_database_util.get_db_session')
+    def test_delete_detail_item_in_db_not_found(self, mock_get_db_session):
+        """
+        Test deletion of a DetailItem that does not exist.
+        """
+        # Mock session
+        session = mock_get_db_session.return_value.__enter__.return_value
+
+        # Mock query to return None
+        session.query.return_value.filter_by.return_value.first.return_value = None
+
+        result = self.db_util.delete_detail_item_in_db(2)
+        self.assertFalse(result)
+        session.commit.assert_not_called()
+
+    def test_verify_url_valid(self):
+        """
+        Test verifying a valid URL string.
+        """
+        url = self.db_util.verify_url("http://example.com")
+        self.assertEqual(url, "http://example.com")
+
+    def test_verify_url_empty(self):
+        """
+        Test verifying an empty string.
+        """
+        url = self.db_util.verify_url("")
+        self.assertEqual(url, "")
+
+    def test_verify_url_none(self):
+        """
+        Test verifying None as input.
+        """
+        url = self.db_util.verify_url(None)
+        self.assertEqual(url, "")
 
 if __name__ == '__main__':
     unittest.main()

@@ -38,6 +38,7 @@ class MondayDatabaseUtil:
         self.DEFAULT_AICP_CODE_SURROGATE_ID = 1
 
     # ----------------------PRE PROCESSING ----------------------
+
     def prep_main_item_event_for_db_creation(self, event):
         """
         Prepares the Monday event payload into a database creation item.
@@ -129,7 +130,7 @@ class MondayDatabaseUtil:
 
         # Special handling for 'file_link' column
         if db_field == "file_link":
-            new_value = self.extract_url_from_json(new_value)
+            new_value = self.verify_url(new_value)
 
         # Start Preprocessing and Data Validation if necessary
         if db_field == 'account_number_id':
@@ -166,6 +167,7 @@ class MondayDatabaseUtil:
 
         self.logger.debug(f"Prepared change item: {change_item}")
         return change_item
+
     def prep_sub_item_event_for_db_creation(self, event):
         """
         Prepares the Monday event payload into a database creation item.
@@ -199,7 +201,7 @@ class MondayDatabaseUtil:
                     if column.get("value"):
                         value = json.loads(column.get("value")).get("url")
                     else:
-                        value = "";
+                        value = ""
                 else:
                     value = column.get("text") or column.get("value")
                 if isinstance(value, str):
@@ -207,6 +209,13 @@ class MondayDatabaseUtil:
                         value = json.loads(value)
                     except (ValueError, TypeError):
                         pass
+                # Convert 'quantity' to double if it's a numeric string
+                if db_field == 'quantity' and isinstance(value, str):
+                    try:
+                        value = float(value)
+                    except ValueError:
+                        self.logger.warning(f"Invalid quantity value: {value}, setting to 0")
+                        value = 0  # Default value or handle as needed
                 creation_item[db_field] = value
 
         # Start Preprocessing and Data Validation
@@ -226,8 +235,8 @@ class MondayDatabaseUtil:
         # Get the AICP Code surrogate ID
         aicp_code_surrogate_id = self.get_aicp_code_surrogate_id(account_number)
         if not aicp_code_surrogate_id:
-            self.logger.warning(f"No AICP Line found with surrogate id: {account_number}, setting to 5000")
-            aicp_code_surrogate_id = 1  # Default surrogate ID for account number 5000
+            self.logger.warning(f"No AICP Line found with surrogate id: {account_number}, setting to default.")
+            aicp_code_surrogate_id = self.DEFAULT_AICP_CODE_SURROGATE_ID
 
         # Get the Purchase Order type
         po_type = self.get_purchase_order_type_by_pulse_id(parent_id)
@@ -236,7 +245,6 @@ class MondayDatabaseUtil:
         creation_item['account_number_id'] = aicp_code_surrogate_id
         creation_item['parent_id'] = po_surrogate_id
         creation_item["is_receipt"] = 0 if po_type == "Vendor" else 1
-
 
         self.logger.debug(f"Prepared subitem creation item: {creation_item}")
         return creation_item
@@ -570,23 +578,24 @@ class MondayDatabaseUtil:
 
     # --------------------- HELPER METHODS ----------------------
 
-    def extract_url_from_json(self, json_str: Optional[str]) -> str:
+    def verify_url(self, string_value):
         """
-        Extracts the 'url' from a JSON string.
+        Extracts the 'url' from a  string.
 
         Args:
-            json_str (str): The JSON string containing the URL.
+            str (str): The  string containing the URL.
 
         Returns:
             str: The extracted URL or an empty string if not found or invalid.
+            :param string_value:
         """
-        if not json_str or not isinstance(json_str, str):
+        if not string_value or not isinstance(string_value, str):
             self.logger.debug("file_link is empty or not a string.")
             return ""
         try:
-            url = json_str
+            url = string_value
             self.logger.debug(f"Extracted URL from file_link: {url}")
             return url
         except (ValueError, TypeError) as e:
-            self.logger.warning(f"Error parsing file_link JSON: {e}")
+            self.logger.warning(f"Error parsing file_link: {e}")
             return ""
