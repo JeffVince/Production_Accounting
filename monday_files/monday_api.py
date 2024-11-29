@@ -162,14 +162,15 @@ class MondayAPI:
 
         return all_items
 
-    def fetch_all_sub_items(self, board_id, limit=100):
+    def fetch_all_sub_items(self, limit=100):
         """
-        Fetch all items from a Monday.com board using cursor-based pagination.
+            Fetch all items from a Monday.com board using cursor-based pagination,
+            excluding sub-items with a parent_item of None.
 
-        :param board_id: The ID of the board to fetch items from.
-        :param limit: Number of items to fetch per request (maximum is 500).
-        :return: List of all items from the board.
-        """
+            :param board_id: The ID of the board to fetch items from.
+            :param limit: Number of items to fetch per request (maximum is 500).
+            :return: List of all items from the board with valid parent items.
+            """
         all_items = []
         cursor = None
 
@@ -177,25 +178,25 @@ class MondayAPI:
             if cursor:
                 # Use next_items_page for subsequent requests
                 query = """
-                query ($cursor: String!, $limit: Int!) {
-                    next_items_page(cursor: $cursor, limit: $limit) {
-                        cursor
-                        items  {
-                            id
-                            name
-                            parent_item {
+                    query ($cursor: String!, $limit: Int!) {
+                        next_items_page(cursor: $cursor, limit: $limit) {
+                            cursor
+                            items  {
                                 id
                                 name
-                            }
-                            column_values {
-                                id
-                                text
-                                value
+                                parent_item {
+                                    id
+                                    name
+                                }
+                                column_values {
+                                    id
+                                    text
+                                    value
+                                }
                             }
                         }
                     }
-                }
-                """
+                    """
                 variables = {
                     'cursor': cursor,
                     'limit': limit
@@ -203,7 +204,7 @@ class MondayAPI:
             else:
                 # Use items_page for the initial request
                 query = """
-                query ($board_id: [ID!]!, $limit: Int!) {
+                    query ($board_id: [ID!]!, $limit: Int!) {
                         boards(ids: $board_id) {
                             items_page(limit: $limit) {
                                 cursor
@@ -223,9 +224,9 @@ class MondayAPI:
                             }
                         }
                     }
-                """
+                    """
                 variables = {
-                    'board_id': str(board_id),  # Ensure the board_id is a string
+                    'board_id': str(self.SUBITEM_BOARD_ID),  # Ensure the board_id is a string
                     'limit': limit
                 }
 
@@ -240,12 +241,16 @@ class MondayAPI:
             else:
                 boards_data = response.get('data', {}).get('boards', [])
                 if not boards_data:
-                    print(f"No boards found for board_id {board_id}. Please verify the board ID and your permissions.")
+                    print(f"No boards found for board_id {self.SUBITEM_BOARD_ID}. Please verify the board ID and your permissions.")
                     break
                 items_data = boards_data[0].get('items_page', {})
 
             items = items_data.get('items', [])
-            all_items.extend(items)
+
+            # Filter out items with parent_item as None
+            valid_items = [item for item in items if item.get('parent_item') is not None]
+
+            all_items.extend(valid_items)
 
             # Extract the next cursor
             cursor = items_data.get('cursor')
@@ -254,11 +259,11 @@ class MondayAPI:
             if not cursor:
                 break
 
-            print(f"Fetched {len(items)} items from board {board_id}.")
+            print(f"Fetched {len(valid_items)} valid items from board {self.SUBITEM_BOARD_ID}.")
 
         return all_items
 
-    def fetch_all_contacts(self, board_id, limit=150):
+    def fetch_all_contacts(self, board_id: object, limit: object = 150) -> object:
         """
         Fetch all items from a Monday.com board using cursor-based pagination.
 

@@ -27,7 +27,7 @@ class MondayWebhookHandler:
     def __init__(self):
         # Set up logging
         self.logger = logging.getLogger(self.__class__.__name__)
-        logging.basicConfig(level=logging.DEBUG)
+        logging.basicConfig(level=logging.INFO)
         # Initialize the Monday API client
         self.mondayAPI = MondayAPI()
         # Initialize the MondayDatabaseUtil instance
@@ -127,7 +127,7 @@ class MondayWebhookHandler:
                 return jsonify({"error": "Invalid event data: Missing 'event' key"}), 400
 
             # Prepare the SubItem event for database change
-            change_item = self.monday_util.prep_sub_item_event_for_db_change(event)
+            change_item = self.db_util.prep_sub_item_event_for_db_change(event)
 
             # Update the database with the SubItem change using the MondayDatabaseUtil instance
             result = self.db_util.update_db_with_sub_item_change(change_item)
@@ -146,7 +146,7 @@ class MondayWebhookHandler:
                     # Fetch the parent item from Monday.com
                     item_data = self.mondayAPI.fetch_item_by_ID(event["parentItemId"])
                     # Prepare the main item event for DB creation
-                    create_main_item = self.monday_util.prep_main_item_event_for_db_creation(item_data)
+                    create_main_item = self.db_util.prep_main_item_event_for_db_creation(item_data)
                     # # # # Create or update the main item in the database
                     status = self.db_util.create_or_update_main_item_in_db(create_main_item)
                     if status not in ["Created", "Updated"]:
@@ -154,7 +154,7 @@ class MondayWebhookHandler:
                         return jsonify({"error": "Failed to create new main item"}), 400
 
                 # Prepare the SubItem event for DB creation
-                create_item = self.monday_util.prep_sub_item_event_for_db_creation(subitem_data)
+                create_item = self.db_util.prep_sub_item_event_for_db_creation(subitem_data)
 
                 # Create or update the SubItem in the database
                 create_result = self.db_util.create_or_update_sub_item_in_db(create_item)
@@ -208,7 +208,6 @@ class MondayWebhookHandler:
         except Exception as e:
             logger.exception("Error processing SubItem delete.")
             return jsonify({"error": str(e)}), 500
-
 
 # Instantiate the handler
 handler = MondayWebhookHandler()

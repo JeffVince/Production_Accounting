@@ -46,27 +46,25 @@ class Orchestrator:
 
         def sync_monday_to_sub_items():
             while True:
-                time.sleep(interval)
                 logger.info("Fetching Sub Item entries")
                 try:
                     self.monday_service.sync_sub_items_from_monday_board()
                 except Exception as e:
                     logger.error(f"Error fetching Sub Item entries and syncing them to DB: {e}")
+                time.sleep(interval)
+
 
         threading.Thread(target=sync_monday_to_sub_items, daemon=True).start()
 
     def schedule_monday_contact_sync(self, interval=90000):
 
-        def sync_monday_to_sub_items():
+        def sync_contacts_from_monday_board():
             while True:
                 time.sleep(interval)
-
                 logger.info("Fetching Sub Item entries")
                 try:
                     self.monday_service.sync_contacts_from_monday_board()
                 except Exception as e:
                     logger.error(f"Error fetching Sub Item entries and syncing them to DB: {e}")
 
-
-
-        threading.Thread(target=sync_monday_to_sub_items, daemon=True).start()
+        threading.Thread(target=sync_contacts_from_monday_board, daemon=True).start()

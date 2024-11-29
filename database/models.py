@@ -241,7 +241,7 @@ class DetailItem(Base):
         comment='1 for receipts, 0 for invoices',
     )
     state = Column(
-        Enum('PENDING', 'ISSUE', 'RTP', 'RECONCILED', 'PAID', 'APPROVED'),
+        Enum('PENDING', 'ISSUE', 'OVERDUE', 'RTP', 'RECONCILED', 'PAID', 'APPROVED'),
         nullable=False,
         default='PENDING',
     )

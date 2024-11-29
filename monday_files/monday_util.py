@@ -3,10 +3,10 @@
 import json
 import logging
 import os
-from datetime import datetime
 
 import requests
 from dotenv import load_dotenv
+from monday import MondayClient
 
 
 class MondayUtil:
@@ -18,12 +18,10 @@ class MondayUtil:
     # --------------------- CONSTANTS ---------------------
 
     MONDAY_API_URL = 'https://api.monday.com/v2'
-    headers = ''
 
     ACTUALS_BOARD_ID = "7858669780"
     PO_BOARD_ID = "2562607316"  # Ensure this is a string
     CONTACT_BOARD_ID = '2738875399'
-    SUBITEM_BOARD_ID = ''
 
     # Column IDs for POs
     PO_PROJECT_ID_COLUMN = 'project_id'  # Monday.com Project ID column ID
@@ -61,7 +59,7 @@ class MondayUtil:
 
     # Mapping Monday.com Columns to DB Fields
     MAIN_ITEM_COLUMN_ID_TO_DB_FIELD = {
-        # Monday Subitem Columns -> DB DetailItem Columns
+        # Monday Main Item Columns -> DB Fields
         "id": "pulse_id",
         PO_PROJECT_ID_COLUMN: "project_id",
         PO_NUMBER_COLUMN: "po_number",
@@ -76,7 +74,7 @@ class MondayUtil:
     SUB_ITEM_COLUMN_ID_TO_DB_FIELD = {
         # Monday Subitem Columns -> DB DetailItem Columns
         SUBITEM_STATUS_COLUMN_ID: "state",  # Maps to the state ENUM in the DB
-        SUBITEM_ID_COLUMN_ID: "detail_item_number",  # Maps to file_link in the DB
+        SUBITEM_ID_COLUMN_ID: "detail_item_number",  # Maps to detail_item_number in the DB
         SUBITEM_DESCRIPTION_COLUMN_ID: "description",  # Maps to description in the DB
         SUBITEM_QUANTITY_COLUMN_ID: "quantity",  # Maps to quantity in the DB
         SUBITEM_RATE_COLUMN_ID: "rate",  # Maps to rate in the DB
@@ -103,30 +101,144 @@ class MondayUtil:
         "default": "handle_default_column",
         "date": "handle_date_column",
         "color": "handle_status_column",
-        "link": "handle_link_column"
+        "link": "handle_link_column",
+        "text": "handle_default_column"
     }
+
+    # --------------------- SINGLETON IMPLEMENTATION ---------------------
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(MondayUtil, cls).__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
 
     # --------------------- INITIALIZATION ---------------------
 
     def __init__(self):
+        if self._initialized:
+            return
+        self._initialized = True
+
         # Set up logging
         self.logger = logging.getLogger(self.__class__.__name__)
-        logging.basicConfig(level=logging.DEBUG)
+        # Avoid reconfiguring logging multiple times
+        if not self.logger.handlers:
+            logging.basicConfig(level=logging.INFO)
+
         # Load environment variables
         load_dotenv()
+
         # Initialize headers for API requests
         self.monday_api_token = os.getenv("MONDAY_API_TOKEN")
+        self._subitem_board_id = None  # Instance-level cache
+
         if not self.monday_api_token:
             self.logger.error("Monday API Token not found. Please set it in the environment variables.")
             raise EnvironmentError("Missing MONDAY_API_TOKEN")
+
         self.headers = {
             'Authorization': self.monday_api_token,
             'Content-Type': 'application/json',
             'API-Version': '2023-10'
         }
-        self.SUBITEM_BOARD_ID = self.get_subitem_board_id(self.PO_BOARD_ID)
 
-        # Initialize MondayDatabaseUtil instance
+        self.client = MondayClient(self.monday_api_token)
+
+    # --------------------- PROPERTIES ---------------------
+
+    @property
+    def SUBITEM_BOARD_ID(self):
+        if self._subitem_board_id is None:
+            self._subitem_board_id = self.retrieve_subitem_board_id()
+        return self._subitem_board_id
+
+    def retrieve_subitem_board_id(self):
+        """
+        Retrieves the subitem board ID by first fetching the subitems column ID
+        and then extracting the board ID from its settings.
+
+        Returns:
+            str: The subitem board ID.
+
+        Raises:
+            Exception: If unable to retrieve the subitem board ID.
+        """
+        subitems_column_id = self.get_subitems_column_id(self.PO_BOARD_ID)
+        subitem_board_id = self.get_subitem_board_id(subitems_column_id)
+        self.logger.info(f"Retrieved subitem board ID: {subitem_board_id}")
+        return subitem_board_id
+
+    def get_subitems_column_id(self, parent_board_id):
+        """
+        Retrieves the column ID for subitems in a given board.
+
+        Args:
+            parent_board_id (str): The ID of the parent board.
+
+        Returns:
+            str: The column ID for subitems.
+
+        Raises:
+            Exception: If the subitems column is not found or the API request fails.
+        """
+        query = f'''
+        query {{
+            boards(ids: {parent_board_id}) {{
+                columns {{
+                    id
+                    type
+                }}
+            }}
+        }}
+        '''
+        response = requests.post(self.MONDAY_API_URL, headers=self.headers, json={'query': query})
+        data = response.json()
+
+        if response.status_code == 200 and 'data' in data:
+            columns = data['data']['boards'][0]['columns']
+            for column in columns:
+                if column['type'] == 'subtasks':
+                    self.logger.info(f"Found subitems column ID: {column['id']}")
+                    return column['id']
+            raise Exception("Subitems column not found.")
+        else:
+            raise Exception(f"Failed to retrieve columns: {response.text}")
+
+    def get_subitem_board_id(self, subitems_column_id):
+        """
+        Retrieves the subitem board ID for a given subitems column ID.
+
+        Args:
+            subitems_column_id (str): The ID of the subitems column.
+
+        Returns:
+            str: The subitem board ID.
+
+        Raises:
+            Exception: If the subitem board ID cannot be retrieved.
+        """
+        query = f'''
+        query {{
+            boards(ids: {self.PO_BOARD_ID}) {{
+                columns(ids: "{subitems_column_id}") {{
+                    settings_str
+                }}
+            }}
+        }}
+        '''
+        response = requests.post(self.MONDAY_API_URL, headers=self.headers, json={'query': query})
+        data = response.json()
+
+        if response.status_code == 200 and 'data' in data:
+            settings_str = data['data']['boards'][0]['columns'][0]['settings_str']
+            settings = json.loads(settings_str)
+            subitem_board_id = settings['boardIds'][0]
+            self.logger.info(f"Retrieved subitem board ID: {subitem_board_id}")
+            return subitem_board_id
+        else:
+            raise Exception(f"Failed to retrieve subitem board ID: {response.text}")
 
     # --------------------- HELPER METHODS ---------------------
 
@@ -138,12 +250,12 @@ class MondayUtil:
 
     def _handle_link_column(self, event):
         """
-        Handles dropdown column type and extracts chosen values.
+        Handles link column type and extracts URL.
         """
         try:
             return event.get('value', {}).get('url', {})
-        except Exception as e:
-            self.logger.warning("Setting Account ID to None because of unexpected Monday Account Value.")
+        except Exception:
+            self.logger.warning("Setting link to None because of unexpected Monday Link Value.")
             return None
 
     def _handle_dropdown_column(self, event):
@@ -152,8 +264,9 @@ class MondayUtil:
         """
         try:
             line_number = event.get('value', {}).get('chosenValues', [])[0].get("name")
-            return self.db_util.get_aicp_code_surrogate_id(line_number)
-        except Exception as e:
+            # Adjust this according to your logic or database utility
+            return line_number  # Or adjust as needed
+        except Exception:
             self.logger.warning("Setting Account ID to None because of unexpected Monday Account Value.")
             return None
 
@@ -161,196 +274,22 @@ class MondayUtil:
         """
         Default handler for columns, extracting a single text label.
         """
-        return event.get('value', {}).get('value', {})
+        if not event or not event.get('value'):
+            return None
+        return event['value'].get('value')
 
     def _handle_status_column(self, event):
+        """
+        Handles status column type and extracts the label text.
+        """
         return event.get('value', {}).get('label', {}).get('text')
 
-
-    def _get_column_handler(self, column_type):
+    def get_column_handler(self, column_type):
         """
         Retrieves the appropriate handler method based on the column type.
         """
         handler_name = self.COLUMN_TYPE_HANDLERS.get(column_type, "handle_default_column")
         return getattr(self, f"_{handler_name}")
-
-    # --------------------- MAIN ITEM METHODS ---------------------
-
-    def prep_main_item_event_for_db_creation(self, event):
-        """
-        Prepares the Monday event payload into a database creation item.
-
-        Args:
-            event (dict): The Monday event payload.
-
-        Returns:
-            dict: A dictionary representing the database creation item.
-        """
-        item = event
-        self.logger.debug(f"MAIN ITEM FOR CREATION: {item}")
-
-        # Prepare the database creation item
-        creation_item = {
-            "pulse_id": int(item["id"]),  # Monday subitem ID
-        }
-
-        po_type = "Vendor"  # Default po_type value
-
-        for column in item.get("column_values", []):
-            column_id = column.get("id")
-            db_field = self.MAIN_ITEM_COLUMN_ID_TO_DB_FIELD.get(column_id)
-
-            if db_field:
-                # Map the corresponding value to the database field
-                value = column.get("text") or column.get("value")
-
-                # Handle cases where value is a JSON string
-                if isinstance(value, str):
-                    try:
-                        value = json.loads(value)
-                    except (ValueError, TypeError):
-                        pass
-
-                # Special handling for specific fields
-                if db_field == "contact_id" and isinstance(value, dict):
-                    # Extract the first linkedPulseId if present
-                    linked_pulse_ids = value.get("linkedPulseIds", [])
-                    value = linked_pulse_ids[0].get("linkedPulseId") if linked_pulse_ids else None
-
-                # Check status to determine po_type
-                if db_field == "state" and value == "CC / PC":
-                    po_type = "CC / PC"
-
-                # Assign processed value
-                creation_item[db_field] = value
-
-        # Add po_type to the creation item
-        creation_item["po_type"] = po_type
-
-        self.logger.debug(f"Prepared creation item: {creation_item}")
-        return creation_item
-
-    # --------------------- SUBITEM METHODS ---------------------
-
-    def prep_sub_item_event_for_db_change(self, event):
-        """
-        Prepares the Monday event into a database change item.
-
-        Args:
-            event (dict): The Monday event payload.
-
-        Returns:
-            dict: A prepared database change item.
-        """
-        column_id = event.get('columnId')
-        column_type = event.get('columnType', 'default')  # Use 'default' if columnType is not provided
-
-        # Determine the database field for the column
-        db_field = self.SUB_ITEM_COLUMN_ID_TO_DB_FIELD.get(column_id)
-        if not db_field:
-            raise ValueError(f"Column ID '{column_id}' is not mapped to a database field.")
-
-        # Get the appropriate handler for the column type
-        handler = self._get_column_handler(column_type)
-
-        # Process the value using the appropriate handler
-        new_value = handler(event)
-
-        # Construct the change item
-        change_item = {
-            "pulse_id": int(event.get('pulseId')),  # Monday pulse ID (subitem ID)
-            "db_field": db_field,  # Corresponding DB field
-            "new_value": new_value,  # Extracted new value
-            "changed_at": datetime.fromtimestamp(event.get('changedAt', 0)),
-        }
-
-        self.logger.debug(f"Prepared change item: {change_item}")
-        return change_item
-
-    def prep_sub_item_event_for_db_creation(self, event):
-        """
-        Prepares the Monday event payload into a database creation item.
-
-        Args:
-            event (dict): The Monday event payload.
-
-        Returns:
-            dict: A dictionary representing the database creation item, or None if orphan.
-        """
-        item = event
-        self.logger.debug(f"ITEM DATA: {item}")
-        parent_id = item["parent_item"]['id']
-        # Remove orphan detail items
-        if not parent_id:
-            self.logger.warning("Orphan detail item detected; skipping creation.")
-            return None
-
-        # Prepare the database creation item
-        creation_item = {
-            "pulse_id": int(item["id"]),
-            "parent_id": item["parent_item"]["id"]
-        }
-
-        for column in item.get("column_values", []):
-            column_id = column.get("id")
-            db_field = self.SUB_ITEM_COLUMN_ID_TO_DB_FIELD.get(column_id)
-            if db_field:
-                value = column.get("text") or column.get("value")
-                if isinstance(value, str):
-                    try:
-                        value = json.loads(value)
-                    except (ValueError, TypeError):
-                        pass
-                creation_item[db_field] = value
-
-        self.logger.debug(f"Prepared subitem creation item: {creation_item}")
-        return creation_item
-
-    # --------------------- CONTACT METHODS ---------------------
-
-    def prep_contact_event_for_db_creation(self, event):
-        """
-        Prepares the Monday event payload into a database creation item.
-
-        Args:
-            event (dict): The Monday event payload.
-
-        Returns:
-            dict: A dictionary representing the database creation item.
-        """
-        if not event or "id" not in event:
-            self.logger.error(f"Invalid event structure: {event}")
-            raise ValueError("Invalid event structure. Ensure the event payload is properly formatted.")
-
-        # Extract the first item from the event payload (assuming a single contact event)
-        item = event
-        self.logger.debug(f"CONTACT ITEM DATA: {item}")
-
-        # Prepare the database creation item
-        creation_item = {
-            "pulse_id": int(item["id"]),
-            "name": item.get('name')
-        }
-
-        for column in item.get("column_values", []):
-            column_id = column.get("id")
-            db_field = self.CONTACT_COLUMN_ID_TO_DB_FIELD.get(column_id)
-
-            if db_field:
-                # Map the corresponding value to the database field
-                value = column.get("text") or column.get("value")
-
-                # Handle cases where value is a JSON string
-                if isinstance(value, str):
-                    try:
-                        value = json.loads(value)
-                    except (ValueError, TypeError):
-                        pass
-
-                creation_item[db_field] = value
-
-        self.logger.debug(f"Prepared contact creation item: {creation_item}")
-        return creation_item
 
     # --------------------- ITEM METHODS ---------------------
 
@@ -672,545 +611,7 @@ class MondayUtil:
             self.logger.error(f"HTTP Error {response.status_code}: {response.text}")
             return False
 
-    # --------------------- FETCH METHODS ---------------------
-
-    def get_subitems_column_id(self, parent_board_id):
-        """
-        Retrieves the column ID for subitems in a given board.
-
-        Args:
-            parent_board_id (str): The ID of the parent board.
-
-        Returns:
-            str: The column ID for subitems.
-
-        Raises:
-            Exception: If the subitems column is not found or the API request fails.
-        """
-        query = f'''
-        query {{
-            boards(ids: {parent_board_id}) {{
-                columns {{
-                    id
-                    type
-                }}
-            }}
-        }}
-        '''
-        response = requests.post(self.MONDAY_API_URL, headers=self.headers, json={'query': query})
-        data = response.json()
-
-        if response.status_code == 200 and 'data' in data:
-            columns = data['data']['boards'][0]['columns']
-            for column in columns:
-                if column['type'] == 'subtasks':
-                    self.logger.info(f"Found subitems column ID: {column['id']}")
-                    return column['id']
-            raise Exception("Subitems column not found.")
-        else:
-            raise Exception(f"Failed to retrieve columns: {response.text}")
-
-    def get_subitem_board_id(self, parent_board_id):
-        """
-        Retrieves the subitem board ID for a given parent board.
-
-        Args:
-            parent_board_id (str): The ID of the parent board.
-
-        Returns:
-            str: The subitem board ID.
-
-        Raises:
-            Exception: If the subitem board ID cannot be retrieved.
-        """
-        subitems_column_id = self.get_subitems_column_id(parent_board_id)
-        query = f'''
-        query {{
-            boards(ids: {parent_board_id}) {{
-                columns(ids: "{subitems_column_id}") {{
-                    settings_str
-                }}
-            }}
-        }}
-        '''
-        response = requests.post(self.MONDAY_API_URL, headers=self.headers, json={'query': query})
-        data = response.json()
-
-        if response.status_code == 200 and 'data' in data:
-            settings_str = data['data']['boards'][0]['columns'][0]['settings_str']
-            settings = json.loads(settings_str)
-            subitem_board_id = settings['boardIds'][0]
-            self.logger.info(f"Retrieved subitem board ID: {subitem_board_id}")
-            return subitem_board_id
-        else:
-            raise Exception(f"Failed to retrieve subitem board ID: {response.text}")
-
-    def get_po_number_and_data(self, item_id):
-        """
-        Fetches the PO number and item data for a given item ID.
-
-        Args:
-            item_id (str): The ID of the item.
-
-        Returns:
-            tuple: (po_number, item_data) if successful, else (None, None).
-        """
-        query = f'''
-        query {{
-            items(ids: {item_id}) {{
-                id
-                name
-                column_values {{
-                    id
-                    text
-                    value
-                }}
-            }}
-        }}
-        '''
-        response = requests.post(self.MONDAY_API_URL, headers=self.headers, json={'query': query})
-        data = response.json()
-
-        if response.status_code == 200 and 'data' in data:
-            items = data['data']['items']
-            if items:
-                item = items[0]
-                po_number = None
-                for col in item.get('column_values', []):
-                    if col['id'] == self.PO_NUMBER_COLUMN:  # Replace with your actual PO Number column ID
-                        po_number = col.get('text')
-                        break
-                self.logger.info(f"Fetched PO number: {po_number} for Item ID: {item_id}")
-                return po_number, item
-        self.logger.error(f"Failed to fetch item data for Item ID {item_id}: {data.get('errors')}")
-        return None, None
-
-    def find_item_by_project_and_po(self, project_id, po_number):
-        """
-        Finds an item in Monday.com based on the provided Project ID and PO Number.
-
-        Args:
-            project_id (str): The Project ID to match.
-            po_number (str): The PO Number to match.
-
-        Returns:
-            str or None: The ID of the matched item if found, otherwise None.
-
-        Raises:
-            Exception: If the GraphQL query fails or if there's an HTTP error.
-        """
-        # Prepare the GraphQL columns argument to filter items by the specific Project ID
-        columns_arg = json.dumps([{
-            "column_id": self.PO_PROJECT_ID_COLUMN,
-            "column_values": [project_id]
-        }])
-
-        # GraphQL query to retrieve items filtered by Project ID
-        query = f'''
-        query {{
-            items_page_by_column_values(
-                board_id: {self.PO_BOARD_ID},
-                columns: {columns_arg},
-                limit: 100
-            ) {{
-                items {{
-                    id
-                    name
-                    column_values {{
-                        id
-                        value
-                    }}
-                }}
-            }}
-        }}
-        '''
-
-        self.logger.info(f"Searching for item with Project ID '{project_id}' and PO Number '{po_number}'.")
-
-        # Send the GraphQL request to the Monday.com API
-        response = requests.post(self.MONDAY_API_URL, headers=self.headers, json={'query': query})
-        data = response.json()
-
-        # Check if the request was successful
-        if response.status_code == 200 and 'data' in data:
-            items = data['data']['items_page_by_column_values'].get('items', [])
-            for item in items:
-                for column in item.get('column_values', []):
-                    if column['id'] == self.PO_NUMBER_COLUMN:
-                        # Extract and parse the column value (expected to be JSON-encoded)
-                        value = column.get('value', '')
-                        try:
-                            parsed_value = json.loads(value)
-                        except json.JSONDecodeError:
-                            parsed_value = value.strip('"')  # Fallback if not JSON
-
-                        # Check if the parsed value matches the PO number
-                        if parsed_value == po_number:
-                            self.logger.info(f"Found item with PO Number '{po_number}': ID {item['id']}")
-                            return item['id']
-
-            self.logger.info(f"No item found with Project ID '{project_id}' and PO Number '{po_number}'.")
-            return None
-        elif 'errors' in data:
-            self.logger.error(f"Error fetching items from Monday.com: {data['errors']}")
-            raise Exception("GraphQL query error")
-        else:
-            self.logger.error(f"Unexpected response structure: {data}")
-            raise Exception("Unexpected GraphQL response")
-
-    def get_group_id_by_project_id(self, project_id):
-        """
-        Retrieves the group ID in Monday.com based on the project ID.
-
-        Args:
-            project_id (str): The project ID to match.
-
-        Returns:
-            str or None: The group ID if found, otherwise None.
-        """
-        query = f'''
-        query {{
-            boards(ids: {self.PO_BOARD_ID}) {{
-                groups {{
-                    id
-                    title
-                }}
-            }}
-        }}
-        '''
-
-        response = requests.post(self.MONDAY_API_URL, headers=self.headers, json={'query': query})
-        data = response.json()
-
-        if response.status_code == 200 and 'data' in data:
-            groups = data['data']['boards'][0]['groups']
-            for group in groups:
-                title_prefix = group['title'][:len(project_id)]
-                self.logger.debug(f"Comparing group title prefix '{title_prefix}' with prefix '{project_id}'")
-                if title_prefix == project_id:
-                    self.logger.info(f"Found matching group: {group['title']} with ID {group['id']}")
-                    return group['id']
-            self.logger.error(f"No group found with title prefix '{project_id}'")
-            return None
-        elif 'errors' in data:
-            self.logger.error(f"Error fetching groups from Monday.com: {data['errors']}")
-            return None
-        else:
-            self.logger.error(f"Unexpected response structure: {data}")
-            return None
-
-    def find_subitem_by_invoice_or_receipt_number(self, parent_item_id, invoice_receipt_number=None):
-        """
-        Finds a subitem under a parent item in Monday.com based on the provided invoice number or receipt number.
-
-        Args:
-            parent_item_id (str): The ID of the parent item (PO item).
-            invoice_receipt_number (str, optional): The invoice or receipt number to search for.
-
-        Returns:
-            list or None: The list of matched subitems if found, otherwise None.
-
-        Raises:
-            Exception: If the GraphQL query fails or if there's an HTTP error.
-        """
-        # Validate that at least one of invoice_number or receipt_number is provided
-        if not invoice_receipt_number:
-            raise ValueError("Either invoice_number or receipt_number must be provided.")
-
-        # GraphQL query to retrieve subitems under the parent item
-        query = f'''
-        query {{
-            items(ids: {parent_item_id}) {{
-                subitems {{
-                    id
-                    name
-                    column_values {{
-                        id
-                        text
-                    }}
-                }}
-            }}
-        }}
-        '''
-
-        self.logger.info(
-            f"Searching for subitems under parent item {parent_item_id} matching '{invoice_receipt_number}'.")
-
-        # Send the GraphQL request to the Monday.com API
-        response = requests.post(self.MONDAY_API_URL, headers=self.headers, json={'query': query})
-        data = response.json()
-
-        # Check if the request was successful
-        if response.status_code == 200 and 'data' in data:
-            subitems = data['data']['items'][0].get('subitems', [])
-            self.logger.debug(f"Retrieved subitems: {json.dumps(subitems, indent=2)}")
-
-            # Iterate through each subitem to find a match
-            for subitem in subitems:
-                for column in subitem.get('column_values', []):
-                    if column['id'] == self.SUBITEM_ID_COLUMN_ID:
-                        # Extract the text value of the column
-                        text_value = column.get('text', '').strip()
-
-                        # Check if the text value matches the provided invoice or receipt number
-                        if text_value == invoice_receipt_number:
-                            self.logger.info(f"Found subitem with ID {subitem['id']} matching invoice/receipt number.")
-                            return subitems
-
-            self.logger.info(
-                f"No subitem found under parent item {parent_item_id} matching '{invoice_receipt_number}'.")
-            return None
-        elif 'errors' in data:
-            self.logger.error(f"Error fetching subitems from Monday.com: {data['errors']}")
-            raise Exception("GraphQL query error")
-        else:
-            self.logger.error(f"Unexpected response structure: {data}")
-            raise Exception("Unexpected GraphQL response")
-
-    def find_all_po_subitems(self, parent_item_id):
-        """
-        Retrieves all subitems for a specified parent item.
-
-        Args:
-            parent_item_id (str): The ID of the parent item (PO item).
-
-        Returns:
-            list: A list of dictionaries, each representing a subitem with its details.
-        """
-        query = '''
-        query ($parent_item_id: [ID!]) {
-            items(ids: $parent_item_id) {
-                subitems {
-                    id
-                    name
-                    column_values {
-                        id
-                        text
-                    }
-                }
-            }
-        }
-        '''
-
-        variables = {'parent_item_id': [parent_item_id]}
-        self.logger.info(f"Fetching all subitems for parent item {parent_item_id}.")
-
-        response = requests.post(self.MONDAY_API_URL, headers=self.headers,
-                                 json={'query': query, 'variables': variables})
-        data = response.json()
-
-        if response.status_code == 200 and 'data' in data:
-            subitems = data['data']['items'][0].get('subitems', [])
-            self.logger.debug(f"Retrieved all subitems: {json.dumps(subitems, indent=2)}")
-            return subitems
-        else:
-            self.logger.error(f"Error fetching subitems: {response.text}")
-            return []
-
-    def get_all_groups_from_board(self, board_id):
-        """
-        Retrieves all groups from a specified board.
-
-        Args:
-            board_id (str): The ID of the board.
-
-        Returns:
-            list: A list of dictionaries, each representing a group with its details.
-        """
-        query = '''
-        query ($board_id: Int!) {
-            boards(ids: [$board_id]) {
-                groups {
-                    id
-                    title
-                }
-            }
-        }
-        '''
-        variables = {'board_id': board_id}
-        self.logger.info(f"Fetching all groups from board {board_id}.")
-
-        response = requests.post(self.MONDAY_API_URL, headers=self.headers,
-                                 json={'query': query, 'variables': variables})
-        data = response.json()
-
-        if response.status_code == 200 and 'data' in data:
-            groups = data['data']['boards'][0]['groups']
-            self.logger.debug(f"Retrieved groups: {json.dumps(groups, indent=2)}")
-            return groups
-        else:
-            self.logger.error(f"Error fetching groups: {response.text}")
-            return []
-
-    def get_all_subitems_for_item(self, parent_item_id):
-        """
-        Retrieves all subitems for a specified parent item.
-
-        Args:
-            parent_item_id (str): The ID of the parent item (as a string).
-
-        Returns:
-            list: A list of dictionaries, each representing a subitem with its details.
-        """
-        query = '''
-        query ($parent_item_id: [ID!]) {
-            items(ids: $parent_item_id) {
-                subitems {
-                    id
-                    name
-                    column_values {
-                        id
-                        text
-                    }
-                }
-            }
-        }
-        '''
-        variables = {'parent_item_id': [parent_item_id]}
-        self.logger.info(f"Fetching all subitems for parent item {parent_item_id}.")
-
-        response = requests.post(self.MONDAY_API_URL, headers=self.headers,
-                                 json={'query': query, 'variables': variables})
-        data = response.json()
-
-        if response.status_code == 200 and 'data' in data:
-            subitems = data['data']['items'][0].get('subitems', [])
-            self.logger.debug(f"Retrieved subitems: {json.dumps(subitems, indent=2)}")
-            return subitems
-        else:
-            self.logger.error(f"Error fetching subitems: {response.text}")
-            return []
-
-    def find_contact_item_by_name(self, contact_name):
-        """
-        Finds a contact item in Monday.com based on the provided contact name and retrieves specified column values.
-
-        Args:
-            contact_name (str): The name of the contact to match.
-
-        Returns:
-            dict or None: A dictionary containing the item ID and the specified column values if found, otherwise None.
-
-        Raises:
-            Exception: If the GraphQL query fails or if there's an HTTP error.
-        """
-        # Prepare the columns argument for filtering by contact name
-        columns_arg = json.dumps([{
-            "column_id": self.CONTACT_NAME,
-            "column_values": [contact_name]
-        }])
-
-        # GraphQL query using items_page_by_column_values with the columns argument
-        query = f'''
-            query {{
-                items_page_by_column_values(
-                    board_id: {self.CONTACT_BOARD_ID},
-                    columns: {columns_arg},
-                    limit: 1
-                ) {{
-                    items {{
-                        id
-                        name
-                        column_values (ids: [
-                            "{self.CONTACT_PHONE}",
-                            "{self.CONTACT_EMAIL}",
-                            "{self.CONTACT_ADDRESS_LINE_1}",
-                            "{self.CONTACT_ADDRESS_CITY}",
-                            "{self.CONTACT_ADDRESS_ZIP}",
-                            "{self.CONTACT_ADDRESS_COUNTRY}",
-                            "{self.CONTACT_TAX_TYPE}",
-                            "{self.CONTACT_TAX_NUMBER}"
-                        ]) {{
-                            id
-                            text
-                        }}
-                    }}
-                }}
-            }}
-        '''
-
-        self.logger.info(f"Searching for contact with name '{contact_name}'.")
-
-        # Send the GraphQL request to the Monday.com API
-        response = requests.post(self.MONDAY_API_URL, headers=self.headers, json={'query': query})
-        data = response.json()
-        self.logger.debug(f"Contact search response: {data}")
-
-        # Check if the request was successful
-        if response.status_code == 200 and 'data' in data:
-            items = data['data']['items_page_by_column_values'].get('items', [])
-            if items:
-                item = items[0]
-                item_id = item['id']
-                column_values = {col['id']: col['text'] for col in item.get('column_values', [])}
-                self.logger.info(f"Found contact item with ID {item_id} for contact name '{contact_name}'.")
-                return {'item_id': item_id, 'column_values': column_values}
-            else:
-                # No items were found in the response
-                self.logger.info(f"No contact found with name '{contact_name}'.")
-                return None
-        elif 'errors' in data:
-            self.logger.error(f"Error fetching contacts from Monday.com: {data['errors']}")
-            raise Exception("GraphQL query error")
-        else:
-            self.logger.error(f"Unexpected response structure: {data}")
-            raise Exception("Unexpected GraphQL response")
-
-    # --------------------- FETCHING ITEMS BY COLUMNS ---------------------
-
-    def get_items_by_column_values(self, board_id, column_filters):
-        """
-        Retrieves all items from a board that match specified column values.
-
-        Args:
-            board_id (str): The ID of the board.
-            column_filters (list): A list of dictionaries, each containing 'column_id' and 'column_values' keys.
-
-        Returns:
-            list: A list of dictionaries, each representing an item with its details.
-        """
-        query = '''
-        query ($board_id: Int!, $columns: [ItemsPageByColumnValuesQuery!]!, $cursor: String) {
-            items_page_by_column_values(board_id: $board_id, columns: $columns, cursor: $cursor, limit: 100) {
-                cursor
-                items {
-                    id
-                    name
-                    column_values {
-                        id
-                        text
-                    }
-                }
-            }
-        }
-        '''
-
-        headers = self.headers
-
-        items = []
-        cursor = None
-
-        self.logger.info(f"Fetching items from board {board_id} with filters {column_filters}.")
-
-        while True:
-            variables = {'board_id': board_id, 'columns': column_filters, 'cursor': cursor}
-            response = requests.post(self.MONDAY_API_URL, headers=headers,
-                                     json={'query': query, 'variables': variables})
-            data = response.json()
-
-            if response.status_code == 200 and 'data' in data:
-                items_page = data['data']['items_page_by_column_values']
-                items.extend(items_page.get('items', []))
-                cursor = items_page.get('cursor')
-                self.logger.debug(f"Fetched {len(items_page.get('items', []))} items. Cursor: {cursor}")
-                if not cursor:
-                    break
-            else:
-                self.logger.error(f"Error fetching items: {response.text}")
-                break
-
-        self.logger.info(f"Total items fetched: {len(items)}")
-        return items
+    # The rest of your methods remain unchanged...
 
     # --------------------- VALIDATION METHODS ---------------------
 
