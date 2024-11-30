@@ -5,12 +5,12 @@ from flask import Blueprint, request, jsonify
 from sqlalchemy.exc import SQLAlchemyError
 
 # Import the MondayDatabaseUtil class
-from monday_files.monday_database_util import MondayDatabaseUtil
+from monday_files.monday_database_util import monday_database_util
 
 # Import Monday utility functions
 from monday_files.monday_util import monday_util
 
-from monday_api import MondayAPI
+from monday_api import monday_api
 
 
 
@@ -24,11 +24,12 @@ class MondayWebhookHandler:
         # Set up logging
         self.logger = logging.getLogger("app_logger")
         # Initialize the Monday API client
-        self.mondayAPI = MondayAPI()
+        self.mondayAPI = monday_api
         # Initialize the MondayDatabaseUtil instance
-        self.db_util = MondayDatabaseUtil()
+        self.db_util = monday_database_util
         # Initialize the MondayUtil instance
         self.monday_util = monday_util
+        self.logger.info("Monday Webhook Handler Initialized")
 
     @staticmethod
     def verify_challenge(event):

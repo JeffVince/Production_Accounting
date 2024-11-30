@@ -10,7 +10,7 @@ from logger import setup_logging
 from singleton import SingletonMeta
 from utilities.config import Config
 from monday_files.monday_util import monday_util
-from monday_database_util import monday_database_util
+from monday_files.monday_database_util import monday_database_util
 from monday_files.monday_api import monday_api
 
 

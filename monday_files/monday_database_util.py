@@ -17,7 +17,6 @@ from database.models import (
 from monday_files.monday_util import monday_util
 from singleton import SingletonMeta
 
-
 class MondayDatabaseUtil(metaclass=SingletonMeta):
     def __init__(self):
         if not hasattr(self, '_initialized'):
