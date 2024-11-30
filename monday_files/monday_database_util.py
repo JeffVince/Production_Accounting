@@ -14,28 +14,33 @@ from database.models import (
     Contact,
     AicpCode,
 )
-from monday_files.monday_util import MondayUtil
+from monday_files.monday_util import monday_util
+from singleton import SingletonMeta
 
 
-class MondayDatabaseUtil:
+class MondayDatabaseUtil(metaclass=SingletonMeta):
     def __init__(self):
-        # Set up logging
-        self.logger = logging.getLogger(self.__class__.__name__)
-        logging.basicConfig(level=logging.INFO)
+        if not hasattr(self, '_initialized'):
 
-        # Load environment variables
-        load_dotenv()
-        self.monday_api_token = os.getenv("MONDAY_API_TOKEN")
+            # Setup logging and get the configured logger
+            self.logger = logging.getLogger("app_logger")
 
-        if not self.monday_api_token:
-            self.logger.error("Monday API Token not found. Please set it in the environment variables.")
-            raise EnvironmentError("Missing MONDAY_API_TOKEN")
+            # Load environment variables
+            load_dotenv()
+            self.monday_api_token = os.getenv("MONDAY_API_TOKEN")
 
-        self.monday_api_url = 'https://api.monday.com/v2'
-        # self.monday_api = MondayAPI()
-        self.monday_util = MondayUtil()
-        self.DEFAULT_ACCOUNT_NUMBER = "5000"
-        self.DEFAULT_AICP_CODE_SURROGATE_ID = 1
+            if not self.monday_api_token:
+                self.logger.error("Monday API Token not found. Please set it in the environment variables.")
+                raise EnvironmentError("Missing MONDAY_API_TOKEN")
+
+            self.monday_api_url = 'https://api.monday.com/v2'
+            # self.monday_api = MondayAPI()
+            self.monday_util = monday_util
+            self.DEFAULT_ACCOUNT_NUMBER = "5000"
+            self.DEFAULT_AICP_CODE_SURROGATE_ID = 1
+            self.logger.info("Monday Database Utility initialized")
+
+            self._initialized = True
 
     # ----------------------PRE PROCESSING ----------------------
 
@@ -225,11 +230,10 @@ class MondayDatabaseUtil:
         if isinstance(account_number, dict):
             account_number = account_number.get("value")
 
-
         # Fetch the parent PurchaseOrder surrogate ID using the pulse_id
         po_surrogate_id = self.get_purchase_order_surrogate_id_by_pulse_id(parent_id)
         if not po_surrogate_id:
-            self.logger.warning(f"No PurchaseOrder found with pulse_id: {parent_id}")
+            self.logger.debug(f"No PurchaseOrder found with pulse_id: {parent_id}")
             return None  # Or handle as per your requirements
 
         # Get the AICP Code surrogate ID
@@ -353,7 +357,7 @@ class MondayDatabaseUtil:
                         if value is not None:
                             setattr(detail_item, db_field, value)
                     session.commit()
-                    self.logger.info(f"Updated existing DetailItem with pulse_id: {pulse_id}")
+                    self.logger.debug(f"Updated existing DetailItem with pulse_id: {pulse_id}")
                     return {
                         "status": "Updated",
                     }
@@ -599,3 +603,6 @@ class MondayDatabaseUtil:
         except (ValueError, TypeError) as e:
             self.logger.warning(f"Error parsing file_link: {e}")
             return ""
+
+
+monday_database_util = MondayDatabaseUtil()

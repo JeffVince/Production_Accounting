@@ -1,13 +1,13 @@
 import unittest
 from unittest.mock import patch, MagicMock
-from monday_files.monday_util import MondayUtil
+from monday_files.monday_util import monday_util
 import requests
 
 
 class TestMondayUtil(unittest.TestCase):
     def setUp(self):
         # Initialize the MondayUtil instance
-        self.monday_util = MondayUtil()
+        self.monday_util = monday_util
         self.monday_util.headers = {'Authorization': 'test_token'}
 
     @patch('requests.post')

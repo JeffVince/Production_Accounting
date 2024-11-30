@@ -15,7 +15,7 @@ app = Flask(__name__)
 
 # Register Blueprints with URL prefixes
 app.register_blueprint(monday_blueprint, url_prefix='/webhook/monday')
-app.register_blueprint(dropbox_blueprint, url_prefix='/webhook/dropbox_files')
+app.register_blueprint(dropbox_blueprint, url_prefix='/webhook/dropbox')
 
 
 # Optional: Root route for health check or info

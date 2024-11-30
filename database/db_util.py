@@ -5,11 +5,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import scoped_session, sessionmaker
 from database.base import Base
 # Global session factory variable
-from logger import logger  # Remove if not used
 import logging
 
-logging.getLogger("sqlalchemy.engine.Engine").setLevel(logging.ERROR)
-# logging.getLogger("sqlalchemy.pool").setLevel(logging.DEBUG)
+# Initialize logging (ensures that the logger is set up before use)
+logger = logging.getLogger("app_logger")
+
 session_factory = None
 
 

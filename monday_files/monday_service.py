@@ -6,46 +6,32 @@ from typing import Any
 
 import requests
 
+from logger import setup_logging
+from singleton import SingletonMeta
 from utilities.config import Config
-from monday_util import MondayUtil
-from monday_database_util import MondayDatabaseUtil
-from monday_files.monday_api import MondayAPI
-
-logger = logging.getLogger(__name__)
+from monday_files.monday_util import monday_util
+from monday_database_util import monday_database_util
+from monday_files.monday_api import monday_api
 
 
-def compare_receipt_with_po(po_number: str, receipt_data: dict) -> bool:
-    """
-    Compare receipt data with PO details to ensure consistency.
-
-    Args:
-        po_number (str): The PO number to compare against.
-        receipt_data (dict): The receipt data to validate.
-
-    Returns:
-        bool: True if the receipt matches the PO, False otherwise.
-    """
-    # TODO: Implement actual comparison logic
-    logger.debug(f"Comparing receipt data with PO number: {po_number}")
-    return True
-
-
-class MondayService:
+class MondayService(metaclass=SingletonMeta):
     def __init__(self):
-        # Set up logging
-        self.logger = logging.getLogger(self.__class__.__name__)
-        logging.basicConfig(level=logging.INFO)
-        # Initialize the MondayUtil and MondayDatabaseUtil instances
-        self.monday_util = MondayUtil()
-        self.db_util = MondayDatabaseUtil()
-        self.monday_api = MondayAPI()
+        if not hasattr(self, '_initialized'):
+            # Set up logging
+            self.logger = logging.getLogger("app_logger")
+            # Initialize the MondayUtil and MondayDatabaseUtil instances
+            self.monday_util = monday_util
+            self.db_util = monday_database_util
+            self.monday_api = monday_api
 
-        # Configuration parameters
-        self.api_token = Config.MONDAY_API_TOKEN
-        self.board_id = self.monday_util.PO_BOARD_ID
-        self.subitem_board_id = self.monday_util.SUBITEM_BOARD_ID
-        self.contact_board_id = self.monday_util.CONTACT_BOARD_ID
-        self.api_url = self.monday_util.MONDAY_API_URL  # Reuse from MondayUtil
+            # Configuration parameters
+            self.api_token = Config.MONDAY_API_TOKEN
+            self.board_id = self.monday_util.PO_BOARD_ID
+            self.subitem_board_id = self.monday_util.SUBITEM_BOARD_ID
+            self.contact_board_id = self.monday_util.CONTACT_BOARD_ID
+            self.api_url = self.monday_util.MONDAY_API_URL  # Reuse from MondayUtil
+            self.logger.info("Monday Service initialized")
+            self._initialized = True
 
     def _make_request(self, query: str, variables: dict = None):
         """
@@ -95,9 +81,9 @@ class MondayService:
         }
         try:
             self._make_request(query, variables)
-            logger.info(f"Updated PO status for item ID {pulse_id} to '{status}'.")
+            self.logger.info(f"Updated PO status for item ID {pulse_id} to '{status}'.")
         except requests.HTTPError as e:
-            logger.error(f"Failed to update PO status for item ID {pulse_id}: {e}")
+            self.logger.error(f"Failed to update PO status for item ID {pulse_id}: {e}")
             raise
 
     def match_or_create_contact(self, vendor_name: str, po_number: str) -> int:
@@ -116,10 +102,10 @@ class MondayService:
             contact = self.monday_util.find_contact_item_by_name(vendor_name)
             if contact:
                 contact_id = contact['item_id']
-                logger.info(f"Found existing contact '{vendor_name}' with ID {contact_id}.")
+                self.logger.info(f"Found existing contact '{vendor_name}' with ID {contact_id}.")
             else:
                 # If not found, create a new contact
-                logger.info(f"No existing contact found for '{vendor_name}'. Creating a new contact.")
+                self.logger.info(f"No existing contact found for '{vendor_name}'. Creating a new contact.")
                 # Example column values; adjust as necessary
                 column_values = {
                     self.monday_util.CONTACT_NAME: vendor_name,
@@ -133,15 +119,15 @@ class MondayService:
                     column_values=column_values
                 )
                 if not contact_id:
-                    logger.error(f"Failed to create contact for vendor '{vendor_name}'.")
+                    self.logger.error(f"Failed to create contact for vendor '{vendor_name}'.")
                     raise Exception("Contact creation failed.")
 
             # Link the contact to the PO in the database
             self.db_util.link_contact_to_po(po_number, contact_id)
-            logger.info(f"Linked contact ID {contact_id} to PO number '{po_number}'.")
+            self.logger.info(f"Linked contact ID {contact_id} to PO number '{po_number}'.")
             return contact_id
         except Exception as e:
-            logger.error(f"Error in match_or_create_contact: {e}")
+            self.logger.error(f"Error in match_or_create_contact: {e}")
             raise
 
     def get_po_number_from_item(self, item_id: int) -> Any | None:
@@ -157,13 +143,13 @@ class MondayService:
         try:
             po_number, _ = self.monday_util.get_po_number_and_data(item_id)
             if po_number:
-                logger.info(f"Retrieved PO number '{po_number}' for item ID {item_id}.")
+                self.logger.info(f"Retrieved PO number '{po_number}' for item ID {item_id}.")
                 return po_number
             else:
-                logger.warning(f"PO number not found for item ID {item_id}.")
+                self.logger.warning(f"PO number not found for item ID {item_id}.")
                 return None
         except Exception as e:
-            logger.error(f"Error retrieving PO number for item ID {item_id}: {e}")
+            self.logger.error(f"Error retrieving PO number for item ID {item_id}: {e}")
             return None
 
     def sync_main_items_from_monday_board(self):
@@ -171,17 +157,17 @@ class MondayService:
         Synchronize all main items (POs) from the Monday.com board to the local database.
         """
         try:
-            logger.info(f"Fetching items from board {self.board_id}...")
+            self.logger.info(f"Fetching items from board {self.board_id}...")
             all_items = self.monday_api.fetch_all_items(self.board_id)
-            logger.info(f"Total items fetched from board {self.board_id}: {len(all_items)}")
+            self.logger.info(f"Total items fetched from board {self.board_id}: {len(all_items)}")
 
             for item in all_items:
                 creation_item = self.db_util.prep_main_item_event_for_db_creation(item)
                 if creation_item:
                     status = self.db_util.create_or_update_main_item_in_db(creation_item)
-                    logger.info(f"Synced PO with pulse_id {creation_item.get('pulse_id')}: {status}")
+                    self.logger.info(f"Synced PO with pulse_id {creation_item.get('pulse_id')}: {status}")
         except Exception as e:
-            logger.exception(f"Unexpected error during main items synchronization: {e}")
+            self.logger.exception(f"Unexpected error during main items synchronization: {e}")
 
     def sync_sub_items_from_monday_board(self):
         """
@@ -190,57 +176,60 @@ class MondayService:
         prepares them for the database, and updates the database accordingly.
         """
         try:
-            logger.info(f"Fetching sub-items from board {self.subitem_board_id}...")
+            self.logger.info(f"Fetching sub-items from board {self.subitem_board_id}...")
             all_subitems = self.monday_api.fetch_all_sub_items()
-            logger.info(f"Total sub-items fetched from board {self.subitem_board_id}: {len(all_subitems)}")
+            self.logger.info(f"Total sub-items fetched from board {self.subitem_board_id}: {len(all_subitems)}")
         except Exception as e:
-            logger.error(f"Error fetching sub-items from Monday.com: {e}")
+            self.logger.error(f"Error fetching sub-items from Monday.com: {e}")
             return
 
         try:
+            orphan_count = 0
             for subitem in all_subitems:
                 creation_item = self.db_util.prep_sub_item_event_for_db_creation(subitem)
                 if not creation_item:
-                    logger.warning(f"Skipping sub-item with pulse_id {subitem.get('id')} due to missing parent.")
+                    orphan_count += 1
+                    self.logger.debug(f"Skipping sub-item with pulse_id {subitem.get('id')} due to missing parent.")
                     continue  # Skip orphan sub-items
 
                 result = self.db_util.create_or_update_sub_item_in_db(creation_item)
 
                 if not result:
-                    logger.error(f"Failed to sync sub-item with pulse_id: {creation_item.get('pulse_id')}")
+                    self.logger.error(f"Failed to sync sub-item with pulse_id: {creation_item.get('pulse_id')}")
                     continue  # Skip to the next sub-item
 
                 if result.get("status") == "Orphan":
-                    logger.info(
+                    orphan_count += 1
+                    self.logger.debug(
                         f"Skipped orphan with pulse_id: {creation_item.get('pulse_id')}, "
                     )
                 elif result.get("status") == "Created":
-                    logger.info(
+                    self.logger.info(
                         f"Successfully created sub-item with pulse_id: {creation_item.get('pulse_id')}")
                 elif result.get("status") == "Updated":
-                    logger.info(
+                    self.logger.info(
                         f"Successfully updated sub-item with pulse_id: {creation_item.get('pulse_id')}"
                     )
                 else:
-                    logger.error(
+                    self.logger.error(
                         f"Failed to sync sub-item with pulse_id: {creation_item.get('pulse_id')}. "
                         f"Error: {result.get('error')}"
                     )
         except Exception as e:
-            logger.exception(f"Unexpected error while syncing sub-items to DB: {e}")
-
-        logger.info("Sub-items synchronization completed successfully.")
+            self.logger.exception(f"Unexpected error while syncing sub-items to DB: {e}")
+        self.logger.info("Sub-items synchronization completed successfully.")
+        self.logger.info(f"Skipped {orphan_count} orphans out of {len(all_subitems)} sub-items")
 
     def sync_contacts_from_monday_board(self):
         """
         Synchronize all contacts from the Monday.com board to the local database.
         """
         try:
-            logger.info(f"Fetching contacts from board {self.contact_board_id}...")
+            self.logger.info(f"Fetching contacts from board {self.contact_board_id}...")
             all_contacts = self.monday_api.fetch_all_contacts(self.contact_board_id)
-            logger.info(f"Total contacts fetched from board {self.contact_board_id}: {len(all_contacts)}")
+            self.logger.info(f"Total contacts fetched from board {self.contact_board_id}: {len(all_contacts)}")
         except Exception as e:
-            logger.error(f"Error fetching contacts from Monday.com: {e}")
+            self.logger.error(f"Error fetching contacts from Monday.com: {e}")
             return
 
         try:
@@ -248,8 +237,11 @@ class MondayService:
                 prepped_contact = self.monday_util.prep_contact_event_for_db_creation(contact)
                 if prepped_contact:
                     status = self.db_util.create_or_update_contact_item_in_db(prepped_contact)
-                    logger.info(f"Synced contact with pulse_id {prepped_contact.get('pulse_id')}: {status}")
+                    self.logger.info(f"Synced contact with pulse_id {prepped_contact.get('pulse_id')}: {status}")
         except Exception as e:
-            logger.error(f"Error syncing contacts to DB: {e}")
+            self.logger.error(f"Error syncing contacts to DB: {e}")
 
-        logger.info("Contacts synchronization completed successfully.")
+        self.logger.info("Contacts synchronization completed successfully.")
+
+
+monday_service = MondayService()

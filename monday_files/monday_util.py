@@ -3,13 +3,13 @@
 import json
 import logging
 import os
-
 import requests
 from dotenv import load_dotenv
 from monday import MondayClient
+from utilities.singleton import SingletonMeta
 
 
-class MondayUtil:
+class MondayUtil(metaclass=SingletonMeta):
     """
     A utility class for interacting with the Monday.com API.
     Encapsulates methods for creating, updating, fetching, and deleting items, subitems, and contacts.
@@ -105,53 +105,43 @@ class MondayUtil:
         "text": "handle_default_column"
     }
 
-    # --------------------- SINGLETON IMPLEMENTATION ---------------------
-    _instance = None
-
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(MondayUtil, cls).__new__(cls)
-            cls._instance._initialized = False
-        return cls._instance
-
     # --------------------- INITIALIZATION ---------------------
 
     def __init__(self):
-        if self._initialized:
-            return
-        self._initialized = True
+        if not hasattr(self, '_initialized'):
+            # Set up logging
+            self.logger = logging.getLogger("app_logger")
 
-        # Set up logging
-        self.logger = logging.getLogger(self.__class__.__name__)
-        # Avoid reconfiguring logging multiple times
-        if not self.logger.handlers:
-            logging.basicConfig(level=logging.INFO)
+            # Load environment variables
+            load_dotenv()
 
-        # Load environment variables
-        load_dotenv()
+            # Initialize headers for API requests
+            self.monday_api_token = os.getenv("MONDAY_API_TOKEN")
+            self._subitem_board_id = None  # Instance-level cache
 
-        # Initialize headers for API requests
-        self.monday_api_token = os.getenv("MONDAY_API_TOKEN")
-        self._subitem_board_id = None  # Instance-level cache
+            if not self.monday_api_token:
+                self.logger.error("Monday API Token not found. Please set it in the environment variables.")
+                raise EnvironmentError("Missing MONDAY_API_TOKEN")
 
-        if not self.monday_api_token:
-            self.logger.error("Monday API Token not found. Please set it in the environment variables.")
-            raise EnvironmentError("Missing MONDAY_API_TOKEN")
+            self.headers = {
+                'Authorization': self.monday_api_token,
+                'Content-Type': 'application/json',
+                'API-Version': '2023-10'
+            }
 
-        self.headers = {
-            'Authorization': self.monday_api_token,
-            'Content-Type': 'application/json',
-            'API-Version': '2023-10'
-        }
+            self.client = MondayClient(self.monday_api_token)
 
-        self.client = MondayClient(self.monday_api_token)
+            # Initialize SUBITEM_BOARD_ID once during instantiation
+            self._subitem_board_id = self.retrieve_subitem_board_id()
+            self.logger.info(f"Retrieved subitem board ID: {self._subitem_board_id}")
+
+            self._initialized = True
+
 
     # --------------------- PROPERTIES ---------------------
 
     @property
     def SUBITEM_BOARD_ID(self):
-        if self._subitem_board_id is None:
-            self._subitem_board_id = self.retrieve_subitem_board_id()
         return self._subitem_board_id
 
     def retrieve_subitem_board_id(self):
@@ -167,7 +157,6 @@ class MondayUtil:
         """
         subitems_column_id = self.get_subitems_column_id(self.PO_BOARD_ID)
         subitem_board_id = self.get_subitem_board_id(subitems_column_id)
-        self.logger.info(f"Retrieved subitem board ID: {subitem_board_id}")
         return subitem_board_id
 
     def get_subitems_column_id(self, parent_board_id):
@@ -200,7 +189,7 @@ class MondayUtil:
             columns = data['data']['boards'][0]['columns']
             for column in columns:
                 if column['type'] == 'subtasks':
-                    self.logger.info(f"Found subitems column ID: {column['id']}")
+                    self.logger.debug(f"Found subitems column ID: {column['id']}")
                     return column['id']
             raise Exception("Subitems column not found.")
         else:
@@ -235,7 +224,6 @@ class MondayUtil:
             settings_str = data['data']['boards'][0]['columns'][0]['settings_str']
             settings = json.loads(settings_str)
             subitem_board_id = settings['boardIds'][0]
-            self.logger.info(f"Retrieved subitem board ID: {subitem_board_id}")
             return subitem_board_id
         else:
             raise Exception(f"Failed to retrieve subitem board ID: {response.text}")
@@ -640,3 +628,6 @@ class MondayUtil:
             return False
         self.logger.info("Request validated successfully.")
         return True
+
+
+monday_util = MondayUtil()

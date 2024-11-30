@@ -5,7 +5,7 @@ import time
 import logging
 from dropbox_files.dropbox_service import DropboxService
 from services.ocr_service import OCRService
-from monday_files.monday_service import MondayService
+from monday_files.monday_service import monday_service
 
 from utilities.logger import setup_logging
 
@@ -16,8 +16,10 @@ setup_logging()
 class Orchestrator:
     def __init__(self):
         # Initialize Services
+        # Set up logging
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.dropbox_service = DropboxService()
-        self.monday_service = MondayService()
+        self.monday_service = monday_service
         self.ocr_service = OCRService()
 
     def start_background_tasks(self):
@@ -52,8 +54,6 @@ class Orchestrator:
                 except Exception as e:
                     logger.error(f"Error fetching Sub Item entries and syncing them to DB: {e}")
                 time.sleep(interval)
-
-
 
         threading.Thread(target=sync_monday_to_sub_items, daemon=True).start()
 

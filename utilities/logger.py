@@ -1,46 +1,88 @@
+# utilities/logger.py
+
 import os
 import logging
 from logging.handlers import TimedRotatingFileHandler
+from threading import Lock
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Ensure the logs directory exists
 LOGS_DIR = os.path.join(os.path.dirname(__file__), "logs")
 os.makedirs(LOGS_DIR, exist_ok=True)
 
+# Initialize lock and logger flag
+_logger_initialized = False
+_lock = Lock()
 
-# Configure logger
 def setup_logging():
-    logger = logging.getLogger("app_logger")
-    logger.setLevel(logging.DEBUG)
-    # Suppress SQLAlchemy engine logs
-    logging.getLogger("sqlalchemy.engine").setLevel(logging.ERROR)
-    # Formatter for the logs
-    log_format = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    )
+    """
+    Sets up logging for the application. The log level is determined by the
+    LOG_LEVEL environment variable. Defaults to INFO if not set.
 
-    # File handler (rotates daily)
-    file_handler = TimedRotatingFileHandler(
-        filename=os.path.join(LOGS_DIR, "application.log"),
-        when="midnight",
-        interval=1,
-        backupCount=7,  # Keeps last 7 days of logs
-    )
-    file_handler.setFormatter(log_format)
-    file_handler.setLevel(logging.ERROR)
+    Returns:
+        logging.Logger: Configured logger.
+    """
+    global _logger_initialized
+    with _lock:
+        if _logger_initialized:
+            logger = logging.getLogger("app_logger")
+            return logger
 
-    # Console handler
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(log_format)
-    console_handler.setLevel(logging.ERROR)
+        # Get log level from environment variable, default to INFO
+        log_level_str = os.getenv("LOG_LEVEL", "INFO").upper()
+        log_level = getattr(logging, log_level_str, logging.INFO)
 
-    # Add handlers to the logger
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
+        logger = logging.getLogger("app_logger")
+        logger.setLevel(log_level)
 
-    return logger
+        # Suppress SQLAlchemy engine logs
+        logging.getLogger("sqlalchemy.engine").setLevel(logging.ERROR)
+        logging.getLogger("sqlalchemy.pool").setLevel(logging.ERROR)
+
+        # Formatter for the logs
+        log_format = logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
+
+        # File handler (rotates daily)
+        file_handler = TimedRotatingFileHandler(
+            filename=os.path.join(LOGS_DIR, "application.log"),
+            when="midnight",
+            interval=1,
+            backupCount=7,
+            encoding='utf-8'
+        )
+        file_handler.setFormatter(log_format)
+        file_handler.setLevel(log_level)
+        file_handler.name = "file_handler"  # Assign a unique name
+
+        # Console handler
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(log_format)
+        console_handler.setLevel(log_level)
+        console_handler.name = "console_handler"  # Assign a unique name
+
+        # Add handlers to the logger if not already added
+        if not any(h.name == "file_handler" for h in logger.handlers):
+            logger.addHandler(file_handler)
+            logger.debug("Added file handler to app_logger.")
+
+        if not any(h.name == "console_handler" for h in logger.handlers):
+            logger.addHandler(console_handler)
+            logger.debug("Added console handler to app_logger.")
+
+        # Prevent log messages from being propagated to the root logger
+        logger.propagate = False
+
+        _logger_initialized = True
+
+        logger.debug(f"[DEBUG] app_logger has {len(logger.handlers)} handlers attached.")
+
+        return logger
 
 
-# Log an event
 def log_event(event_type: str, details: dict):
     """
     Logs a specific event with its type and details.
@@ -48,6 +90,7 @@ def log_event(event_type: str, details: dict):
     :param event_type: A short string categorizing the event (e.g., 'ERROR', 'INFO').
     :param details: A dictionary containing event-specific details.
     """
+    logger = logging.getLogger("app_logger")
     try:
         message = f"Event Type: {event_type}, Details: {details}"
         if event_type.upper() in ["ERROR", "CRITICAL"]:
@@ -60,5 +103,10 @@ def log_event(event_type: str, details: dict):
         logger.error(f"Failed to log event: {e}")
 
 
-# Initialize logging
-logger = setup_logging()
+def log_handler_details():
+    """
+    Diagnostic function to log handler details.
+    """
+    logger = logging.getLogger("app_logger")
+    for idx, handler in enumerate(logger.handlers, start=1):
+        logger.debug(f"Handler {idx}: {handler}")

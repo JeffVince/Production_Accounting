@@ -2,11 +2,11 @@ import csv
 import re
 from datetime import datetime
 
-def parse_po_log(file_path):
+from logger import logger
+
+
+def parse_po_log_main_items(file_path):
     main_items = []
-    detail_items = []
-    current_main_item = None
-    detail_item_number = 1  # To assign unique detail item numbers per PurchaseOrder
 
     with open(file_path, 'r', newline='', encoding='utf-8') as csvfile:
         reader = csv.reader(csvfile, delimiter='\t')
@@ -17,6 +17,49 @@ def parse_po_log(file_path):
         for row in reader:
             if not any(row):
                 continue  # Skip empty rows
+            try:
+                test = row[7], row[8], row[9]
+            except Exception as e:
+                logger.warning(f"Main Item Not filled out: {e}")
+                continue
+
+            # Remove leading and trailing spaces from each field
+            row = [field.strip() for field in row]
+
+            # Check if this is a main item or a detail item
+            if re.match(r'^\d+', row[0]):  # Main item starts with a number
+                # Map columns to main item fields
+                main_item = {
+                    'PO': int(row[0]),
+                    'Date': row[2],
+                    'St/Type': row[3],
+                    'Vendor': row[6],
+                    'Actualized $': row[9] if len(row) > 9 else ''
+                }
+                main_items.append(main_item)
+
+    return main_items
+
+
+def parse_po_log_sub_items(file_path):
+    main_items = []
+    detail_items = []
+    current_main_item = None
+
+    with open(file_path, 'r', newline='', encoding='utf-8') as csvfile:
+        reader = csv.reader(csvfile, delimiter='\t')
+
+        headers = next(reader)  # Read header row
+        headers = [header.strip() for header in headers]
+
+        for row in reader:
+            if not any(row):
+                continue  # Skip empty rows
+            try:
+                test = row[7], row[8], row[9]
+            except Exception as e:
+                logger.warning(f"Main Item Not filled out: {e}")
+                continue
 
             # Remove leading and trailing spaces from each field
             row = [field.strip() for field in row]
@@ -28,15 +71,10 @@ def parse_po_log(file_path):
 
                 # Map columns to main item fields
                 main_item = {
-                    'No': row[0],
-                    'Phase': row[1],
+                    'PO': int(row[0]),
                     'Date': row[2],
                     'St/Type': row[3],
-                    'Pay ID': row[4],
-                    'ID': row[5],
                     'Vendor': row[6],
-                    'Description': row[7],
-                    'Account': row[8] if len(row) > 8 else '',
                     'Actualized $': row[9] if len(row) > 9 else ''
                 }
                 main_items.append(main_item)
@@ -48,32 +86,39 @@ def parse_po_log(file_path):
 
                 # Map columns to detail item fields
                 detail_item = {
-                    'Main No': current_main_item['No'],
-                    'Detail Item Number': detail_item_number,
-                    'Phase': row[0],
-                    'Date': row[1],
-                    'St/Type': row[2],
-                    'Pay ID': row[3],
-                    'ID': row[4],
-                    'Vendor': row[5],
-                    'Description': row[6],
-                    'Account': row[7],
-                    'Actualized $': row[8] if len(row) > 8 else ''
+                    'PO': current_main_item['PO'],
+                    'Detail Item Number': row[5],
+                    'Phase': row[1],
+                    'Date': row[2],
+                    'Pay ID': row[4],
+                    'Payment Type': row[3],
+                    'Vendor': row[6],
+                    'Description': row[7],
+                    'Account': row[8],
+                    'Actualized $': row[9] if len(row) > 8 else ''
                 }
                 detail_items.append(detail_item)
-                detail_item_number += 1
 
-    return main_items, detail_items
+    return detail_items
 
-if __name__ == '__main__':
-    # Replace 'po_log.txt' with your actual data file path
-    main_items, detail_items = parse_po_log('data.txt')
 
-    # For demonstration purposes, print the parsed data
-    print("Main Items:")
+def get_contacts_list(main_items, detail_items):
+    contact_list = []
     for item in main_items:
-        print(item)
+        if not item.get("Vendor") == "Petty Cash" and not item.get("Vendor").__contains__("PLACEHOLDER"):
+            crd = False
+            for detail in detail_items:
+                if item.get("PO") == detail.get("PO"):
+                    if detail.get("Payment Type") == "CRD":
+                        crd = True
+            if not crd:
+                contact_list.append({
+                    "name":item.get("Vendor"),
+                    "PO": item.get("PO")
+                })
+                crd = False
+    return contact_list
 
-    print("\nDetail Items:")
-    for item in detail_items:
-        print(item)
+
+
+

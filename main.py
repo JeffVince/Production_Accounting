@@ -1,11 +1,16 @@
 # main.py
 
 import logging
+from utilities.logger import setup_logging
+
+setup_logging()
+logger = logging.getLogger("app_logger")
+logger.info("Starting the application...")
+
 import time
 import threading
 from orchestration.orchestrator import Orchestrator
 from database.db_util import initialize_database
-from utilities.logger import setup_logging
 from utilities.config import Config
 from webhook.webhook_main import app  # Import the Flask app instance
 from werkzeug.serving import make_server
@@ -13,32 +18,29 @@ from werkzeug.serving import make_server
 
 def run_flask_app():
     """Function to run the Flask app."""
-    logger = logging.getLogger("FlaskApp")
+    logger = logging.getLogger("app_logger")  # Use the named logger
     logger.info("Starting Flask server for webhooks...")
     server = make_server('0.0.0.0', Config.WEBHOOK_MAIN_PORT, app)
     server.serve_forever()
 
 
 def main():
-    # Setup logging
-    setup_logging()
-    logger = logging.getLogger(__name__)
-    logger.info("Starting the application...")
+    # Setup logging and get the configured logger
+    logger = logging.getLogger("app_logger")
 
     # Initialize the database
     config = Config()
+
     db_settings = config.get_database_settings()
     initialize_database(db_settings['url'])
     logger.info("Database initialized.")
 
     # Initialize the orchestrator
     orchestrator = Orchestrator()
-
     logger.info("Orchestrator initialized.")
 
     # Start background tasks such as PO Log checking and state coordination
     orchestrator.start_background_tasks()
-    # logger.info("Orchestrator background tasks started.")
 
     # Start webhook server in a thread
     flask_thread = threading.Thread(target=run_flask_app)

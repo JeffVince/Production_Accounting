@@ -5,7 +5,8 @@ from PIL import Image
 import io
 import logging
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("app_logger")
+
 
 class OCRService:
     def extract_text_from_file(self, file_data: bytes) -> str:

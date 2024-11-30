@@ -10,7 +10,6 @@ import pyautogui
 from AppKit import NSWorkspace
 
 import cv2
-import numpy as np
 
 # Configure logging
 logging.basicConfig(

@@ -8,16 +8,12 @@ from sqlalchemy.exc import SQLAlchemyError
 from monday_files.monday_database_util import MondayDatabaseUtil
 
 # Import Monday utility functions
-from monday_files.monday_util import MondayUtil
+from monday_files.monday_util import monday_util
 
 from monday_api import MondayAPI
 
-# Import logger setup
-from utilities.logger import setup_logging
 
-# Initialize the logger
-logger = logging.getLogger(__name__)
-setup_logging()
+
 
 # Create a Flask Blueprint for Monday webhooks
 monday_blueprint = Blueprint('monday_files', __name__)
@@ -26,14 +22,13 @@ monday_blueprint = Blueprint('monday_files', __name__)
 class MondayWebhookHandler:
     def __init__(self):
         # Set up logging
-        self.logger = logging.getLogger(self.__class__.__name__)
-        logging.basicConfig(level=logging.INFO)
+        self.logger = logging.getLogger("app_logger")
         # Initialize the Monday API client
         self.mondayAPI = MondayAPI()
         # Initialize the MondayDatabaseUtil instance
         self.db_util = MondayDatabaseUtil()
         # Initialize the MondayUtil instance
-        self.monday_util = MondayUtil()
+        self.monday_util = monday_util
 
     @staticmethod
     def verify_challenge(event):

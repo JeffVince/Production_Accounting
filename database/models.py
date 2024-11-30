@@ -230,16 +230,11 @@ class DetailItem(Base):
     sub_total = Column(
         MYSQL_DECIMAL(15, 2),
         Computed('ROUND(rate * quantity, 2)', persisted=True),
-        nullable=False,
+        nullable=False
     )  # Generated column
+    payment_type = Column(String(45))
     description = Column(String(255), nullable=True)
     file_link = Column(String(255), nullable=True, comment='Link to invoice or receipt in Dropbox')
-    is_receipt = Column(
-        MYSQL_TINYINT(unsigned=True),
-        nullable=False,
-        default=0,
-        comment='1 for receipts, 0 for invoices',
-    )
     state = Column(
         Enum('PENDING', 'ISSUE', 'OVERDUE', 'RTP', 'RECONCILED', 'PAID', 'APPROVED'),
         nullable=False,

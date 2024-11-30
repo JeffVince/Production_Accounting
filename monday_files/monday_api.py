@@ -1,21 +1,33 @@
 # monday_files/monday_api.py
+import logging
+
 from dotenv import load_dotenv
 import requests
+
+from logger import setup_logging
+from singleton import SingletonMeta
 from utilities.config import Config
 from monday import MondayClient
-from monday_files.monday_util import MondayUtil
+from monday_files.monday_util import monday_util
 
 load_dotenv()
 
 
-class MondayAPI:
+class MondayAPI(metaclass=SingletonMeta):
     def __init__(self):
-        self.monday_api = None
-        self.api_token = Config.MONDAY_API_TOKEN
-        self.api_url = 'https://api.monday.com/v2/'
-        self.client = MondayClient(self.api_token)
-        self.monday_util = MondayUtil()
-        self.SUBITEM_BOARD_ID = self.monday_util.SUBITEM_BOARD_ID
+        if not hasattr(self, '_initialized'):
+            # Setup logging and get the configured logger
+            self.logger = logging.getLogger("app_logger")
+            self.monday_api = None
+            self.api_token = Config.MONDAY_API_TOKEN
+            self.api_url = 'https://api.monday.com/v2/'
+            self.client = MondayClient(self.api_token)
+            self.monday_util = monday_util
+            self.SUBITEM_BOARD_ID = self.monday_util.SUBITEM_BOARD_ID
+
+            self.logger.info("Monday API  initialized")
+
+            self._initialized = True
 
     def _make_request(self, query: str, variables: dict = None):
         headers = {"Authorization": self.api_token}
@@ -241,7 +253,8 @@ class MondayAPI:
             else:
                 boards_data = response.get('data', {}).get('boards', [])
                 if not boards_data:
-                    print(f"No boards found for board_id {self.SUBITEM_BOARD_ID}. Please verify the board ID and your permissions.")
+                    print(
+                        f"No boards found for board_id {self.SUBITEM_BOARD_ID}. Please verify the board ID and your permissions.")
                     break
                 items_data = boards_data[0].get('items_page', {})
 
@@ -259,7 +272,7 @@ class MondayAPI:
             if not cursor:
                 break
 
-            print(f"Fetched {len(valid_items)} valid items from board {self.SUBITEM_BOARD_ID}.")
+            self.logger.info(f"Fetched {len(valid_items)} valid items from board {self.SUBITEM_BOARD_ID}.")
 
         return all_items
 
@@ -354,3 +367,5 @@ class MondayAPI:
     def fetch_item_by_ID(self, id: str):
         return self.client.items.fetch_items_by_id(id)
 
+
+monday_api = MondayAPI()
