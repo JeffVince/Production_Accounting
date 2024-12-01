@@ -10,26 +10,27 @@ from monday_files.monday_database_util import monday_database_util
 # Import Monday utility functions
 from monday_files.monday_util import monday_util
 
-from monday_api import monday_api
-
-
-
+from monday_files.monday_api import monday_api
 
 # Create a Flask Blueprint for Monday webhooks
+from utilities.singleton import SingletonMeta
+
 monday_blueprint = Blueprint('monday_files', __name__)
 
 
-class MondayWebhookHandler:
+class MondayWebhookHandler(metaclass=SingletonMeta):
     def __init__(self):
-        # Set up logging
-        self.logger = logging.getLogger("app_logger")
-        # Initialize the Monday API client
-        self.mondayAPI = monday_api
-        # Initialize the MondayDatabaseUtil instance
-        self.db_util = monday_database_util
-        # Initialize the MondayUtil instance
-        self.monday_util = monday_util
-        self.logger.info("Monday Webhook Handler Initialized")
+        if not hasattr(self, '_initialized'):
+            # Set up logging
+            self.logger = logging.getLogger("app_logger")
+            # Initialize the Monday API client
+            self.mondayAPI = monday_api
+            # Initialize the MondayDatabaseUtil instance
+            self.db_util = monday_database_util
+            # Initialize the MondayUtil instance
+            self.monday_util = monday_util
+            self.logger.info("Monday Webhook Handler Initialized")
+            self._initialized = True
 
     @staticmethod
     def verify_challenge(event):
@@ -59,47 +60,47 @@ class MondayWebhookHandler:
         """
         try:
             # Log the incoming event data for debugging
-            logger.debug(f"Incoming event data: {event_data}")
+            self.loggerdebug(f"Incoming event data: {event_data}")
 
             # Extract the 'event' dictionary from the data
             event = event_data.get('event', {})
             if not event:
-                logger.error("Missing 'event' key in the data.")
-                logger.debug(f"Full data: {event_data}")
+                self.loggererror("Missing 'event' key in the data.")
+                self.logger.debug(f"Full data: {event_data}")
                 return jsonify({"error": "Invalid event data"}), 400
 
             # Extract the pulse ID (item ID) from the event
             item_id = event.get('pulseId')
-            logger.debug(f"Extracted item ID: {item_id}")
+            self.logger.debug(f"Extracted item ID: {item_id}")
 
             if not item_id:
-                logger.error("Missing 'pulseId' in the event.")
-                logger.debug(f"Event data: {event}")
+                self.logger.error("Missing 'pulseId' in the event.")
+                self.logger.debug(f"Event data: {event}")
                 return jsonify({"error": "Invalid item ID"}), 400
 
             # Extract the new status from the event data
             value = event.get('value', {})
             new_status = value.get('label', {}).get('text', '')
-            logger.debug(f"Extracted new status: {new_status}")
+            self.logger.debug(f"Extracted new status: {new_status}")
 
             if not new_status:
-                logger.error("Missing or empty status in the event.")
-                logger.debug(f"Event value: {value}")
+                self.logger.error("Missing or empty status in the event.")
+                self.logger.debug(f"Event value: {value}")
                 return jsonify({"error": "Invalid status"}), 400
 
             # Fetch the PO number and item data using the item ID
             po_number, item_data = self.monday_util.get_po_number_and_data(item_id)
-            logger.debug(f"Retrieved PO number: {po_number}")
+            self.logger.debug(f"Retrieved PO number: {po_number}")
 
             if not po_number or not item_data:
-                logger.error(f"Unable to find PO number or item data for item ID: {item_id}")
+                self.logger.error(f"Unable to find PO number or item data for item ID: {item_id}")
                 return jsonify({"error": "PO number or item data not found"}), 400
 
-            logger.info(f"PO {po_number} status changed to {new_status} in Monday.com.")
+            self.logger.info(f"PO {po_number} status changed to {new_status} in Monday.com.")
 
             return jsonify({"message": "PO status change processed"}), 200
         except Exception as e:
-            logger.exception("Error processing PO status change.")
+            self.logger.exception("Error processing PO status change.")
             return jsonify({"error": str(e)}), 500
 
     def process_sub_item_change(self, event_data):
@@ -114,12 +115,12 @@ class MondayWebhookHandler:
         """
         try:
             # Log the incoming event data for debugging
-            logger.debug(f"Incoming SubItem change event data: {event_data}")
+            self.logger.debug(f"Incoming SubItem change event data: {event_data}")
 
             # Validate the event structure
             event = event_data.get('event')
             if not event:
-                logger.error("Missing 'event' key in the event data.")
+                self.logger.error("Missing 'event' key in the event data.")
                 return jsonify({"error": "Invalid event data: Missing 'event' key"}), 400
 
             # Prepare the SubItem event for database change
@@ -129,10 +130,10 @@ class MondayWebhookHandler:
             result = self.db_util.update_db_with_sub_item_change(change_item)
 
             if result == "Success":
-                logger.info(f"Successfully processed SubItem change for ID: {change_item['pulse_id']}")
+                self.logger.info(f"Successfully processed SubItem change for ID: {change_item['pulse_id']}")
             elif result == "Not Found":
                 # SubItem not found in DB, proceed to create it
-                logger.info("SubItem not found in DB, creating one.")
+                self.logger.info("SubItem not found in DB, creating one.")
                 response = self.mondayAPI.fetch_item_by_ID(change_item['pulse_id'])
                 subitem_data = response.get("data", {}).get("items", [])[0]
                 subitem_data["parent_item"] = {"id": event["parentItemId"]}
@@ -146,7 +147,7 @@ class MondayWebhookHandler:
                     # # # # Create or update the main item in the database
                     status = self.db_util.create_or_update_main_item_in_db(create_main_item)
                     if status not in ["Created", "Updated"]:
-                        logger.error("Failed to create or update the main PurchaseOrder item in the database.")
+                        self.logger.error("Failed to create or update the main PurchaseOrder item in the database.")
                         return jsonify({"error": "Failed to create new main item"}), 400
 
                 # Prepare the SubItem event for DB creation
@@ -155,16 +156,16 @@ class MondayWebhookHandler:
                 # Create or update the SubItem in the database
                 create_result = self.db_util.create_or_update_sub_item_in_db(create_item)
                 if create_result.get("status") == "Fail":
-                    logger.error("Failed to create new SubItem in the database.")
+                    self.logger.error("Failed to create new SubItem in the database.")
                     return jsonify({"error": "Failed to create new SubItem"}), 400
 
             return jsonify({"message": "SubItem change processed successfully"}), 200
 
         except SQLAlchemyError as e:
-            logger.exception(f"Database error while processing SubItem change: {e}")
+            self.logger.exception(f"Database error while processing SubItem change: {e}")
             return jsonify({"error": "Database error"}), 500
         except Exception as e:
-            logger.exception("Unexpected error while processing SubItem change.")
+            self.logger.exception("Unexpected error while processing SubItem change.")
             return jsonify({"error": str(e)}), 500
 
     def process_sub_item_delete(self, event_data):
@@ -178,35 +179,37 @@ class MondayWebhookHandler:
             JSON response indicating success or error.
         """
         try:
-            logger.debug("Processing SubItem delete event")
+            self.logger.debug("Processing SubItem delete event")
 
             # Extract the 'event' dictionary from the data
             event = event_data.get('event')
             if not event:
-                logger.error("Missing 'event' key in the event data.")
+                self.logger.error("Missing 'event' key in the event data.")
                 return jsonify({"error": "Invalid event data: Missing 'event' key"}), 400
 
             # Extract the pulse ID (SubItem ID) from the event
             pulse_id = event.get('pulseId')
             if not pulse_id:
-                logger.error("Missing 'pulseId' in the event.")
+                self.logger.error("Missing 'pulseId' in the event.")
                 return jsonify({"error": "Invalid event data: Missing 'pulseId'"}), 400
 
             # Delete the SubItem from the database using the MondayDatabaseUtil instance
             success = self.db_util.delete_detail_item_in_db(pulse_id)
             if not success:
-                logger.error(f"Error deleting SubItem with ID {pulse_id}")
+                self.logger.error(f"Error deleting SubItem with ID {pulse_id}")
                 return jsonify({"error": f"Failed to delete SubItem with ID {pulse_id}"}), 500
 
-            logger.info(f"Successfully deleted SubItem with ID: {pulse_id}")
+            self.logger.info(f"Successfully deleted SubItem with ID: {pulse_id}")
 
             return jsonify({"message": "SubItem deleted successfully"}), 200
         except Exception as e:
-            logger.exception("Error processing SubItem delete.")
+            self.logger.exception("Error processing SubItem delete.")
             return jsonify({"error": str(e)}), 500
 
+
 # Instantiate the handler
-handler = MondayWebhookHandler()
+monday_webhook_handler = MondayWebhookHandler()
+logger = logging.getLogger("app_logger")
 
 # Define Flask routes for the webhooks
 @monday_blueprint.route('/po_status_change', methods=['POST'])
@@ -220,11 +223,11 @@ def po_status_change():
         return jsonify({"error": "Invalid event data"}), 400
 
     # Handle the challenge verification
-    challenge_response = handler.verify_challenge(event)
+    challenge_response = monday_webhook_handler.verify_challenge(event)
     if challenge_response:
         return challenge_response
     else:
-        return handler.process_po_status_change(event)
+        return monday_webhook_handler.process_po_status_change(event)
 
 
 @monday_blueprint.route('/subitem_change', methods=['POST'])
@@ -238,11 +241,11 @@ def subitem_change():
         return jsonify({"error": "Invalid event data"}), 400
 
     # Handle the challenge verification
-    challenge_response = handler.verify_challenge(event)
+    challenge_response = monday_webhook_handler.verify_challenge(event)
     if challenge_response:
         return challenge_response
     else:
-        return handler.process_sub_item_change(event)
+        return monday_webhook_handler.process_sub_item_change(event)
 
 
 @monday_blueprint.route('/subitem_delete', methods=['POST'])
@@ -257,8 +260,8 @@ def subitem_delete():
         return jsonify({"error": "Invalid event data"}), 400
 
     # Handle the challenge verification
-    challenge_response = handler.verify_challenge(event)
+    challenge_response = monday_webhook_handler.verify_challenge(event)
     if challenge_response:
         return challenge_response
     else:
-        return handler.process_sub_item_delete(event)
+        return monday_webhook_handler.process_sub_item_delete(event)

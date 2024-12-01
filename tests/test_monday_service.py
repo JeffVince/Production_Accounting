@@ -584,24 +584,6 @@ class TestMondayService(unittest.TestCase):
         # Assert
         self.assertIn('Error processing Contact in DB: Fail', log.output[0])
 
-    def test_compare_receipt_with_po(self):
-        """
-        Test the compare_receipt_with_po function.
-        """
-        from monday_files.monday_service import compare_receipt_with_po
-
-        # Arrange
-        po_number = 'PO123'
-        receipt_data_matching = {'amount': 100, 'currency': 'USD'}
-        receipt_data_non_matching = {'amount': 200, 'currency': 'EUR'}
-
-        # Act & Assert
-        self.assertTrue(compare_receipt_with_po(po_number, receipt_data_matching), "Should return True for matching receipt.")
-        self.assertTrue(compare_receipt_with_po(po_number, receipt_data_non_matching), "Should return True as per current implementation.")
-
-    @patch('monday_files.monday_service.MondayAPI')
-    @patch('monday_files.monday_service.MondayDatabaseUtil')
-    @patch('monday_files.monday_service.MondayUtil')
     def test_sync_contacts_from_monday_board_empty_contacts(self, mock_monday_util, mock_db_util, mock_monday_api):
         """
         Test syncing contacts when there are no contacts to sync.

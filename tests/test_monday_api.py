@@ -2,7 +2,7 @@
 
 import unittest
 from unittest.mock import patch, MagicMock, ANY
-from monday_files.monday_api import MondayAPI
+from monday_files.monday_api import monday_api
 from requests.exceptions import HTTPError
 
 
@@ -24,7 +24,7 @@ class TestMondayAPI(unittest.TestCase):
         self.mock_monday_client_instance.items = MagicMock()
 
         # Initialize the MondayAPI instance (with the mocked MondayClient)
-        self.monday_api = MondayAPI()
+        self.monday_api = monday_api
         self.monday_api.api_token = 'test_token'  # Set a test token
 
     # --------------------- Tests for fetch_item_by_ID ---------------------
@@ -64,22 +64,22 @@ class TestMondayAPI(unittest.TestCase):
         # Assertions
         self.assertEqual(len(item['data']['items']), 0)
 
-    def test_fetch_item_by_ID_invalid_response(self):
+    @patch.object(monday_api.client.items, 'fetch_items_by_id')
+    def test_fetch_item_by_ID_invalid_response(self, mock_fetch_items_by_id):
         """
         Test retrieval of an item by ID when the API returns an unexpected structure.
         Expecting a TypeError when attempting to access 'id' from a NoneType.
         """
         # Mock fetch_items_by_id to return 'items' as None
-        self.mock_monday_client_instance.items.fetch_items_by_id.return_value = {
+        mock_fetch_items_by_id.return_value = {
             'data': {
                 'items': None  # Unexpected structure
             }
         }
 
-        # Attempting to access ['id'] on None should raise a TypeError
-        with self.assertRaises(TypeError):
+        # Attempting to access ['id'] on None should raise a ValueError
+        with self.assertRaises(ValueError):
             item = self.monday_api.fetch_item_by_ID('1')
-            _ = item['data']['items'][0]['id']  # This line should raise TypeError
 
     # --------------------- Tests for create_item ---------------------
 

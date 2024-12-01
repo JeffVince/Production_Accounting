@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 import requests
 
 from logger import setup_logging
-from singleton import SingletonMeta
+from utilities.singleton import SingletonMeta
 from utilities.config import Config
 from monday import MondayClient
 from monday_files.monday_util import monday_util
@@ -365,7 +365,16 @@ class MondayAPI(metaclass=SingletonMeta):
         return all_items
 
     def fetch_item_by_ID(self, id: str):
-        return self.client.items.fetch_items_by_id(id)
+        try:
+            item = self.client.items.fetch_items_by_id(id)
+            items = item['data'].get('items')
+            if not items:
+                raise ValueError("No items found for the given ID.")
+            test = items[0]['id']
+            return test
+        except (TypeError, IndexError, KeyError) as e:
+            self.logger.error(f"Error fetching item by ID: {e}")
+            raise
 
 
 monday_api = MondayAPI()

@@ -5,44 +5,34 @@ import logging
 import requests
 import dropbox_files
 from dropbox import DropboxTeam, common, files
-import sqlite3
 import tempfile
 import threading
+from dotenv import load_dotenv
+
+from utilities.singleton import SingletonMeta
+
+load_dotenv("../.env")
 
 
-class DropboxClientSingleton:
-    _instance = None
-    _lock = threading.Lock()
+class DropboxClientSingleton(metaclass=SingletonMeta):
 
-    def __new__(cls, *args, **kwargs):
-        # Double-checked locking to ensure thread-safe singleton
-        if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    instance = super(DropboxClientSingleton, cls).__new__(cls)
-                    try:
-                        instance.initialize(*args, **kwargs)
-                    except Exception as e:
-                        logging.error(f"Failed to initialize DropboxClientSingleton: {e}", exc_info=True)
-                        # Do not set cls._instance
-                        raise  # Re-raise the exception
-                    else:
-                        cls._instance = instance
-        return cls._instance
-
-    def initialize(self, refresh_token, app_key, app_secret, my_email, namespace_name):
-        self.OAUTH_TOKEN_URL = "https://api.dropboxapi.com/oauth2/token"
-        self.DROPBOX_REFRESH_TOKEN = refresh_token
-        self.DROPBOX_APP_KEY = app_key
-        self.DROPBOX_APP_SECRET = app_secret
-        self.MY_EMAIL = my_email
-        self.NAMESPACE_NAME = namespace_name
-        self.CURSOR_DIR = '../cursors'
-        os.makedirs(self.CURSOR_DIR, exist_ok=True)
-        self._internal_lock = threading.Lock()
-
-        # Initialize access token
-        self.access_token = self.get_access_token()
+    def __init__(self):
+        if not hasattr(self, '_initialized'):
+            # Set up logging
+            self.logger = logging.getLogger("app_logger")
+            self.OAUTH_TOKEN_URL = "https://api.dropboxapi.com/oauth2/token"
+            self.DROPBOX_REFRESH_TOKEN = os.getenv("DROPBOX_REFRESH_TOKEN")
+            self.DROPBOX_APP_KEY = os.getenv("DROPBOX_APP_KEY")
+            self.DROPBOX_APP_SECRET = os.getenv("DROPBOX_APP_SECRET")
+            self.MY_EMAIL = os.getenv("MY_EMAIL")
+            self.NAMESPACE_NAME = os.getenv("NAMESPACE_NAME")
+            self.CURSOR_DIR = '../cursors'
+            os.makedirs(self.CURSOR_DIR, exist_ok=True)
+            self._internal_lock = threading.Lock()
+            # Initialize access token
+            self.access_token = self.get_access_token()
+            self._initialized = True
+            self.logger.info("Dropbox Client Initialized")
 
         try:
             # Create DropboxTeam client
@@ -78,7 +68,8 @@ class DropboxClientSingleton:
                     break
 
             if self.namespace_id:
-                logging.info(f"Found namespace '{self.NAMESPACE_NAME}' with ID '{self.namespace_id}'. Setting path root.")
+                logging.info(
+                    f"Found namespace '{self.NAMESPACE_NAME}' with ID '{self.namespace_id}'. Setting path root.")
                 path_root = common.PathRoot.namespace_id(self.namespace_id)
                 self.dbx = self.dbx.with_path_root(path_root)
                 logging.debug(f"Path root set to namespace ID '{self.namespace_id}'.")
@@ -86,7 +77,7 @@ class DropboxClientSingleton:
                 logging.warning(f"Namespace '{self.NAMESPACE_NAME}' not found. Using default path root.")
 
             # List the root folder to verify connection
-            #self.list_root_folder()
+            # self.list_root_folder()
 
             # Start the token refresher thread
             self.start_token_refresher()
@@ -184,13 +175,13 @@ class DropboxClientSingleton:
         with self._internal_lock:
             changes = []
             try:
-                logging.info("Fetching changes using the cursor.")
+                self.logger.debug("Fetching changes using the cursor.")
                 result = self.dbx.files_list_folder_continue(cursor)
                 changes.extend(result.entries)
                 while result.has_more:
                     result = self.dbx.files_list_folder_continue(result.cursor)
                     changes.extend(result.entries)
-                logging.info(f"Fetched {len(changes)} changes.")
+                self.logger.debug(f"Fetched {len(changes)} changes.")
                 return changes, result.cursor
             except dropbox_files.exceptions.ApiError as e:
                 logging.error(f"Error listing folder changes: {e}", exc_info=True)
@@ -275,26 +266,7 @@ class DropboxClientSingleton:
                     time.sleep(60)  # Wait before retrying
 
 
-# Initialize a single instance of DropboxClientSingleton
-dropbox_client_instance = None
-
-
-def get_dropbox_client(refresh_token=None, app_key=None, app_secret=None, my_email=None, namespace_name=None):
-    global dropbox_client_instance
-    if not dropbox_client_instance:
-        try:
-            dropbox_client_instance = DropboxClientSingleton(
-                refresh_token=refresh_token or os.getenv('DROPBOX_REFRESH_TOKEN'),
-                app_key=app_key or os.getenv('DROPBOX_APP_KEY'),
-                app_secret=app_secret or os.getenv('DROPBOX_APP_SECRET'),
-                my_email=my_email or os.getenv('MY_EMAIL', 'jeff@ophelia.company'),
-                namespace_name=namespace_name or os.getenv('NAMESPACE_NAME', '2024')
-            )
-        except Exception as e:
-            logging.error(f"Failed to initialize Dropbox client: {e}", exc_info=True)
-            dropbox_client_instance = None  # Ensure the instance is not set
-            raise e  # Re-raise the exception to handle it appropriately
-    return dropbox_client_instance
+dropbox_client = DropboxClientSingleton()
 
 
 def create_share_link(dbx_client, dropbox_path):

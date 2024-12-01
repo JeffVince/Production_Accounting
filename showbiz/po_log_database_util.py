@@ -1,60 +1,57 @@
-import json
 import logging
-import os
-from datetime import datetime
-from decimal import Decimal
-from typing import Any, Optional, Dict, List
-
-from dotenv import load_dotenv
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy import create_engine
 
 from database.db_util import get_db_session
 from database.models import (
-    PurchaseOrder,
-    DetailItem,
     Contact,
-    AicpCode,
-    TaxAccount,
-    Project,
 )
+from utilities.singleton import SingletonMeta
 
-import po_log_processor
 
-
-class PoLogDatabaseUtil:
+class PoLogDatabaseUtil(metaclass=SingletonMeta):
     def __init__(self):
-        # Set up logging
-        self.logger = logging.getLogger(self.__class__.__name__)
-        # Load environment variables
-        load_dotenv()
+        if not hasattr(self, '_initialized'):
+            # Set up logging
+            self.logger = logging.getLogger("app_logger")
+            self.logger.info("PO Log Database Util initialized")
+            self._initialized = True
 
     # ---------------------- PREPROCESSING ----------------------
     def get_contact_surrogate_ids(self, contacts_list):
-        '''
-        Looks for matching contacts and creates new ones if necessary
-        :param contacts_list:
-        :return: contacts_list with contact surrogate ID attached
-        '''
+        """
+        Looks for matching contacts and creates new ones if necessary.
+
+        Args:
+            contacts_list (list): List of dictionaries containing contact details.
+
+        Returns:
+            list: Updated list with contact surrogate IDs attached.
+        """
         new_contact_list = []
         for contact in contacts_list:
             try:
                 with get_db_session() as session:
-                    # check if contact exists
-                    db_contact = session.query(Contact).filter_by(name=contact.name).one_or_none()
-                    if contact:
+                    # Check if contact exists in the database
+                    db_contact = session.query(Contact).filter_by(name=contact.get("name")).one_or_none()
+                    if db_contact:
+                        # Add existing contact with surrogate ID to the list
                         new_contact_list.append({
-                            "name": contact.name,
-                            "PO": contact.PO,
+                            "name": contact.get("name"),
+                            "PO": contact.get("PO"),
                             "contact_surrogate_id": db_contact.contact_surrogate_id
                         })
-            except Exception as e:
-                self.logger.error(f"Error looking for contact: {e}")
+                        self.logger.info(f"Found in database: {contact.get('name')}")
 
-        print(new_contact_list)
+                    else:
+                        self.logger.info(f"Not in database: {contact.get('name')}")
+
+            except Exception as e:
+                self.logger.error(f"Error processing contact '{contact.get('name', 'Unknown')}': {e}")
+
         return new_contact_list
 
     # --------------------- CREATE OR UPDATE METHODS ---------------------
 
     # ---------------------- MAIN EXECUTION ----------------------
+
+
+po_log_database_util = PoLogDatabaseUtil()

@@ -3,6 +3,7 @@
 import threading
 import logging
 
+
 class SingletonMeta(type):
     """
     This is a thread-safe implementation of Singleton using a metaclass.
