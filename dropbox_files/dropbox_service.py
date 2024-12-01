@@ -7,11 +7,11 @@ import PyPDF2
 import pytesseract
 from pdf2image import convert_from_path
 
-from showbiz.po_log_database_util import po_log_database_util
-from dropbox_files.dropbox_client import create_share_link, dropbox_client
+from po_log_files.po_log_database_util import po_log_database_util
+from dropbox_files.dropbox_client import dropbox_client
 from monday_files.monday_service import monday_service
 from dropbox_files.dropbox_util import dropbox_util
-from showbiz.po_log_processor import po_log_processor
+from po_log_files.po_log_processor import po_log_processor
 from utilities.singleton import SingletonMeta
 import logging
 
@@ -311,6 +311,5 @@ class DropboxService(metaclass=SingletonMeta):
         except Exception as e:
             logging.error(f"Error extracting text with OCR from '{file_path}': {e}", exc_info=True)
             return ""
-
 
 dropbox_service = DropboxService()
