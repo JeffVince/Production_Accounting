@@ -4,7 +4,7 @@ import threading
 import time
 import logging
 from dropbox_files.dropbox_service import DropboxService
-from services.ocr_service import OCRService
+from ocr_service import OCRService
 from monday_files.monday_service import monday_service
 
 from utilities.logger import setup_logging

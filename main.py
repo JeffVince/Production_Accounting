@@ -12,7 +12,7 @@ import threading
 from orchestration.orchestrator import Orchestrator
 from database.db_util import initialize_database
 from utilities.config import Config
-from webhook.webhook_main import app  # Import the Flask app instance
+from webhook_main import app  # Import the Flask app instance
 from werkzeug.serving import make_server
 
 
