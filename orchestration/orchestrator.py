@@ -68,4 +68,5 @@ class Orchestrator:
                 except Exception as e:
                     logger.error(f"Error fetching Sub Item entries and syncing them to DB: {e}")
 
+
         threading.Thread(target=sync_contacts_from_monday_board, daemon=True).start()

@@ -113,19 +113,14 @@ class DropboxService(metaclass=SingletonMeta):
                 self.logger.debug(f"Parsed PO Log detail items: {detail_items}")
                 self.logger.debug(f"Extracted contacts: {contacts}")
 
-
-
                 # process main items
-                # add or update to DB
-                # add or update to Monday
+                self.process_main_items(main_items, project_id)
 
                 # process sub items
-                # add or update to DB
-                # add or update to Monday
+                self.process_sub_items(detail_items, project_id)
 
-                #process contacts
+                # process contacts
                 self.process_contacts(contacts, project_id)
-
 
             except Exception as parse_error:
                 self.logger.error(f"Error parsing PO Log file: {parse_error}", exc_info=True)
@@ -181,7 +176,8 @@ class DropboxService(metaclass=SingletonMeta):
                 contact_surrogate_id = po.get("'contact_surrogate_id")
 
                 if not contact_surrogate_id:
-                    self.logger.warning( f"No surrogate ID found for contact ID '{contact_surrogate_id}'. Skipping PO '{project_id}_{po_number}'." )
+                    self.logger.warning(
+                        f"No surrogate ID found for contact ID '{contact_surrogate_id}'. Skipping PO '{project_id}_{po_number}'.")
                     continue
 
                 # Retrieve the Contact's pulse ID from DB using the surrogate ID
@@ -194,14 +190,30 @@ class DropboxService(metaclass=SingletonMeta):
                 update_success = self.monday_api.update_item(po_pulse_id, column_values)
 
                 if update_success:
-                    self.logger.info(f"Successfully linked PO '{po_number}' with Contact '{contact_surrogate_id}' in Monday.com." )
+                    self.logger.info(
+                        f"Successfully linked PO '{po_number}' with Contact '{contact_surrogate_id}' in Monday.com.")
                 else:
-                    self.logger.error(f"Failed to link PO '{po_number}' with Contact '{contact_surrogate_id}' in Monday.com." )
+                    self.logger.error(
+                        f"Failed to link PO '{po_number}' with Contact '{contact_surrogate_id}' in Monday.com.")
 
             self.logger.info("Completed synchronization with Monday.com")
         except Exception as parse_error:
             self.logger.error(f"Error processing contacts: {parse_error}", exc_info=True)
             raise
+
+    def process_main_items(self, main_items, project_id):
+        for item in main_items:
+            prepped_item = self.po_log_database_util.prep_po_log_item_for_db(item, project_id)
+            item = self.po_log_database_util.create_or_update_main_item_in_db(prepped_item)
+            print("")
+        # add or update to Monday
+
+    def process_sub_items(self, sub_items, project_id):
+        for item in sub_items:
+            prepped_item = self.po_log_database_util.prep_po_log_item_for_db(item)
+            self.po_log_database_util.create_or_update_sub_item_in_db(prepped_item)
+        # add or update to Monday
+        print("test")
 
     def extract_receipt_info_with_openai_from_file(self, dropbox_path):
         """
