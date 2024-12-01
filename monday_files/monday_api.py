@@ -23,6 +23,7 @@ class MondayAPI(metaclass=SingletonMeta):
             self.api_url = 'https://api.monday.com/v2/'
             self.client = MondayClient(self.api_token)
             self.monday_util = monday_util
+            self.po_board_id = self.monday_util.PO_BOARD_ID
             self.SUBITEM_BOARD_ID = self.monday_util.SUBITEM_BOARD_ID
 
             self.logger.info("Monday API  initialized")
@@ -49,7 +50,7 @@ class MondayAPI(metaclass=SingletonMeta):
         }
         '''
         variables = {
-            'board_id': board_id,
+            'board_id': int(self.po_board_id),
             'item_name': item_name,
             'column_values': column_values
         }
@@ -71,18 +72,19 @@ class MondayAPI(metaclass=SingletonMeta):
         }
         return self._make_request(query, variables)
 
-    def update_item(self, item_id: int, column_values: dict):
+    def update_item(self, item_id: str, column_values: dict):
         """Updates an existing item."""
         query = '''
-        mutation ($item_id: Int!, $column_values: JSON!) {
-            change_multiple_column_values(item_id: $item_id, column_values: $column_values) {
+        mutation ($board_id: ID!, $item_id: ID!, $column_values: JSON!) {
+            change_multiple_column_values(board_id: $board_id, item_id: $item_id, column_values: $column_values) {
                 id
             }
         }
         '''
         variables = {
-            'item_id': item_id,
-            'column_values': column_values
+            'board_id': str(self.po_board_id),  # Ensure this is the board ID
+            'item_id': str(item_id),  # Ensure this is the item ID
+            'column_values': column_values  # JSON object with column values
         }
         return self._make_request(query, variables)
 

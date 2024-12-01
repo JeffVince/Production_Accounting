@@ -7,6 +7,8 @@ import PyPDF2
 import pytesseract
 from pdf2image import convert_from_path
 
+from monday_files.monday_api import monday_api
+from monday_files.monday_util import monday_util
 from po_log_files.po_log_database_util import po_log_database_util
 from dropbox_files.dropbox_client import dropbox_client
 from monday_files.monday_service import monday_service
@@ -27,6 +29,8 @@ class DropboxService(metaclass=SingletonMeta):
             self.dropbox_client = dropbox_client
             self.po_log_processor = po_log_processor
             self.dropbox_util = dropbox_util
+            self.monday_api = monday_api
+            self.monday_util = monday_util
             self.po_log_database_util = po_log_database_util
             self.logger.info("Dropbox Service  initialized")
             self._initialized = True
@@ -36,7 +40,8 @@ class DropboxService(metaclass=SingletonMeta):
         Determine the type of file based on its path and name,
         and delegate processing to the appropriate handler.
         """
-        self.logger.info(f"Validating file type and location path: {self.dropbox_util.get_last_path_component_generic(path)}")
+        self.logger.info(
+            f"Validating file type and location path: {self.dropbox_util.get_last_path_component_generic(path)}")
 
         # Extract the filename
         filename = os.path.basename(path)
@@ -106,12 +111,20 @@ class DropboxService(metaclass=SingletonMeta):
 
                 self.logger.debug(f"Parsed PO Log main items: {main_items}")
                 self.logger.debug(f"Parsed PO Log detail items: {detail_items}")
-                self.logger.info(f"Extracted contacts: {contacts}")
-
-                contact_ids = self.po_log_database_util.get_contact_surrogate_ids(contacts)
+                self.logger.debug(f"Extracted contacts: {contacts}")
 
 
 
+                # process main items
+                # add or update to DB
+                # add or update to Monday
+
+                # process sub items
+                # add or update to DB
+                # add or update to Monday
+
+                #process contacts
+                self.process_contacts(contacts, project_id)
 
 
             except Exception as parse_error:
@@ -148,6 +161,47 @@ class DropboxService(metaclass=SingletonMeta):
         self.logger.info(f"Processing receipt: {path}")
         # Implement specific logic for processing receipts
         pass
+
+    def process_contacts(self, contacts, project_id):
+
+        po_records = self.po_log_database_util.get_pos_by_project_id(project_id)
+
+        existing_contacts = self.po_log_database_util.get_contact_surrogate_ids(contacts)
+
+        self.logger.info("Starting synchronization with Database")
+
+        self.po_log_database_util.link_contact_to_po(existing_contacts, project_id)
+
+        self.logger.info("Starting synchronization with Monday.com")
+
+        try:
+            for po in po_records:
+                po_number = po.get("po_number")
+                po_pulse_id = po.get("pulse_id")
+                contact_surrogate_id = po.get("'contact_surrogate_id")
+
+                if not contact_surrogate_id:
+                    self.logger.warning( f"No surrogate ID found for contact ID '{contact_surrogate_id}'. Skipping PO '{project_id}_{po_number}'." )
+                    continue
+
+                # Retrieve the Contact's pulse ID from DB using the surrogate ID
+                contact_pulse_id = self.po_log_database_util.get_contact_pulse_id(contact_surrogate_id)
+
+                # create column_values object
+                column_values = self.monday_util.po_column_values_formatter(contact_pulse_id=contact_pulse_id)
+
+                # Update the connected column in the PO item to link to the Contact's pulse ID
+                update_success = self.monday_api.update_item(po_pulse_id, column_values)
+
+                if update_success:
+                    self.logger.info(f"Successfully linked PO '{po_number}' with Contact '{contact_surrogate_id}' in Monday.com." )
+                else:
+                    self.logger.error(f"Failed to link PO '{po_number}' with Contact '{contact_surrogate_id}' in Monday.com." )
+
+            self.logger.info("Completed synchronization with Monday.com")
+        except Exception as parse_error:
+            self.logger.error(f"Error processing contacts: {parse_error}", exc_info=True)
+            raise
 
     def extract_receipt_info_with_openai_from_file(self, dropbox_path):
         """
@@ -311,5 +365,6 @@ class DropboxService(metaclass=SingletonMeta):
         except Exception as e:
             logging.error(f"Error extracting text with OCR from '{file_path}': {e}", exc_info=True)
             return ""
+
 
 dropbox_service = DropboxService()

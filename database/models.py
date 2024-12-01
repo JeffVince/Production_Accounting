@@ -78,7 +78,7 @@ class Contact(Base):
     tax_ID = Column(String(45), nullable=True, unique=True)
     tax_form_link = Column(String(255), nullable=True)
     tax_type = Column(String(45), default="SSN")
-    tax_form_status = Column(Enum('PENDING', 'ON FILE', 'REQUESTED'), nullable=False, default="PENDING")
+    vendor_status = Column(Enum('PENDING', 'APPROVED', 'TO VERIFY', 'ISSUE'), nullable=False, default="PENDING")
 
     # Relationships
     purchase_orders = relationship(

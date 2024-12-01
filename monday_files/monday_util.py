@@ -440,6 +440,46 @@ class MondayUtil(metaclass=SingletonMeta):
         self.logger.info(f"Formatted subitem column values: {column_values}")
         return column_values
 
+    def po_column_values_formatter(self, project_id=None, po_number=None, tax_id=None, description=None,
+                                   contact_pulse_id=None, folder_link=None, status=None, producer_id=None):
+        """
+        Formats the column values for creating or updating a main PO item.
+
+        Args:
+            project_id (str, optional): The ID of the project associated with the PO.
+            po_number (str, optional): The PO number.
+            tax_id (str, optional): Tax-related ID.
+            description (str, optional): Description of the PO.
+            contact_pulse_id (int, optional): Pulse ID of the contact to connect.
+            folder_link (str, optional): URL link to the folder.
+            status (str, optional): Status of the PO.
+            producer_id (int, optional): ID of the producer assigned to the PO.
+
+        Returns:
+            dict: A dictionary of main PO column IDs and their corresponding values.
+        """
+
+        column_values = {}
+        if project_id:
+            column_values[self.PO_PROJECT_ID_COLUMN] = project_id
+        if po_number:
+            column_values[self.PO_NUMBER_COLUMN] = po_number
+        if tax_id:
+            column_values[self.PO_TAX_COLUMN_ID] = tax_id
+        if description:
+            column_values[self.PO_DESCRIPTION_COLUMN_ID] = description
+        if contact_pulse_id:
+            column_values[self.PO_CONTACT_CONNECTION_COLUMN_ID] = {'item_ids': [contact_pulse_id]}
+        if folder_link:
+            column_values[self.PO_FOLDER_LINK_COLUMN_ID] = {'url': folder_link, 'text': 'Folder Link'}
+        if status:
+            column_values[self.PO_STATUS_COLUMN_ID] = {'label': status}
+        if producer_id:
+            column_values[self.PO_PRODUCER_COLUMN_ID] = {'personsAndTeams': [{'id': producer_id, 'kind': 'person'}]}
+
+        self.logger.info(f"Formatted PO column values: {column_values}")
+        return json.dumps(column_values)
+
     def create_subitem(self, parent_item_id, subitem_name, column_values):
         """
         Creates a subitem in Monday.com under a given parent item.
