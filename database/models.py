@@ -126,7 +126,6 @@ class PurchaseOrder(Base):
     amount_total = Column(MYSQL_DECIMAL(15, 2), nullable=False, default=0.00)
     folder_link = Column(String(255), nullable=True)
     producer = Column(String(100), nullable=True)
-    issue_type = Column(String(45), nullable=True)
     tax_form_link = Column(String(255), nullable=True)
     description = Column(String(255), nullable=True)
 

@@ -510,7 +510,7 @@ class TestMondayService(unittest.TestCase):
             {'pulse_id': 1, 'name': 'Contact1', 'email': 'contact1@example.com'},
             {'pulse_id': 2, 'name': 'Contact2', 'email': 'contact2@example.com'}
         ]
-        mock_db_util_instance.create_or_update_contact_item_in_db.side_effect = ['Created', 'Updated']
+        mock_db_util_instance.find_or_create_contact_item_in_db.side_effect = ['Created', 'Updated']
 
         # Act
         with self.assertLogs(level='INFO') as log:
@@ -519,7 +519,7 @@ class TestMondayService(unittest.TestCase):
         # Assert
         mock_monday_api_instance.fetch_all_contacts.assert_called_once_with(self.service.contact_board_id)
         self.assertEqual(mock_monday_util_instance.prep_contact_event_for_db_creation.call_count, 2, "Should prepare two contacts.")
-        self.assertEqual(mock_db_util_instance.create_or_update_contact_item_in_db.call_count, 2, "Should create/update two contacts.")
+        self.assertEqual(mock_db_util_instance.find_or_create_contact_item_in_db.call_count, 2, "Should create/update two contacts.")
         self.assertIn('Synced contact with pulse_id 1: Created', log.output[0])
         self.assertIn('Synced contact with pulse_id 2: Updated', log.output[1])
 
@@ -646,7 +646,7 @@ class TestMondayService(unittest.TestCase):
         mock_db_util_instance = mock_db_util.return_value
 
         mock_monday_util_instance.prep_contact_event_for_db_creation.return_value = {'pulse_id': 1, 'name': 'Contact1', 'email': 'contact1@example.com'}
-        mock_db_util_instance.create_or_update_contact_item_in_db.return_value = 'Fail'
+        mock_db_util_instance.find_or_create_contact_item_in_db.return_value = 'Fail'
 
         # Act
         with self.assertLogs(level='ERROR') as log:

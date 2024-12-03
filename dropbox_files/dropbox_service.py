@@ -108,19 +108,61 @@ class DropboxService(metaclass=SingletonMeta):
                 main_items = self.po_log_processor.parse_po_log_main_items(temp_file_path)
                 detail_items = self.po_log_processor.parse_po_log_sub_items(temp_file_path)
                 contacts = self.po_log_processor.get_contacts_list(main_items, detail_items)
+                group_id = self.monday_api.fetch_group_ID(project_id)
+                # filter POs by contacts list
+                filtered_items = []
+                for item in main_items:
+                    if not item["Vendor"].__contains__("PLACEHOLDER"):
+                        crd = False
+                        for detail in detail_items:
+                            if item.get("PO") == detail.get("PO"):
+                                if detail.get("Payment Type") == "CRD":
+                                    crd = True
+                        if not crd:
+                            item['po_type'] = 'VENDOR'
+                            item['vendor_status'] = 'PENDING'
+                        else:
+                            item['po_type'] = 'CC / PC'
+                            item['vendor_status'] = 'APPROVED'
+                        filtered_items.append(item)
 
                 self.logger.debug(f"Parsed PO Log main items: {main_items}")
                 self.logger.debug(f"Parsed PO Log detail items: {detail_items}")
                 self.logger.debug(f"Extracted contacts: {contacts}")
 
-                # process main items
-                self.process_main_items(main_items, project_id)
+                for item in filtered_items:
+                    # add project Id to creation item
+                    item["project_id"] = project_id
+                    # find or create contact in Monday
+                    if item["po_type"] == "VENDOR":
+                        contact_name = item["Vendor"]
+                    else:
+                        contact_name = "Company Credit Card"
+                    monday_contact_result = self.monday_api.find_or_create_contact_in_monday(contact_name)
+                    item['contact_pulse_id'] = monday_contact_result["id"]
+                    # find or create contact in DB
+                    db_contact_result = self.po_log_database_util.find_or_create_contact_item_in_db(item)
+                    item["contact_surrogate_id"] = db_contact_result["contact_surrogate_id"]
+                    # find or create item in Monday
+                    column_values = self.monday_util.po_column_values_formatter(
+                        project_id=item["project_id"],
+                        po_number=item["PO"],
+                        description=item["Purpose"],
+                        contact_pulse_id=item["contact_pulse_id"],
+                        status=item["vendor_status"]
+                    )
+                    monday_item_result = self.monday_api.find_or_create_item_in_monday(item["Vendor"], group_id, column_values)
+                    item["item_pulse_id"] = monday_item_result[0]["id"]
+                    # find or create item in DB
+                    result = self.po_log_database_util.create_or_update_main_item_in_db(item)
 
-                # process sub items
-                self.process_sub_items(detail_items, project_id)
+               # for item in detail_items:
+                 #   pass
+                    # get PO surrogate Id
 
-                # process contacts
-                self.process_contacts(contacts, project_id)
+                    # create in DB
+
+                    # send to monday
 
             except Exception as parse_error:
                 self.logger.error(f"Error parsing PO Log file: {parse_error}", exc_info=True)
@@ -132,6 +174,22 @@ class DropboxService(metaclass=SingletonMeta):
 
         except Exception as e:
             self.logger.error(f"Error processing PO Log for project {project_id}: {e}", exc_info=True)
+
+
+    def link_main_item_to_contact_in_db(self):
+        pass
+
+    def send_contact_to_monday(self):
+        pass
+
+    def send_po_to_monday(self):
+        pass
+
+    def create_detail_item_in_db(self):
+        pass
+
+    def send_detail_item_to_monday(self):
+        pass
 
     def process_invoice(self, path):
         """
@@ -200,20 +258,6 @@ class DropboxService(metaclass=SingletonMeta):
         except Exception as parse_error:
             self.logger.error(f"Error processing contacts: {parse_error}", exc_info=True)
             raise
-
-    def process_main_items(self, main_items, project_id):
-        for item in main_items:
-            prepped_item = self.po_log_database_util.prep_po_log_item_for_db(item, project_id)
-            item = self.po_log_database_util.create_or_update_main_item_in_db(prepped_item)
-            print("")
-        # add or update to Monday
-
-    def process_sub_items(self, sub_items, project_id):
-        for item in sub_items:
-            prepped_item = self.po_log_database_util.prep_po_log_item_for_db(item)
-            self.po_log_database_util.create_or_update_sub_item_in_db(prepped_item)
-        # add or update to Monday
-        print("test")
 
     def extract_receipt_info_with_openai_from_file(self, dropbox_path):
         """
@@ -375,7 +419,7 @@ class DropboxService(metaclass=SingletonMeta):
             logging.debug(f"Extracted text from image '{file_path}' using OCR.")
             return text
         except Exception as e:
-            logging.error(f"Error extracting text with OCR from '{file_path}': {e}", exc_info=True)
+            self.logger.error(f"Error extracting text with OCR from '{file_path}': {e}", exc_info=True)
             return ""
 
 

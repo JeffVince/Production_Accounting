@@ -236,7 +236,7 @@ class MondayService(metaclass=SingletonMeta):
             for contact in all_contacts:
                 prepped_contact = self.db_util.prep_contact_event_for_db_creation(contact)
                 if prepped_contact:
-                    status = self.db_util.create_or_update_contact_item_in_db(prepped_contact)
+                    status = self.db_util.find_or_create_contact_item_in_db(prepped_contact)
                     self.logger.info(f"Synced contact with pulse_id {prepped_contact.get('pulse_id')}: {status}")
         except Exception as e:
             self.logger.error(f"Error syncing contacts to DB: {e}")

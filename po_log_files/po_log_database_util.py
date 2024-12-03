@@ -1,7 +1,6 @@
 import json
 import logging
-from decimal import Decimal
-from unicodedata import decimal
+
 
 from sqlalchemy.exc import IntegrityError
 
@@ -138,20 +137,12 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
             :param project_id:
             :param main_item:
         """
-        item = main_item
-
         # Prepare the database creation item
         creation_item = {}
 
-        for key, value in item.items():
+        for key, value in main_item.items():
             if key == 'PO':
                 creation_item["po_number"] = value
-            if key == 'Actualized $':
-                creation_item['amount_total'] = Decimal(value.replace("$", "").replace(",", ""))
-            if key == 'St/Type':
-                creation_item['state'] = value
-            if key == 'Vendor':
-                creation_item['name'] = value
 
         creation_item['project_id'] = project_id
 
@@ -163,51 +154,59 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
         print("test")
 
     # --------------------- CREATE / UPDATE -------------------
-    def create_or_update_main_item_in_db(self, item_data):
+    def create_or_update_main_item_in_db(self, item):
         """
         Creates or updates a main item record in the database.
 
         Args:
-            item_data (dict): The prepared database creation item containing details.
+            item (dict): The prepared database creation item containing details.
 
         Returns:
             str: Status message indicating success, creation, or failure.
+            :param item:
         """
-        project_id = item_data['project_id']
-        po_number = item_data['po_number']
-        name = item_data['name']
-
+        db_item = {}
+        db_item["project_id"] = item['project_id']
+        db_item["po_number"] = item['PO']
+        db_item["contact_id"] = item['contact_surrogate_id']
+        db_item["description"] = item["Purpose"]
+        db_item["po_type"] = item["po_type"]
+        db_item["pulse_id"] = item["item_pulse_id"]
+        if db_item["po_type"] == "CC / PC":
+            db_item["description"] = "Credit Card Purchases"
         with get_db_session() as session:
             try:
-                # Check if the item already exists in the database
-                po_item = session.query(PurchaseOrder).filter_by(po_number=po_number, project_id=project_id).one_or_none()
+                # Check if the item already exists in the database - update contact.
+                po_item = session.query(PurchaseOrder).filter_by(po_number=db_item["po_number"], project_id=db_item["project_id"]).one_or_none()
                 if po_item:
-                    # Update existing record
-                    for db_field, value in item_data.items():
-                        setattr(po_item, db_field, value)
-                    self.logger.info(f"Updated existing Purchase Order: {project_id}_{po_number} {name}")
+                    self.logger.info(f"Purchase Order Exists: {db_item['project_id']}_{db_item['po_number']}")
+                    po_item.contact_id = db_item["contact_id"]
+                    if not db_item["description"] == "":
+                        po_item.description = db_item["description"]
+                    session.commit()
                     result = {
                         "stats": "Updated",
-                        "item": po_item
+                        "po_surrogate_id": po_item.po_surrogate_id
                     }
                 else:  # Create a new record
-                    new_item = PurchaseOrder(**item_data)
+                    new_item = PurchaseOrder(**db_item)
                     session.add(new_item)
-                    self.logger.info(f"Created new Purchase Order: {project_id}_{po_number} {name}")
-                    po_item = session.query(PurchaseOrder).filter_by(po_number=po_number,
-                                                                     project_id=project_id).one_or_none()
-
+                    session.commit()
+                    self.logger.info(f"Created new Purchase Order: {db_item['project_id']}_{ db_item['po_number']}")
+                    po_item = session.query(PurchaseOrder).filter_by(po_number=db_item['po_number'],
+                                                                     project_id=db_item['project_id']).one_or_none()
                     result = {
-                        "stats": "Updated",
-                        "item": po_item
+                        "stats": "Created",
+                        "po_surrogate_id": po_item.po_surrogate_id
                     }
-                    # Commit the transaction
-                session.commit()
                 return result
             except Exception as e:
                 session.rollback()
                 self.logger.error(f"Error processing PurchaseOrder in DB: {e}")
-                return "Fail"
+                return {
+                        "stats": "Fail",
+                        "po_surrogate_id": None
+                    }
 
     def create_or_update_sub_item_in_db(self, item_data):
         """
@@ -260,38 +259,55 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
                     "error": str(e)
                 }
 
-    def create_or_update_contact_item_in_db(self, item_data):
+    def find_or_create_contact_item_in_db(self, item):
         """
         Creates or updates a contact record in the database.
 
         Args:
-            item_data (dict): The prepared database creation item containing contact details.
+            item (dict): The prepared database creation item containing contact details.
 
         Returns:
             str: Status message indicating success, creation, or failure.
         """
-        pulse_id = item_data.get("pulse_id")
-
+        db_item = {}
+        db_item["name"] = item["Vendor"]
+        db_item["vendor_status"] = item["vendor_status"]
+        db_item["pulse_id"] = item["contact_pulse_id"]
+        db_item["vendor_type"] = item["po_type"]
         with get_db_session() as session:
             try:
-                # Check if the contact already exists in the database
-                contact_item = session.query(Contact).filter_by(pulse_id=pulse_id).one_or_none()
 
+                if item["po_type"] == "CC / PC":
+                    cc_item = session.query(Contact).filter_by(name="Company Credit Card").one_or_none()
+                    status = {
+                        "status": "exists",
+                        "contact_surrogate_id": cc_item.contact_surrogate_id
+                    }
+                    return status
+                # Check if the contact already exists in the database
+                contact_item = session.query(Contact).filter_by(name=db_item["name"]).one_or_none()
                 if contact_item:
-                    # Update existing record
-                    for db_field, value in item_data.items():
-                        if db_field != "pulse_id":  # Skip pulse_id since it's the key
-                            setattr(contact_item, db_field, value)
-                    self.logger.info(f"Updated existing Contact with pulse_id: {pulse_id}")
-                    status = "Updated"
+                    for key, value in db_item.items():
+                        setattr(contact_item, key, value)
+                    session.commit()
+                    self.logger.info(f"Existing Contact with name: {db_item['name']}")
+                    status = {
+                        "status": "exists",
+                        "contact_surrogate_id": contact_item.contact_surrogate_id
+                    }
+                    return status
                 else:  # Create a new record
-                    new_contact = Contact(**item_data)
+                    new_contact = Contact(**db_item)
                     session.add(new_contact)
-                    self.logger.info(f"Created new Contact with pulse_id: {pulse_id}")
-                    status = "Created"
-                # Commit the transaction
-                session.commit()
-                return status
+                    self.logger.info(f"Created new Contact: {db_item['name']}")
+                    # Commit the transaction
+                    session.commit()
+                    contact_item = session.query(Contact).filter_by(name=db_item['name']).one_or_none()
+                    status = {
+                        "status": "created",
+                        "contact_surrogate_id": contact_item.contact_surrogate_id
+                    }
+                    return status
             except Exception as e:
                 session.rollback()
                 self.logger.error(f"Error processing Contact in DB: {e}")

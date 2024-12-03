@@ -20,12 +20,13 @@ class MondayUtil(metaclass=SingletonMeta):
     MONDAY_API_URL = 'https://api.monday.com/v2'
 
     ACTUALS_BOARD_ID = "7858669780"
-    PO_BOARD_ID = "2562607316"  # Ensure this is a string
+    safe_PO_BOARD_ID = "2562607316"  # Ensure this is a string
+    PO_BOARD_ID = '7969894467'
     CONTACT_BOARD_ID = '2738875399'
 
     # Column IDs for POs
     PO_PROJECT_ID_COLUMN = 'project_id'  # Monday.com Project ID column ID
-    PO_NUMBER_COLUMN = 'numbers08'  # Monday.com PO Number column ID
+    PO_NUMBER_COLUMN = 'numeric__1'  # Monday.com PO Number column ID
     PO_TAX_COLUMN_ID = 'dup__of_invoice'  # TAX link column ID
     PO_DESCRIPTION_COLUMN_ID = 'text6'  # Item Description column ID
     PO_CONTACT_CONNECTION_COLUMN_ID = 'connect_boards1'
@@ -186,14 +187,14 @@ class MondayUtil(metaclass=SingletonMeta):
         data = response.json()
 
         if response.status_code == 200 and 'data' in data:
-            columns = data['data']['boards'][0]['columns']
-            for column in columns:
-                if column['type'] == 'subtasks':
-                    self.logger.debug(f"Found subitems column ID: {column['id']}")
-                    return column['id']
-            raise Exception("Subitems column not found.")
-        else:
-            raise Exception(f"Failed to retrieve columns: {response.text}")
+            try:
+                columns = data['data']['boards'][0]['columns']
+                for column in columns:
+                    if column['type'] == 'subtasks':
+                        self.logger.debug(f"Found subitems column ID: {column['id']}")
+                        return column['id']
+            except Exception as e:
+                self.logger.error(f"Failed to retrieve columns: {data}")
 
     def get_subitem_board_id(self, subitems_column_id):
         """
@@ -382,6 +383,49 @@ class MondayUtil(metaclass=SingletonMeta):
             self.logger.error(f"HTTP Error {response.status_code}: {response.text}")
             return False
 
+    def po_column_values_formatter(self, project_id=None, po_number=None, tax_id=None, description=None,
+                                   contact_pulse_id=None, folder_link=None, status=None, producer_id=None, name=None):
+        """
+        Formats the column values for creating or updating a main PO item.
+
+        Args:
+            project_id (str, optional): The ID of the project associated with the PO.
+            po_number (str, optional): The PO number.
+            tax_id (str, optional): Tax-related ID.
+            description (str, optional): Description of the PO.
+            contact_pulse_id (int, optional): Pulse ID of the contact to connect.
+            folder_link (str, optional): URL link to the folder.
+            status (str, optional): Status of the PO.
+            producer_id (int, optional): ID of the producer assigned to the PO.
+
+        Returns:
+            dict: A dictionary of main PO column IDs and their corresponding values.
+        """
+
+        column_values = {}
+        if project_id:
+            column_values[self.PO_PROJECT_ID_COLUMN] = project_id
+        if name:
+            column_values["name"] = name
+        if po_number:
+            column_values[self.PO_NUMBER_COLUMN] = po_number
+        if tax_id:
+            column_values[self.PO_TAX_COLUMN_ID] = tax_id
+        if description:
+            column_values[self.PO_DESCRIPTION_COLUMN_ID] = description
+        if contact_pulse_id:
+            column_values[self.PO_CONTACT_CONNECTION_COLUMN_ID] = {'item_ids': [contact_pulse_id]}
+        if folder_link:
+            column_values[self.PO_FOLDER_LINK_COLUMN_ID] = {'url': folder_link, 'text': 'Folder Link'}
+        if status:
+            column_values[self.PO_STATUS_COLUMN_ID] = {'label': status}
+        if producer_id:
+            column_values[self.PO_PRODUCER_COLUMN_ID] = {'personsAndTeams': [{'id': producer_id, 'kind': 'person'}]}
+
+        self.logger.info(f"Formatted PO column values: {column_values}")
+        return json.dumps(column_values)
+
+
     # --------------------- SUBITEM METHODS ---------------------
 
     def subitem_column_values_formatter(self, notes=None, status=None, file_id=None, description=None,
@@ -440,45 +484,6 @@ class MondayUtil(metaclass=SingletonMeta):
         self.logger.info(f"Formatted subitem column values: {column_values}")
         return column_values
 
-    def po_column_values_formatter(self, project_id=None, po_number=None, tax_id=None, description=None,
-                                   contact_pulse_id=None, folder_link=None, status=None, producer_id=None):
-        """
-        Formats the column values for creating or updating a main PO item.
-
-        Args:
-            project_id (str, optional): The ID of the project associated with the PO.
-            po_number (str, optional): The PO number.
-            tax_id (str, optional): Tax-related ID.
-            description (str, optional): Description of the PO.
-            contact_pulse_id (int, optional): Pulse ID of the contact to connect.
-            folder_link (str, optional): URL link to the folder.
-            status (str, optional): Status of the PO.
-            producer_id (int, optional): ID of the producer assigned to the PO.
-
-        Returns:
-            dict: A dictionary of main PO column IDs and their corresponding values.
-        """
-
-        column_values = {}
-        if project_id:
-            column_values[self.PO_PROJECT_ID_COLUMN] = project_id
-        if po_number:
-            column_values[self.PO_NUMBER_COLUMN] = po_number
-        if tax_id:
-            column_values[self.PO_TAX_COLUMN_ID] = tax_id
-        if description:
-            column_values[self.PO_DESCRIPTION_COLUMN_ID] = description
-        if contact_pulse_id:
-            column_values[self.PO_CONTACT_CONNECTION_COLUMN_ID] = {'item_ids': [contact_pulse_id]}
-        if folder_link:
-            column_values[self.PO_FOLDER_LINK_COLUMN_ID] = {'url': folder_link, 'text': 'Folder Link'}
-        if status:
-            column_values[self.PO_STATUS_COLUMN_ID] = {'label': status}
-        if producer_id:
-            column_values[self.PO_PRODUCER_COLUMN_ID] = {'personsAndTeams': [{'id': producer_id, 'kind': 'person'}]}
-
-        self.logger.info(f"Formatted PO column values: {column_values}")
-        return json.dumps(column_values)
 
     def create_subitem(self, parent_item_id, subitem_name, column_values):
         """
@@ -639,7 +644,6 @@ class MondayUtil(metaclass=SingletonMeta):
             self.logger.error(f"HTTP Error {response.status_code}: {response.text}")
             return False
 
-    # The rest of your methods remain unchanged...
 
     # --------------------- VALIDATION METHODS ---------------------
 
@@ -668,6 +672,20 @@ class MondayUtil(metaclass=SingletonMeta):
             return False
         self.logger.info("Request validated successfully.")
         return True
+
+    # --------------------- HELPER METHODS ---------------------
+    def get_item_data(self, monday_response):
+
+        item_dict =  monday_response['data']['items'][0]
+        columns_dict = {item['id']: item for item in item_dict['column_values']}
+
+        return item_dict, columns_dict
+
+    def get_contact_pulse_id(self, columns_dict):
+        parsed_value = json.loads(columns_dict['value'])
+        linked_pulse_id = [item['linkedPulseId'] for item in parsed_value.get('linkedPulseIds', [])]
+        return linked_pulse_id
+
 
 
 monday_util = MondayUtil()

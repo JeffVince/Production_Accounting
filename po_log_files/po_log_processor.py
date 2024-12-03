@@ -43,6 +43,7 @@ class POLogProcessor(metaclass=SingletonMeta):
                         'Date': row[2],
                         'St/Type': row[3],
                         'Vendor': row[6],
+                        'Purpose': row[7],
                         'Actualized $': row[9] if len(row) > 9 else ''
                     }
                     main_items.append(main_item)
@@ -83,7 +84,6 @@ class POLogProcessor(metaclass=SingletonMeta):
                         'Date': row[2],
                         'St/Type': row[3],
                         'Vendor': row[6],
-                        'Actualized $': row[9] if len(row) > 9 else ''
                     }
                     main_items.append(main_item)
                     current_main_item = main_item
@@ -105,7 +105,9 @@ class POLogProcessor(metaclass=SingletonMeta):
                         'Account': row[8],
                         'Actualized $': row[9] if len(row) > 8 else ''
                     }
-                    detail_items.append(detail_item)
+
+                    if not detail_item['Description'] == "TOTAL":
+                        detail_items.append(detail_item)
 
         return detail_items
 
@@ -124,6 +126,12 @@ class POLogProcessor(metaclass=SingletonMeta):
                         "PO": item.get("PO")
                     })
                     crd = False
+                else:
+                    contact_list.append({
+                        "name": "Ophelia Credit Card",
+                        "PO": item.get("PO")
+                    })
+
         return contact_list
 
 

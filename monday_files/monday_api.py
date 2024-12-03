@@ -1,4 +1,5 @@
 # monday_files/monday_api.py
+import json
 import logging
 
 from dotenv import load_dotenv
@@ -25,6 +26,9 @@ class MondayAPI(metaclass=SingletonMeta):
             self.monday_util = monday_util
             self.po_board_id = self.monday_util.PO_BOARD_ID
             self.SUBITEM_BOARD_ID = self.monday_util.SUBITEM_BOARD_ID
+            self.project_id_column = self.monday_util.PO_PROJECT_ID_COLUMN
+            self.po_number_column = self.monday_util.PO_NUMBER_COLUMN
+            self.CONTACT_BOARD_ID = self.monday_util.CONTACT_BOARD_ID
 
             self.logger.info("Monday API  initialized")
 
@@ -40,18 +44,19 @@ class MondayAPI(metaclass=SingletonMeta):
         response.raise_for_status()
         return response.json()
 
-    def create_item(self, board_id: int, item_name: str, column_values: dict):
+    def create_item(self, board_id: int, group_id: str, name: str, column_values: dict):
         """Creates a new item on a board."""
         query = '''
-        mutation ($board_id: Int!, $item_name: String!, $column_values: JSON!) {
-            create_item(board_id: $board_id, item_name: $item_name, column_values: $column_values) {
+        mutation ($board_id: ID!, $group_id: String!, $item_name: String!, $column_values: JSON!) {
+            create_item(board_id: $board_id, group_id: $group_id, item_name: $item_name, column_values: $column_values) {
                 id
             }
         }
         '''
         variables = {
-            'board_id': int(self.po_board_id),
-            'item_name': item_name,
+            'board_id': int(board_id),
+            'group_id': group_id,
+            'item_name': name,
             'column_values': column_values
         }
         return self._make_request(query, variables)
@@ -69,6 +74,22 @@ class MondayAPI(metaclass=SingletonMeta):
             'parent_item_id': parent_item_id,
             'subitem_name': subitem_name,
             'column_values': column_values
+        }
+        return self._make_request(query, variables)
+
+    def create_contact(self, name):
+        """Creates a new contact on a board."""
+        query = '''
+        mutation ($board_id: ID!, $item_name: String!) {
+            create_item(board_id: $board_id, item_name: $item_name) {
+                id,
+                name
+            }
+        }
+        '''
+        variables = {
+            'board_id': int(self.CONTACT_BOARD_ID),
+            'item_name': name,
         }
         return self._make_request(query, variables)
 
@@ -372,11 +393,108 @@ class MondayAPI(metaclass=SingletonMeta):
             items = item['data'].get('items')
             if not items:
                 raise ValueError("No items found for the given ID.")
-            test = items[0]['id']
-            return test
+            return item
         except (TypeError, IndexError, KeyError) as e:
             self.logger.error(f"Error fetching item by ID: {e}")
             raise
+
+    def fetch_group_ID(self, project_id):
+        query = f'''
+                    query {{
+              boards (ids: {self.po_board_id}) {{
+                groups {{
+                  title
+                  id
+                }}
+              }}
+            }}
+        '''
+        response = self._make_request(query, {})
+        groups = response["data"]["boards"][0]["groups"]
+        for group in groups:
+            if group["title"].__contains__(project_id):
+                return group["id"]
+        return None
+
+    def fetch_item_by_po_and_project(self, project_id, po_number):
+        query = '''
+        query ($board_id: ID!, $po_number: String!, $project_id: String!, $project_id_column: String!, $po_column: String!) {
+                  items_page_by_column_values (limit: 1, board_id: $board_id, columns: [{column_id: $project_id_column, column_values: [$project_id]}, {column_id: $po_column, column_values: [$po_number]}]) {
+                    cursor
+                    items {
+                      id
+                      name
+                      
+                    }
+                  }
+                }'''
+        variables = {
+            'board_id': int(self.po_board_id),
+            'po_number': str(po_number),
+            'project_id': str(project_id),
+            'po_column': str(self.po_number_column),
+            'project_id_column': str(self.project_id_column)
+        }
+        return self._make_request(query, variables)
+
+    def fetch_contact_by_name(self, name):
+        query = '''
+        query ($board_id: ID!, $name: String!) {
+                  items_page_by_column_values (limit: 1, board_id: $board_id, columns: [{column_id: "name", column_values: [$name]}]) {
+                    cursor
+                    items {
+                      id
+                      name
+                    }
+                  }
+                }'''
+        variables = {
+            'board_id': int(self.CONTACT_BOARD_ID),
+            'name': str(name),
+        }
+        response = self._make_request(query, variables)
+        if len(response["data"]["items_page_by_column_values"]["items"]) == 1:
+            contact = response["data"]["items_page_by_column_values"]["items"][0]
+        else:
+            contact = None
+        return contact
+
+    def fetch_item_by_name(self, name):
+        query = '''
+        query ($board_id: ID!, $name: String!) {
+                  items_page_by_column_values (limit: 1, board_id: $board_id, columns: [{column_id: "name", column_values: [$name]}]) {
+                    cursor
+                    items {
+                      id
+                      name
+                    }
+                  }
+                }'''
+        variables = {
+            'board_id': int(self.po_board_id),
+            'name': str(name),
+        }
+        response = self._make_request(query, variables)
+        item = response["data"]["items_page_by_column_values"]["items"]
+        if not len(item) == 1:
+            return None
+        return item
+
+    def find_or_create_contact_in_monday(self, name):
+        contact = self.fetch_contact_by_name(name)
+        if contact:  # contact exists
+            return contact
+        else:  # create a contact
+            response = self.create_contact(name)
+            return response["data"]
+
+    def find_or_create_item_in_monday(self, name, project_id, column_values):
+        item = self.fetch_item_by_name(name)
+        if item:  # contact exists
+            return item
+        else:  # create a contact
+            response = self.create_item(self.po_board_id, project_id, name, column_values)
+            return response["data"]['create_item']
 
 
 monday_api = MondayAPI()
