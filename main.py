@@ -15,6 +15,7 @@ from utilities.config import Config
 from webhook_main import app  # Import the Flask app instance
 from werkzeug.serving import make_server
 
+USE_TEMP = False
 
 def run_flask_app():
     """Function to run the Flask app."""

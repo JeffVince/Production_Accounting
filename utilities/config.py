@@ -10,6 +10,8 @@ load_dotenv()
 # Configuration settings
 class Config:
 
+    USE_TEMP = True
+
     # WEBHOOK PORTS
     DROPBOX_WEBHOOK_PORT = 5001
     MONDAY_WEBHOOK_PORT = 5002

@@ -178,6 +178,7 @@ class MondayWebhookHandler(metaclass=SingletonMeta):
         Returns:
             JSON response indicating success or error.
         """
+        return jsonify({"message": "SubItem deleted successfully"}), 200
         try:
             self.logger.debug("Processing SubItem delete event")
 

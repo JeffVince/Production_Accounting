@@ -172,6 +172,7 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
         db_item["description"] = item["Purpose"]
         db_item["po_type"] = item["po_type"]
         db_item["pulse_id"] = item["item_pulse_id"]
+        db_item["state"] = item["contact_status"]
         if db_item["po_type"] == "CC / PC":
             db_item["description"] = "Credit Card Purchases"
         with get_db_session() as session:
@@ -181,6 +182,8 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
                 if po_item:
                     self.logger.info(f"Purchase Order Exists: {db_item['project_id']}_{db_item['po_number']}")
                     po_item.contact_id = db_item["contact_id"]
+                    po_item.state = db_item["state"]
+                    po_item.contact_id = item['contact_surrogate_id']
                     if not db_item["description"] == "":
                         po_item.description = db_item["description"]
                     session.commit()
@@ -195,18 +198,13 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
                     self.logger.info(f"Created new Purchase Order: {db_item['project_id']}_{ db_item['po_number']}")
                     po_item = session.query(PurchaseOrder).filter_by(po_number=db_item['po_number'],
                                                                      project_id=db_item['project_id']).one_or_none()
-                    result = {
-                        "stats": "Created",
-                        "po_surrogate_id": po_item.po_surrogate_id
-                    }
-                return result
+                    item["contact_surrogate_id"] = po_item.po_surrogate_id
+                    return item
             except Exception as e:
                 session.rollback()
                 self.logger.error(f"Error processing PurchaseOrder in DB: {e}")
-                return {
-                        "stats": "Fail",
-                        "po_surrogate_id": None
-                    }
+                return None
+
 
     def create_or_update_sub_item_in_db(self, item_data):
         """
@@ -271,30 +269,34 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
         """
         db_item = {}
         db_item["name"] = item["Vendor"]
-        db_item["vendor_status"] = item["vendor_status"]
+        db_item["vendor_status"] = item["contact_status"]
+        db_item["payment_details"] = item["contact_payment_details"]
         db_item["pulse_id"] = item["contact_pulse_id"]
         db_item["vendor_type"] = item["po_type"]
+        db_item["email"] = item["contact_email"]
+        db_item["address_line_1"] = item["address_line_1"]
+        db_item["city"] = item["city"]
+        db_item["zip"] = item["zip"]
+        db_item["tax_ID"] = item["tax_id"]
+        db_item["tax_form_link"] = item["tax_form_link"]
+        db_item["country"] = item["contact_country"]
+        db_item["tax_type"] = item["contact_tax_type"]
+        db_item["phone"] = item["contact_phone"]
+
         with get_db_session() as session:
             try:
-
                 if item["po_type"] == "CC / PC":
                     cc_item = session.query(Contact).filter_by(name="Company Credit Card").one_or_none()
-                    status = {
-                        "status": "exists",
-                        "contact_surrogate_id": cc_item.contact_surrogate_id
-                    }
+                    status = cc_item.contact_surrogate_id
                     return status
                 # Check if the contact already exists in the database
-                contact_item = session.query(Contact).filter_by(name=db_item["name"]).one_or_none()
+                contact_item = session.query(Contact).filter_by(pulse_id=db_item["pulse_id"]).one_or_none()
                 if contact_item:
                     for key, value in db_item.items():
                         setattr(contact_item, key, value)
                     session.commit()
                     self.logger.info(f"Existing Contact with name: {db_item['name']}")
-                    status = {
-                        "status": "exists",
-                        "contact_surrogate_id": contact_item.contact_surrogate_id
-                    }
+                    status = contact_item.contact_surrogate_id
                     return status
                 else:  # Create a new record
                     new_contact = Contact(**db_item)
@@ -303,10 +305,7 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
                     # Commit the transaction
                     session.commit()
                     contact_item = session.query(Contact).filter_by(name=db_item['name']).one_or_none()
-                    status = {
-                        "status": "created",
-                        "contact_surrogate_id": contact_item.contact_surrogate_id
-                    }
+                    status =contact_item.contact_surrogate_id
                     return status
             except Exception as e:
                 session.rollback()

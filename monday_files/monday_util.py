@@ -57,6 +57,9 @@ class MondayUtil(metaclass=SingletonMeta):
     CONTACT_TAX_TYPE = 'text14'
     CONTACT_TAX_NUMBER = 'text2'
     CONTACT_PAYMENT_DETAILS = 'status__1'
+    CONTACT_PAYMENT_STATUS = "status__1"
+    CONTACT_STATUS = "status7__1"
+    CONTACT_TAX_FORM_LINK = "link__1"
 
     # Mapping Monday.com Columns to DB Fields
     MAIN_ITEM_COLUMN_ID_TO_DB_FIELD = {
@@ -422,7 +425,7 @@ class MondayUtil(metaclass=SingletonMeta):
         if producer_id:
             column_values[self.PO_PRODUCER_COLUMN_ID] = {'personsAndTeams': [{'id': producer_id, 'kind': 'person'}]}
 
-        self.logger.info(f"Formatted PO column values: {column_values}")
+        self.logger.debug(f"Formatted PO column values: {column_values}")
         return json.dumps(column_values)
 
 
