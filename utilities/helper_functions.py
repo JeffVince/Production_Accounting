@@ -76,3 +76,14 @@ def sanitize_input(input_str: str) -> str:
     Example: "   Invoice 123!@#   " -> "Invoice 123"
     """
     return "".join(c for c in input_str if c.isalnum() or c.isspace()).strip()
+
+
+def list_to_dict(data_list):
+    """
+    Converts a list of dictionaries to a dictionary using the 'id' field as the key.
+    Each dictionary in the list must have an 'id', 'value', and 'text' field.
+
+    :param data_list: List of dictionaries with 'id', 'value', and 'text' fields
+    :return: Dictionary with 'id' as the key and {'value', 'text'} as the value
+    """
+    return {item['id']: {'value': item['value'], 'text': item['text']} for item in data_list}

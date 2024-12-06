@@ -169,10 +169,11 @@ class DropboxService(metaclass=SingletonMeta):
                         result = self.po_log_database_util.create_or_update_main_item_in_db(item)
 
                         for sub_item in detail_items:
-                            # MONDAY FIND OR CREATE DETAIL ITEM IN MONDAY
-                            sub_item = self.monday_api.find_or_create_sub_item_in_monday(sub_item, item["pulse_id"], column_values)
-                            # DB FIND OR CREATE DETAIL ITEM IN DB
-                            self.po_log_database_util.create_or_update_detail_item_in_db(item)
+                            if sub_item["PO"] == item["PO"]:
+                                # MONDAY FIND OR CREATE DETAIL ITEM IN MONDAY
+                                sub_item = self.monday_api.find_or_create_sub_item_in_monday(sub_item, item, column_values)
+                                # DB FIND OR CREATE DETAIL ITEM IN DB
+                                self.po_log_database_util.create_or_update_detail_item_in_db(item)
 
                 except Exception as e:
                     self.logger.error(f"Failed to process items: {e}")

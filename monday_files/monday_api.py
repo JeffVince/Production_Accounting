@@ -5,6 +5,7 @@ import logging
 from dotenv import load_dotenv
 import requests
 
+from helper_functions import list_to_dict
 from logger import setup_logging
 from utilities.singleton import SingletonMeta
 from utilities.config import Config
@@ -31,6 +32,7 @@ class MondayAPI(metaclass=SingletonMeta):
             self.CONTACT_BOARD_ID = self.monday_util.CONTACT_BOARD_ID
             self.logger.info("Monday API  initialized")
             self._initialized = True
+
 
     def _make_request(self, query: str, variables: dict = None):
         headers = {"Authorization": self.api_token}
@@ -456,6 +458,25 @@ class MondayAPI(metaclass=SingletonMeta):
         }
         return self._make_request(query, variables)
 
+    def fetch_subitem_by_project_PO_receipt(self, project_id, po_number, receipt_number, parent_pulse_id):
+        query = '''
+                        query ($ID: ID!) {
+                                  items (ids: [$ID]) {
+                                    subitems {
+                                      id
+                                      column_values {
+                                        id
+                                        value
+                                        text
+                                      }
+                                    }
+                                  }
+                }'''
+        variables = {
+            'ID': parent_pulse_id
+        }
+        return self._make_request(query, variables)
+
     def fetch_contact_by_name(self, name):
         query = '''
         query ($board_id: ID!, $name: String!) {
@@ -532,7 +553,21 @@ class MondayAPI(metaclass=SingletonMeta):
             item["item_pulse_id"] = response["data"]['create_item']["id"]
             return item
 
-    def find_or_create_sub_item_in_monday(self, item, parent_pulse_id, column_values):
-        print("testr")
+    def find_or_create_sub_item_in_monday(self, sub_item, parent_item, column_values):
+        # search for item
+        result =  self.fetch_subitem_by_project_PO_receipt(parent_item["project_id"], sub_item["PO"], sub_item["Detail Item Number"], parent_item["item_pulse_id"])
+        subitems = result['data']['items'][0]['subitems']
+        if len(subitems) > 0:
+            for subitem in subitems:
+                subitem["column_values"] = list_to_dict(subitem["column_values"])
+                if subitem["column_values"]["text0"]["text"] == sub_item["Detail Item Number"]:
+                        sub_item["pulse_id"] = subitem['id']
+                        #IF STATUS IS NOT PAID OR RECONCILED
+                        #UPDATE THE SUBITEM DETAILS
+                        #THEN RETURN THE SUBITEM + PULSE
+                        return sub_item
+        # not found
+                # create
+                #return  subitem + pulse
 
 monday_api = MondayAPI()
