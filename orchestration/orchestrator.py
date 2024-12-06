@@ -33,9 +33,9 @@ class Orchestrator:
 
         ## TEMP STUFF
         if self.config.USE_TEMP:
-            # grab the temp file from the directory
-            file_path, project_id = self.find_and_process_temp_file()
-            self.dropbox_service.process_po_log(file_path, project_id)
+             # grab the temp file from the directory
+             file_path, project_id = self.find_and_process_temp_file()
+             self.dropbox_service.process_po_log(file_path, project_id)
 
 
         #MAIN STUFF

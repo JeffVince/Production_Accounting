@@ -93,34 +93,40 @@ class DropboxService(metaclass=SingletonMeta):
             path (str): The Dropbox path to the PO Log file.
             project_id (str): The Project ID extracted from the filename.
         """
+        temp_file_path = f"temp_{os.path.basename(path)}"
+        self.logger.debug(f"Opening {temp_file_path}")
+
         try:
-            temp_file_path = f"temp_{os.path.basename(path)}"
-            self.logger.debug(f"Opening {temp_file_path}")
-            #region  🛜
-            if not self.config.USE_TEMP:
+            if not self.config.USE_TEMP:  # 🙆‍
                 self.logger.info(
-                    f"Processing PO Log for project {project_id}: {self.dropbox_util.get_last_path_component_generic(path)}")
+                    f"Processing PO Log for project {project_id}: {self.dropbox_util.get_last_path_component_generic(path)}"
+                )
 
-                dbx_client = self.dropbox_client
-                dbx = dbx_client.dbx
-                metadata, res = dbx.files_download(path)
-                file_content = res.content
+                try:
+                    dbx_client = self.dropbox_client
+                    dbx = dbx_client.dbx
+                    metadata, res = dbx.files_download(path)
+                    file_content = res.content
 
-                with open(temp_file_path, 'wb') as temp_file:
-                    temp_file.write(file_content)
-                self.logger.info(f"Temporary file created for processing: {temp_file_path}")
-            #endregion  🛜
+                    with open(temp_file_path, 'wb') as temp_file:
+                        temp_file.write(file_content)
+                        self.logger.info(f"Temporary file created for processing: {temp_file_path}")
+                except Exception as e:
+                    self.logger.error(f"Failed to download or save file from Dropbox: {e}")
+                    return
+
             try:
                 # PO_LOG GET LISTS
                 main_items = self.po_log_processor.parse_po_log_main_items(temp_file_path)
                 detail_items = self.po_log_processor.parse_po_log_sub_items(temp_file_path)
                 contacts = self.po_log_processor.get_contacts_list(main_items, detail_items)
                 group_id = self.monday_api.fetch_group_ID(project_id)
-                # filter POs by contacts list
+
+                # Filter POs by contacts list
                 filtered_items = []
                 for item in main_items:
                     item["group_id"] = group_id
-                    if not item["Vendor"].__contains__("PLACEHOLDER"):
+                    if not "PLACEHOLDER" in item["Vendor"]:
                         crd = False
                         for detail in detail_items:
                             if item.get("PO") == detail.get("PO"):
@@ -137,45 +143,49 @@ class DropboxService(metaclass=SingletonMeta):
                 self.logger.debug(f"Parsed PO Log main items: {main_items}")
                 self.logger.debug(f"Parsed PO Log detail items: {detail_items}")
                 self.logger.debug(f"Extracted contacts: {contacts}")
+            except Exception as e:
+                self.logger.error(f"Failed to parse PO Log: {e}")
+                return
 
-                #PO_LOG BEGIN PROCESSING THE CLEANED ITEMS
-                for item in filtered_items:
-                    item['project_id'] = project_id
-                    #MONDAY FIND OR CREATE CONTACT IN  MONDAY
-                    item = self.populate_contact_details(item)
-                    #DB FIND OR CREATE CONTACT IN DB
-                    item["contact_surrogate_id"] = self.po_log_database_util.find_or_create_contact_item_in_db(item)
-                    #MONDAY find or create item in MONDAY
-                    column_values = self.monday_util.po_column_values_formatter(
-                        project_id=item["project_id"],
-                        po_number=item["PO"],
-                        description=item["Purpose"],
-                        contact_pulse_id=item["contact_pulse_id"],
-                        status=item["vendor_status"]
-                    )
-                    item = self.monday_api.find_or_create_item_in_monday(item, column_values)
-                    #DB find or create item in DB
-                    result = self.po_log_database_util.create_or_update_main_item_in_db(item)
+            if not self.config.SKIP_MAIN:  # 🙆‍
+                try:
+                    # PO_LOG BEGIN PROCESSING THE CLEANED ITEMS
+                    for item in filtered_items:
+                        item['project_id'] = project_id
+                        # MONDAY FIND OR CREATE CONTACT IN MONDAY
+                        item = self.populate_contact_details(item)
+                        # DB FIND OR CREATE CONTACT IN DB
+                        item["contact_surrogate_id"] = self.po_log_database_util.find_or_create_contact_item_in_db(item)
+                        # MONDAY find or create item in MONDAY
+                        column_values = self.monday_util.po_column_values_formatter(
+                            project_id=item["project_id"],
+                            po_number=item["PO"],
+                            description=item["Purpose"],
+                            contact_pulse_id=item["contact_pulse_id"],
+                            status=item["vendor_status"]
+                        )
+                        item = self.monday_api.find_or_create_item_in_monday(item, column_values)
+                        # DB find or create item in DB
+                        result = self.po_log_database_util.create_or_update_main_item_in_db(item)
 
-               # for item in detail_items:
-                 #   pass
-                    # get PO surrogate Id
+                        for sub_item in detail_items:
+                            # MONDAY FIND OR CREATE DETAIL ITEM IN MONDAY
+                            sub_item = self.monday_api.find_or_create_sub_item_in_monday(sub_item, item["pulse_id"], column_values)
+                            # DB FIND OR CREATE DETAIL ITEM IN DB
+                            self.po_log_database_util.create_or_update_detail_item_in_db(item)
 
-                    # create in DB
-
-                    # send to monday
-
-            except Exception as parse_error:
-                self.logger.error(f"Error parsing PO Log file: {parse_error}", exc_info=True)
-                raise
-            #region  🛜
+                except Exception as e:
+                    self.logger.error(f"Failed to process items: {e}")
+                    return
             if not self.config.USE_TEMP:
-                if os.path.exists(temp_file_path):
-                    os.remove(temp_file_path)
-                    self.logger.info(f"Temporary file removed: {temp_file_path}")
-            #endregion
+                try:
+                    if os.path.exists(temp_file_path):
+                        os.remove(temp_file_path)
+                        self.logger.info(f"Temporary file removed: {temp_file_path}")
+                except Exception as e:
+                    self.logger.warning(f"Failed to remove temporary file: {e}")
         except Exception as e:
-            self.logger.error(f"Error processing PO Log for project {project_id}: {e}", exc_info=True)
+            self.logger.critical(f"Unexpected error in process_po_log: {e}")
 
     def link_main_item_to_contact_in_db(self):
         pass

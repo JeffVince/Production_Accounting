@@ -11,6 +11,8 @@ load_dotenv()
 class Config:
 
     USE_TEMP = True
+    SKIP_MAIN = False
+    USE_LOCAL = False
 
     # WEBHOOK PORTS
     DROPBOX_WEBHOOK_PORT = 5001
@@ -95,10 +97,15 @@ class Config:
         }
 
     @staticmethod
-    def get_database_settings():
+    def get_database_settings(local=False):
         """
         Returns database connection settings.
         """
-        return {
-            "url": os.getenv("DATABASE_URL", "mysql+pymysql://root:z //55gohi@localhost:3306/virtual_pm"),  # Changed key to 'url'
-        }
+        if local:
+            return {
+                "url": os.getenv("DATABASE_URL", "mysql+pymysql://root:z //55gohi@localhost:3306/virtual_pm"),  # Changed key to 'url'
+            }
+        else:
+            return {
+                "url": os.getenv("DATABASE_URL", "mysql+pymysql://admin:HPp5TpbvAa0On7HbDq6A@virtualpm.cx8csckg86eo.us-east-2.rds.amazonaws.com:3306/virtual_pm"),  # Changed key to 'url'
+            }

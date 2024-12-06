@@ -1,0 +1,367 @@
+No.	Phase	Date	St/Type	Pay ID	ID	Vendor	Description	Account	Actualized $	
+01		11/8/24	PAID			Blake Bohls	Storyboard Artist		4,710.00	
+	Actual	9/23/24	INV		01	Blake Bohls	Production Retainer	007	2,400.00	
+	Actual	10/15/24	INV		02	Blake Bohls	Storyboards	007	2,240.00	
+	Actual	10/23/24	INV		03	Blake Bohls	Storyboards	007	70.00	
+02		11/8/24				Credit Card 8738			9,659.79	
+	Actual	10/6/24	CRD	8738	01	Airbnb	Airbnb - Producers	102	2,341.47	
+	Actual	10/17/24	CRD	8738	02	Amazon	Hard Drives	211	650.12	
+	Actual	10/17/24	CRD	8738	03	Amazon	Expendables	208	14.28	
+	Actual	10/21/24	CRD	8738	04	Amazon	Hard Drives	211	646.42	
+	Actual	10/21/24	CRD	8738	05	Amazon	Expendables	208	18.28	
+	Actual	10/25/24	CRD	8738	06	Amazon	Craft Services	132	435.11	
+	Actual	10/22/24	CRD	8738	07	New York State Department of Labor	Child Labor Permit	226	360.47	
+	Actual	10/24/24	CRD	8738	08	Uber Eats	Coffee	112	38.73	
+	Actual	10/25/24	CRD	8738	09	Uber	Uber	136	18.95	
+	Actual	10/25/24	CRD	8738	10	Chipotle	Prelight Day Lunch	134	473.00	
+	Actual	10/25/24	CRD	8738	11	Cater Cow	Build Day Breakfast	133	291.67	
+	Actual	10/26/24	CRD	8738	12	Cater Cow	Prelight Day Breakfast	133	363.71	
+	Actual	11/8/24	CRD	8738	13	Sharegrid	Teleprompter Rental	133	102.23	
+	Actual	10/25/24	CRD	8738	13	Sharegrid	Teleprompter Rental	210	102.23	
+	Actual	10/25/24	CRD	8738	14	Doordash	Build Day Lunch	134	278.47	
+	Actual	10/25/24	CRD	8738	15	Doordash	Build Day Lunch	134	43.66	
+	Actual	10/26/24	CRD	8738	16	Amazon	Craft Services	132	111.09	
+	Actual	10/27/24	CRD	8738	17	Cater Cow	Shoot Day Breakfast	133	289.16	
+	Actual	10/28/24	CRD	8738	18	Doordash	Strike Day Breakfast	133	89.64	
+	Actual	10/28/24	CRD	8738	19	Doordash	Strike Day Lunch	134	334.89	
+	Actual	10/29/24	CRD	8738	20	Amazon	Hard Drives REFUND	211	-325.06	
+	Actual	10/29/24	CRD	8738	21	Amazon	Hard Drives REFUND	211	-325.06	
+	Actual	10/23/24	CRD	8738	22	Amazon	Set Dressing Purchases	181	18.60	
+	Actual	10/23/24	CRD	8738	23	Amazon	Set Dressing Purchases	181	1,555.99	
+	Actual	10/22/24	CRD	8738	24	Amazon	Set Dressing Purchases	181	167.66	
+	Actual	10/22/24	CRD	8738	25	Amazon	Set Dressing Purchases	181	1,280.45	
+	Actual	10/23/24	CRD	8738	26	Amazon	Set Dressing Purchases	181	65.31	
+	Actual	10/25/24	CRD	8738	27	Amazon	Set Dressing Purchases	181	218.32	
+No.	Phase	Date	St/Type	Pay ID	ID	Vendor	Description	Account	Actualized $	
+03		11/8/24				Credit Card 1138			5,514.21	
+	Actual	10/21/24	CRD		01	Uber	Uber	136	24.97	
+	Actual	10/21/24	CRD		02	Uber	Uber	136	19.94	
+	Actual	10/21/24	CRD		03	Uber	Uber	136	24.96	
+	Actual	10/22/24	CRD		04	Uber	Uber	136	7.39	
+	Actual	10/25/24	CRD		05	Atlantis Fresh Market	Craft Services	132	30.19	
+	Actual	10/25/24	CRD		06	Dunkin	Coffee	133	30.47	
+	Actual	10/25/24	CRD		07	Three Legged Cat	Coffee	133	27.00	
+	Actual	10/25/24	CRD		08	Uber	Uber	136	16.73	
+	Actual	10/25/24	CRD		09	The Home Depot	Set Dressing Purchases	181	131.99	
+	Actual	10/25/24	CRD		10	Uber	Uber	181	22.97	
+	Actual	10/25/24	CRD		11	Atlantis Fresh Market	Office Supplies	132	3.26	
+	Actual	10/25/24	CRD		12	Dunkin	Breakfast	133	15.49	
+	Actual	10/26/24	CRD		13	Atlantis Fresh Market	Craft Services	132	16.63	
+	Actual	10/27/24	CRD		14	Uber	Uber	136	7.56	
+	Actual	10/27/24	CRD		15	Three Legged Cat	Coffee	133	50.00	
+	Actual	10/27/24	CRD		16	TA Gourmet Deli	Dinner	135	11.96	
+	Actual	10/26/24	CRD		17	Uber	Uber	136	20.82	
+	Actual	10/27/24	CRD		18	Uber	Uber	136	20.96	
+	Actual	10/29/24	CRD		19	Uber	Uber	136	44.95	
+	Actual	10/26/24	CRD		20	Uber	Uber	136	20.82	
+	Actual	10/28/24	CRD		21	Uber	Uber	136	28.93	
+	Actual	10/27/24	CRD		22	Uber	Uber	136	21.96	
+	Actual	10/29/24	CRD		19	Uber	Uber	136	4.49	
+	Actual	10/28/24	CRD		23	Uber	Uber	136	24.92	
+	Actual	10/25/24	CRD		24	Uber	Working Meal	112	33.41	
+	Actual	10/24/24	CRD		25	Uber	Working Meal	112	35.94	
+	Actual	10/20/24	CRD		26	Uber	Working Meal	112	32.42	
+	Actual	10/22/24	CRD		27	Uber	Working Meal	112	33.36	
+	Actual	10/22/24	CRD		28	Uber	Working Meal	112	27.02	
+	Actual	10/23/24	CRD		29	Uber	Working Meals	112	27.82	
+	Actual	10/26/24	CRD		30	Uber	Working Meals	112	43.10	
+	Actual	10/22/24	CRD		31	Uber	Working Meals	112	43.57	
+	Actual	10/23/24	CRD		32	Uber	Working Meals	112	41.19	
+	Actual	10/21/24	CRD		33	Uber	Working Meals	112	36.47	
+	Actual	10/26/24	CRD		34	Best Buy	Streamer setup, set dressing	181	2,408.11	
+	Actual	10/28/24	CRD		35	Best Buy	Streamer setup, set dressing REFUND	181	-2,098.95	
+	Actual	10/26/24	CRD		36	Staples	Set dressing purchases	181	145.56	
+	Actual	10/26/24	CRD		37	Atlantic Center Mall	Parking	127	5.00	
+	Actual	10/27/24	CRD		38	Bravo Supermarket	Production Expendables	208	34.27	
+	Actual	10/27/24	CRD		39	CVS Pharmacy	Throat soothing items	132	21.17	
+	Actual	10/27/24	CRD		40	Foodtown	Craft Services	132	42.46	
+No.	Phase	Date	St/Type	Pay ID	ID	Vendor	Description	Account	Actualized $	
+	Actual	10/27/24	CRD		41	Late Night 905	Craft Services, redbull etc	132	56.97	
+	Actual	10/27/24	CRD		42	Staples	Set dressing purchases	181	2.09	
+	Actual	10/26/24	CRD		43	Vuori	Wardrobe	145	214.00	
+	Actual	10/28/24	CRD		44	Vuori	Wardrobe RETURN	145	-136.00	
+	Actual	10/24/24	CRD		45	Uniqlo	Wardrobe	145	673.40	
+	Actual	10/28/24	CRD		46	Uniqlo	Wardrobe REFUND	145	-493.80	
+	Actual	10/24/24	CRD		47	Cotton On	Wardrobe	145	200.07	
+	Actual	10/28/24	CRD		48	Cotton On	Wardrobe REFUND	145	149.97	
+	Actual	10/20/24	CRD		49	Loteria	Working Meal - Airport	112	66.64	
+	Actual	10/25/24	CRD		50	Cotton On	Wardrobe	145	202.51	
+	Actual	10/28/24	CRD		51	Cotton On	Wardrobe REFUND	145	-166.41	
+	Actual	10/20/24	CRD		52	Curb Mobility	Taxi from airport - Producers	136	43.65	
+	Actual	10/25/24	CRD		53	Atlantis Fresh Market	Production Expendables	208	16.95	
+	Actual	10/21/24	CRD		54	Staples	Office Supplies, Printer Ink	110	90.36	
+	Actual	10/26/24	CRD		55	Athleta	Wardrobe	145	176.00	
+	Actual	10/29/24	CRD		56	Athleta	Wardrobe REFUND	145	-176.00	
+	Actual	10/28/24	CRD		57	Nordstrom Rack	Wardrobe REFUND	145	-39.97	
+	Actual	10/25/24	CRD		58	Nordstrom Rack	Wardrobe	145	328.85	
+	Actual	10/21/24	CRD		59	Staples	Printing	110	93.63	
+	Actual	10/24/24	CRD		60	JetBlue	Luggage	101	150.00	
+	Actual	10/24/24	CRD		61	H&M	Wardrobe	145	295.90	
+	Actual	10/29/24	CRD		62	H&M	Wardrobe REFUND	145	-229.24	
+	Actual	10/25/24	CRD		63	Urban Outfitters	Wardrobe	145	189.22	
+	Actual	10/28/24	CRD		64	Urban Outfitters	Wardrobe	145	-174.22	
+	Actual	10/24/24	CRD		65	Zara	Wardrobe	145	270.20	
+	Actual	10/24/24	CRD		66	Zara	Wardrobe	145	1,600.46	
+	Actual	10/24/24	CRD		67	Mangia	Working Meal - Wardrobe	112	10.80	
+	Actual	10/25/24	CRD		68	Mangia	Working Meal - Wardrobe	112	23.35	
+	Actual	10/28/24	CRD		69	Zara	Wardrobe REFUND	145	-1,301.06	
+	Actual	10/28/24	CRD		70	Zara	Wardrobe REFUND	145	-85.80	
+	Actual	10/29/24	CRD		71	Zara	Wardrobe REFUND	145	-869.68	
+	Actual	10/28/24	CRD		75	Zara	Wardrobe REFUND	145	-616.00	
+	Actual	10/25/24	CRD		76	Zara	Wardrobe	145	715.91	
+	Actual	10/25/24	CRD		77	Zara	Wardrobe	145	1,115.61	
+	Actual	10/23/24	CRD		72	Amazon	Set Dressing purchases	181	294.59	
+	Actual	10/23/24	CRD		73	Amazon	Set dressing purchases	181	113.12	
+No.	Phase	Date	St/Type	Pay ID	ID	Vendor	Description	Account	Actualized $	
+	Actual	10/23/24	CRD		74	The Home Depot	Set Dressing purchases	181	1,166.86	
+04		11/8/24				David Lee				
+05		11/8/24	PAID			Credit Card 1120			788.53	
+	Actual	10/6/24	CRD	1120	01	American Express	Airfares - Producers	102	646.20	
+	Actual	10/6/24	CRD	1120	02	American Express	Airfares - Producers	102	142.33	
+06		11/8/24	PAID			Gotham City Drones, Inc			700.00	
+	Actual	10/11/24	INV			Gotham City Drones, Inc	Drone operator and rental deposit	206	700.00	
+07		11/8/24	Partial Payment			Be Electric Studios LLC			59,974.41	
+	Actual	10/23/24	INV	PAID	01	Be Electric Studios LLC	Studio Package	155	56,841.00	
+	Actual	10/23/24	INV		02	Be Electric Studios LLC	Additional Studio Rentals	155	1,183.31	
+	Actual	10/23/24	INV		04	Be Electric Studios LLC	Studio Overtime	156	1,400.00	
+	Actual	10/23/24	INV		02	Be Electric Studios LLC	Production Supply Adds	204	550.10	
+08		11/8/24	TO PROCESS			Sho Schrock-Manabe			8,035.55	
+	Actual	11/8/24	INV			Sho Schrock-Manabe	Producer (Prep/Wrap)	1	7,200.00	
+	Actual	11/8/24	INV			Sho Schrock-Manabe	Producer (Shoot)	51	800.00	
+	Actual	11/8/24	INV			Sho Schrock-Manabe	Reimbursements	136	35.55	
+09		11/8/24	PAID			Robert Taylor And Co LLC			2,000.00	
+	Actual	10/21/24	CRD	8738		Robert Taylor And Co LLC	Flats rentals	181	2,000.00	
+10		11/8/24	PAID			Ryan Piotrowicz			3,600.00	
+	Actual	10/28/24	INV			Ryan Piotrowicz	Location Manager	43	3,400.00	
+	Actual	11/8/24	INV			Ryan Piotrowicz	Location Manager Kit Fees	207	200.00	
+11		11/8/24	PAID			Wolfgang Herting			900.00	
+	Actual	10/21/24	INV			Wolfgang Herting	Location Manager	43	900.00	
+12		11/8/24	PAID			My Kitchen Witch			2,159.58	
+	Actual	10/23/24	CRD	7787		My Kitchen Witch	Shoot Day Breakfast	133	1,079.79	
+	Actual	10/23/24	CRD	7787		My Kitchen Witch	Shoot Day Lunch	134	1,079.79	
+No.	Phase	Date	St/Type	Pay ID	ID	Vendor	Description	Account	Actualized $	
+13		11/8/24	PAID			Tracking Shot			1,535.14	
+	Actual	10/28/24	CRD	1138		Tracking Shot	Dolly rental and delivery	201	1,535.14	
+14		11/8/24	PAID			Courier Car Rental, Inc.			1,529.78	
+	Actual	10/29/24	CRD	8738		Courier Car Rental, Inc.	Truck rental	119	1,200.00	
+	Actual	10/29/24	CRD	8738		Courier Car Rental, Inc.	Truck rental	119	200.60	
+	Actual	10/25/24	CRD	8738		Courier Car Rental, Inc.	Truck rental	119	69.30	
+	Actual	11/1/24	CRD	8738		Courier Car Rental, Inc.	Truck rental	119	59.88	
+15		11/8/24	PAID			Street Team Studios LLC			100.15	
+	Actual	10/29/24	CRD	8738		Street Team Studios LLC	Art production supplies for trucking	187	100.15	
+16		11/8/24	PAID			New York City Camera, Inc.			5,008.25	
+	Actual	10/24/24	EFT			New York City Camera, Inc.	Camera Rental	193	4,396.20	
+	Actual	10/25/24	EFT			New York City Camera, Inc.	Camera Rental Adds	193	612.05	
+17		11/8/24				ACME				
+18		11/8/24	TO PROCESS			Adam Braun Productions LLC			4,269.75	
+	Actual	11/5/24	INV			Adam Braun Productions LLC	Production Coordinator (Prep)	3	3,150.00	
+	Actual	11/5/24	INV			Adam Braun Productions LLC	Production Coordinator (Shoot)	53	594.63	
+	Actual	11/5/24	INV			Adam Braun Productions LLC	Bidding Producer	006	500.00	
+	Actual	11/5/24	INV			Adam Braun Productions LLC	Reimbursements	132	25.12	
+19		11/8/24	TO PROCESS			Diane Lac			1,519.71	
+	Actual	10/27/24	INV			Diane Lac	Photographer (Prep)	38	650.00	
+	Actual	10/27/24	INV			Diane Lac	Photographer (Shoot)	88	650.00	
+	Actual	10/27/24	INV			Diane Lac	Reimbursements	136	219.71	
+20		11/8/24	TO PROCESS			Karen Roy			800.00	
+	Actual	10/27/24	INV			Karen Roy	Hair and Makeup Artist	75	700.00	
+	Actual	10/27/24	INV			Karen Roy	Hair and Makeup Artist	148	100.00	
+21		11/8/24	TO PROCESS			Jordan Sakai			5,000.00	
+	Actual	11/4/24	INV			Jordan Sakai	Director of Photography (Prep)	4	2,500.00	
+No.	Phase	Date	St/Type	Pay ID	ID	Vendor	Description	Account	Actualized $	
+	Actual	11/4/24	INV			Jordan Sakai	Director of Photography (Shoot)	54	2,500.00	
+22		11/8/24	TO PROCESS			Dwane Harris			2,340.00	
+	Actual	11/1/24	INV			Dwane Harris	BBG (Prelight)	17	893.75	
+	Actual	11/1/24	INV			Dwane Harris	BBG (Shoot)	67	796.25	
+	Actual	11/1/24	INV			Dwane Harris	BBG (Strike)	17	650.00	
+23		11/8/24	TO PROCESS			Cynthia Jelke			900.00	
+	Actual	10/29/24	INV			Cynthia Jelke	Set Dresser (Strike)	172	250.00	
+	Actual	10/29/24	INV			Cynthia Jelke	Set Dresser (Strike)	172	250.00	
+	Actual	10/29/24	INV			Cynthia Jelke	Set Dresser (Shoot)	172	400.00	
+24		11/8/24	TO PROCESS			Brandon Goodwin			500.00	
+	Actual	10/28/24	INV			Brandon Goodwin	Leadman	170	500.00	
+25		11/8/24	TO PROCESS			Valentina Torresi			500.00	
+	Actual	10/29/24	INV			Valentina Torresi	Wardrobe Assistant (Wrap)	28	250.00	
+	Actual	10/29/24	INV			Valentina Torresi	Wardrobe Assistant (Shoot)	78	250.00	
+26		11/8/24	TO PROCESS			Alec Luu			800.00	
+	Actual	10/28/24	INV			Alec Luu	Photo Assist	89	600.00	
+	Actual	10/28/24	INV			Alec Luu	Photo Assist Kit Fee	207	200.00	
+27		11/8/24	TO PROCESS			Background, Inc.			1,285.00	
+	Actual	10/30/24	INV			Background, Inc.	Casting Fees	109	1,285.00	
+28		11/8/24	TO PROCESS			Kristen Mom			2,550.00	
+	Actual	10/30/24	INV			Kristen Mom	Stylist Assistant (Prep)	28	1,050.00	
+	Actual	10/30/24	INV			Kristen Mom	Stylist Assistant (Wrap)	28	700.00	
+	Actual	10/30/24	INV			Kristen Mom	Stylist Assistant (Shoot)	78	350.00	
+	Actual	10/30/24	INV			Kristen Mom	Stylist Assistant (Fitting (shoot on invoice))	28	350.00	
+	Actual	10/30/24	INV			Kristen Mom	Stylist Assistant (Shoot)	148	100.00	
+29		11/8/24	TO PROCESS			Mia Varrone			700.00	
+	Actual	10/31/24	INV			Mia Varrone	Hair and Makeup Assistant	76	650.00	
+	Actual	10/31/24	INV			Mia Varrone	Hair and Makeup Assistant Kit Fee	148	50.00	
+No.	Phase	Date	St/Type	Pay ID	ID	Vendor	Description	Account	Actualized $	
+30		11/8/24	TO PROCESS			Luke Polihrom			5,200.00	
+	Actual	10/31/24	INV			Luke Polihrom	Set Decorator (Prep)	169	3,900.00	
+	Actual	10/31/24	INV			Luke Polihrom	Set Decorator (Wrap)	169	650.00	
+	Actual	10/31/24	INV			Luke Polihrom	Set Decorator (Shoot)	169	650.00	
+31		11/8/24	TO PROCESS			Sawyer Oubre			3,032.93	
+	Actual	10/31/24	INV			Sawyer Oubre	Steadicam Operator	73	1,500.00	
+	Actual	10/31/24	INV			Sawyer Oubre	Steadicam Rental	205	1,500.00	
+	Actual	10/31/24	INV			Sawyer Oubre	Reimbursements	136	32.93	
+32		11/8/24	PAID			Wrapbook			844.19	
+	Actual	11/1/24	EFT			Wrapbook	Cast Payroll (Shoot)	218	562.79	
+	Actual	11/1/24	EFT			Wrapbook	Cast Payroll (Fitting)	217	281.40	
+33		11/8/24	TO PROCESS			Julianne Salemy			1,264.28	
+	Actual	11/1/24	INV			Julianne Salemy	2nd AD (Fitting)	8	600.00	
+	Actual	11/1/24	INV			Julianne Salemy	2nd AD (Shoot)	58	664.28	
+34		11/8/24	TO PROCESS			Lucas A Becker-Lowe			1,434.07	
+	Actual	11/1/24	INV			Lucas A Becker-Lowe	3rd Electric (Strike)	13	650.00	
+	Actual	11/1/24	INV			Lucas A Becker-Lowe	3rd Electric (Shoot)	63	784.07	
+35		11/8/24	TO PROCESS			Hannah Lee			1,652.72	
+	Actual	11/1/24	INV			Hannah Lee	1st AC (Prep)	5	700.00	
+	Actual	11/1/24	INV			Hannah Lee	1st AC (Shoot)	5	852.72	
+	Actual	11/1/24	INV			Hannah Lee	1st AC Kit Fee	207	100.00	
+36		11/8/24	TO PROCESS			Kyle Camacho			300.00	
+	Actual	11/4/24	INV			Kyle Camacho	Production Assistant (Shoot)	98	300.00	
+37		11/8/24	TO PROCESS			Dot Bass			300.00	
+	Actual	11/4/24	INV			Dot Bass	Wardrobe Assistant (Measurements)	28	300.00	
+38		11/8/24	TO PROCESS			Suthee Ritthaworn			5,555.00	
+	Actual	10/30/24	INV			Suthee Ritthaworn	Wardrobe Stylist (Prep)	27	2,100.00	
+	Actual	10/30/24	INV			Suthee Ritthaworn	Wardrobe Stylist (Fitting)	27	945.00	
+	Actual	10/30/24	INV			Suthee Ritthaworn	Wardrobe Stylist (Wrap)	27	1,400.00	
+	Actual	10/30/24	INV			Suthee Ritthaworn	Wardrobe Stylist (Shoot)	77	910.00	
+No.	Phase	Date	St/Type	Pay ID	ID	Vendor	Description	Account	Actualized $	
+	Actual	10/30/24	INV			Suthee Ritthaworn	Wardrobe Stylist Kit Rental	148	200.00	
+39		11/8/24	TO PROCESS			Lukas Lennon			1,745.40	
+	Actual	11/1/24	INV		01	Lukas Lennon	Production Assistant (Prep)	48	632.14	
+	Actual	11/1/24	INV		01	Lukas Lennon	Production Assistant (Wrap)	48	300.00	
+	Actual	11/1/24	INV		01	Lukas Lennon	Production Assistant (Shoot)	98	442.86	
+	Actual	11/5/24	INV		02	Lukas Lennon	Reimbursements (Crafty)	132	217.36	
+	Actual	11/5/24	INV		02	Lukas Lennon	Reimbursements (Art)	141	133.46	
+	Actual	11/5/24	INV		02	Lukas Lennon	Reimbursements (Uber)	136	19.58	
+40		11/8/24	TO PROCESS			Maurice Guadalupe			818.16	
+	Actual	10/28/24	INV			Maurice Guadalupe	3rd Grip (Prelight)	18	818.16	
+41		11/8/24	TO PROCESS			Jesus Sanchez			3,220.00	
+	Actual	10/28/24	INV			Jesus Sanchez	Key Grip (Prep)	16	700.00	
+	Actual	10/28/24	INV			Jesus Sanchez	Key Grip (Strike)	16	700.00	
+	Actual	10/28/24	INV			Jesus Sanchez	Key Grip (Prelight)	16	962.50	
+	Actual	10/28/24	INV			Jesus Sanchez	Key Grip (Shoot)	66	857.50	
+42		11/8/24	TO PROCESS			Will Hudson			3,250.00	
+	Actual	10/29/24	INV			Will Hudson	1st AD (Prep)	7	1,950.00	
+	Actual	10/29/24	INV			Will Hudson	1st AD (Shoot)	57	1,300.00	
+43		11/8/24	TO PROCESS			Constantina Tzikas			630.90	
+	Actual	10/29/24	INV			Constantina Tzikas	Production Assistant (Wrap)	48	300.00	
+	Actual	10/29/24	INV			Constantina Tzikas	Production Assistant (Shoot)	98	300.00	
+	Actual	10/29/24	INV			Constantina Tzikas	Reimbursement (Uber)	136	30.90	
+44		11/8/24	TO PROCESS			Alexia Towle			300.00	
+	Actual	10/29/24	INV			Alexia Towle	Painter/Set Decorator	173	300.00	
+45		11/8/24	TO PROCESS			Trevor Misplay			1,350.00	
+	Actual	10/29/24	INV			Trevor Misplay	Sound Mixer	80	700.00	
+	Actual	10/29/24	INV			Trevor Misplay	Sound Mixer Equipment	197	650.00	
+46		11/8/24	TO PROCESS			Jaden James			500.00	
+No.	Phase	Date	St/Type	Pay ID	ID	Vendor	Description	Account	Actualized $	
+	Actual	10/30/24	INV			Jaden James	Wardrobe Assistant (Prep)	28	250.00	
+	Actual	10/30/24	INV			Jaden James	Wardrobe Assistant (Prep)	28	250.00	
+47		11/8/24	TO PROCESS			Stevie Wachtler			342.86	
+	Actual	10/31/24	INV			Stevie Wachtler	AD PA	98	342.86	
+48		11/8/24	TO PROCESS			Renna Pilar Hidalgo			4,000.00	
+	Actual	11/4/24	INV			Renna Pilar Hidalgo	Production Designer Flat Rate	168	4,000.00	
+49		11/8/24	TO PROCESS			Han Nguyen			900.00	
+	Actual	11/5/24	INV			Han Nguyen	BTS Photographer	90	900.00	
+50		11/8/24	TO PROCESS			Robie Scola			800.00	
+	Actual	11/5/24	INV			Robie Scola	Set Dresser (Build)	172	400.00	
+	Actual	11/5/24	INV			Robie Scola	Set Dresser (Shoot)	172	400.00	
+51		11/8/24	TO PROCESS			Nadera Herbert-Bey			300.00	
+	Actual	11/7/24	INV			Nadera Herbert-Bey	Executive Assistant	008	300.00	
+52		11/8/24	WAITING FOR REVISION			Leanna Culver			2,045.69	
+	Actual	11/5/24	PRJ			Leanna Culver	BBE (Prelight)	12	862.73	
+	Actual	11/5/24	PRJ			Leanna Culver	BBE (Shoot)	62	782.96	
+	Actual	11/5/24	PRJ			Leanna Culver	BBE Kit Rental	137	400.00	
+53		11/8/24	TO PROCESS			Abigail Harris			1,200.00	
+	Actual	10/6/24	INV			Abigail Harris	Set Assist / Truck Driver (Prep, Shoot, Wrap)	178	750.00	
+	Actual	10/6/24	INV			Abigail Harris	Scenic (Prep)	175	450.00	
+54		11/8/24	TO PROCESS			Cyrus Gainer			800.00	
+	Actual	11/6/24	INV			Cyrus Gainer	Set Decorator	172	800.00	
+55		11/8/24	TO PROCESS			Natalia Ferrara			2,000.00	
+	Actual	11/7/24	INV			Natalia Ferrara	Leadman (Build, Shoot, Strike, Returns)	170	2,000.00	
+56		11/8/24	PETTY CASH			PETTY CASH			5,694.64	
+			11/8/24	PC Transfer 	CK	COMPANY To PC_2416_03			2,300.00	
+			10/28/24	PC Transfer 	CK	PC_2416_03 To COMPANY			-68.04	
+			11/8/24	PC Transfer 	CK	PC_2416_03 To COMPANY			-1,537.32	
+			10/26/24	PC Transfer 	CK	COMPANY To PC_2416_04			500.00	
+No.	Phase	Date	St/Type	Pay ID	ID	Vendor	Description	Account	Actualized $	
+			10/23/24	PC Transfer 	CK	COMPANY To PC_2416_02			1,500.00	
+			10/23/24	PC Transfer 	CK	COMPANY To PC_2416_01			3,000.00	
+57		11/8/24	Partial payment + projection			Airborne Studios, LLC			4,450.00	
+	Actual	11/4/24	INV		01	Airborne Studios, LLC	Drone deposit	206	890.00	
+	Actual	11/4/24	PRJ		02	Airborne Studios, LLC	Drone remaining fee	206	3,560.00	
+58		11/8/24	TO PROCESS			Allison Iacono			953.12	
+	Actual	11/8/24	INV			Allie Acono	2nd AC (Shoot)	56	853.12	
+	Actual	11/8/24	INV			Allie Acono	2nd AC Kit Fee	207	100.00	
+59		11/8/24	TO PROCESS			Austin LoCicero			2,646.25	
+	Actual	11/11/24	INV			Austin LoCicero	Gaffer (Scout)	11	700.00	
+	Actual	11/11/24	INV			Austin LoCicero	Gaffer (Prelight)	11	700.00	
+	Actual	11/11/24	INV			Austin LoCicero	Gaffer (Shoot)	61	846.25	
+	Actual	11/11/24	INV			Austin LoCicero	Gaffer Kit Rental	207	400.00	
+60		11/8/24	TO PROCESS			Xhiba Curtis			650.00	
+	Actual	11/10/24	INV			Xhiba Curtis	3rd Electric (Strike)	12	650.00	
+61		11/8/24	TO PROCESS			Sekou Conde			450.00	
+	Actual	11/8/24	INV			Sekou Conde	"Content Agency Employee #2" (Shoot)	220	300.00	
+	Actual	11/8/24	INV			Sekou Conde	"Content Agency Employee #2" (Fitting)	219	150.00	
+62		11/8/24	TO PROCESS			Sydney Fain			450.00	
+	Actual	11/8/24	INV			Sydney Elizabeth	"Content Agency Employee #3" (Shoot)	220	300.00	
+	Actual	11/8/24	INV			Sydney Elizabeth	"Content Agency Employee #3" (Fitting)	219	150.00	
+63		11/8/24	TO PROCESS			Ashlea Mayne			450.00	
+	Actual	11/8/24	INV			Ashlea Mayne	"Hiker #1" (Shoot)	220	300.00	
+	Actual	11/8/24	INV			Ashlea Mayne	"Hiker #1" (Fitting)	219	150.00	
+64		11/8/24	TO PROCESS			Sidney Jenkins			300.00	
+	Actual	11/8/24	INV			Sidney Paige Jenkins	"Hiker #2" (Shoot)	220	300.00	
+No.	Phase	Date	St/Type	Pay ID	ID	Vendor	Description	Account	Actualized $	
+65		11/8/24	TO PROCESS			Alina Pazynych			300.00	
+	Actual	11/8/24	INV			Alina Pazynych	"Hiker #3" (Shoot)	220	300.00	
+66		11/8/24	TO PROCESS			Jeffrey Rivadeneyra			450.00	
+	Actual	11/8/24	INV			Jeffrey Rivadeneyra	"Tennis Court Sweeper" (Shoot)	220	300.00	
+	Actual	11/8/24	INV			Jeffrey Rivadeneyra	"Tennis Court Sweeper" (Fitting)	219	150.00	
+67		11/8/24	TO PROCESS			Isadora Amorim Tobias			675.00	
+	Actual	11/8/24	INV			Isadora Amorim	"Travel Guide" (Shoot)	218	450.00	
+	Actual	11/8/24	INV			Isadora Amorim	"Travel Guide" (Fitting)	217	225.00	
+68		11/8/24	TO PROCESS			Javier Freire			675.00	
+	Actual	11/8/24	INV			Javier Freire	"Fitness Shop Owner" (Shoot)	218	450.00	
+	Actual	11/8/24	INV			Javier Freire	"Fitness Shop Owner" (Fitting)	217	225.00	
+69		11/9/24	PAID			State Supply			762.13	
+	Actual	10/24/24	CRD	8738		State Supply	Set Dressing Rentals	181	762.13	
+70		11/9/24	PAID			American Foliage			1,162.21	
+	Actual	10/24/24	CRD	8738		American Foliage	Set Dressing/Greenery rentals	181	1,162.21	
+71		11/9/24	PAID			Oliphant Studio			626.03	
+	Actual	10/25/24	CRD	8738		Oliphant Studio	Backdrop Rental, Set Dressin	181	626.03	
+72		11/9/24	WAITING ON INFO			Stephen Michael Nicholas			8,000.00	
+	Actual	11/9/24	PRJ			Stephen Michael Nicholas	Producer (Prep/Wrap)	2	7,200.00	
+	Actual	11/9/24	PRJ			Stephen Michael Nicholas	Producer (Shoot)	52	800.00	
+73		11/12/24	PAID			Credit Card 7787			95.27	
+	Actual	10/28/24	CRD	7787	02	Uniqlo	Wardrobe	145	847.60	
+	Actual	10/29/24	CRD	7787	08	Uniqlo	Wardrobe REFUND	145	-847.50	
+	Actual	10/28/24	CRD	7787	06	Uber	Uber	136	3.44	
+	Actual	10/28/24	CRD	7787	09	Target	Wardrobe REFUND	145	-44.96	
+	Actual	10/28/24	CRD	7787	04	Uber	Uber	136	22.95	
+	Actual	10/28/24	CRD	7787	05	Uber	Uber	136	26.36	
+No.	Phase	Date	St/Type	Pay ID	ID	Vendor	Description	Account	Actualized $	
+	Actual	10/28/24	CRD	7787	07	Uber	Uber	136	4.49	
+	Actual	10/28/24	CRD	7787	10	Uber	Uber	136	34.47	
+	Actual	10/28/24	CRD	7787	03	Target	Wardrobe	145	44.96	
+	Actual	10/28/24	CRD	7787	01	Uber	Uber	136	3.46	
+80		11/6/24	PLACEHOLDER			AUDIO PLACEHOLDER			6,000.00	
+	Actual	11/6/24	PRJ			AUDIO PLACEHOLDER		4230	6,000.00	
+81		11/6/24	PLACEHOLDER			COLOR PLACEHOLDER			3,000.00	
+	Actual	11/6/24	PRJ			COLOR PLACEHOLDER		5020	3,000.00	
+82		11/6/24	PLACEHOLDER			EDITORIAL PLACEHOLDER			8,000.00	
+	Actual	11/6/24	PRJ			EDITORIAL PLACEHOLDER		8010	8,000.00	
+83		11/6/24	PLACEHOLDER			VFX PLACEHOLDER			8,800.00	
+	Actual	11/6/24	PRJ			VFX PLACEHOLDER		9001	8,800.00	
+84		11/6/24	PLACEHOLDER			MOTION GRAPHICS TEAM PLACEHOLDER			18,000.00	
+	Actual	11/6/24	PRJ			MOTION GRAPHICS TEAM PLACEHOLDER		10000	18,000.00	
+85		11/6/24	PLACEHOLDER			PHOTO EDITING PLACEHOLDER			750.00	
+	Actual	11/6/24	PRJ			PHOTO EDITING PLACEHOLDER		8090	750.00	
+86		11/6/24	PLACEHOLDER			DIRECTOR PLACEHOLDER			5,600.00	
+	Actual	11/6/24	PRJ			DIRECTOR PLACEHOLDER		227	5,600.00	
+87		11/6/24	PLACEHOLDER			CREATIVE DEVELOPMENT PLACEHOLDER			69,148.00	
+No.	Phase	Date	St/Type	Pay ID	ID	Vendor	Description	Account	Actualized $	
+	Actual	11/6/24	PRJ			CREATIVE DEVELOPMENT PLACEHOLDER		001	69,148.00	
+							LESS PC Transfer Amounts		-5,694.64	
+							TOTAL		313,559.06	

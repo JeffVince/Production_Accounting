@@ -15,7 +15,7 @@ from utilities.config import Config
 from webhook_main import app  # Import the Flask app instance
 from werkzeug.serving import make_server
 
-USE_TEMP = False
+
 
 def run_flask_app():
     """Function to run the Flask app."""
@@ -32,7 +32,8 @@ def main():
     # Initialize the database
     config = Config()
 
-    db_settings = config.get_database_settings()
+
+    db_settings = config.get_database_settings(config.USE_LOCAL)
     initialize_database(db_settings['url'])
     logger.info("Database initialized.")
 
