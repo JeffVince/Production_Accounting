@@ -5,6 +5,7 @@ import logging
 from logging.handlers import TimedRotatingFileHandler
 from threading import Lock
 from dotenv import load_dotenv
+import traceback
 
 load_dotenv()
 
@@ -16,10 +17,29 @@ os.makedirs(LOGS_DIR, exist_ok=True)
 _logger_initialized = False
 _lock = Lock()
 
+
+class CustomLogger(logging.Logger):
+    def log_error_trace(self, exception: Exception, message: str = None):
+        """
+        Logs an optional message and then the traceback frames of the given exception.
+        Each frame logs the file, line number, and function name.
+
+        :param exception: The exception to log the traceback for.
+        :param message: An optional string message to precede the traceback log.
+        """
+        if message:
+            self.error(message)
+
+        exc_type, exc_value, exc_traceback = exception.__class__, exception, exception.__traceback__
+        frames = traceback.extract_tb(exc_traceback)
+        for frame in frames:
+            self.error(f"File: {os.path.basename(frame.filename)}, Line: {frame.lineno}, Function: {frame.name}")
+
+
 def setup_logging():
     """
     Sets up logging for the application. The log level is determined by the
-    LOG_LEVEL environment variable. Defaults to INFO if not set.
+    LOG_LEVEL environment variable. Defaults to DEBUG if not set.
 
     Returns:
         logging.Logger: Configured logger.
@@ -30,9 +50,12 @@ def setup_logging():
             logger = logging.getLogger("app_logger")
             return logger
 
-        # Get log level from environment variable, default to INFO
+        # Set the CustomLogger as the Logger class
+        logging.setLoggerClass(CustomLogger)
+
+        # Get log level from environment variable, default to DEBUG
         log_level_str = os.getenv("LOG_LEVEL", "DEBUG").upper()
-        log_level = getattr(logging, log_level_str, logging.INFO)
+        log_level = getattr(logging, log_level_str, logging.DEBUG)
 
         logger = logging.getLogger("app_logger")
         logger.setLevel(log_level)
@@ -82,7 +105,6 @@ def setup_logging():
 
         return logger
 
-
 def log_event(event_type: str, details: dict):
     """
     Logs a specific event with its type and details.
@@ -101,7 +123,6 @@ def log_event(event_type: str, details: dict):
             logger.info(message)
     except Exception as e:
         logger.error(f"Failed to log event: {e}")
-
 
 def log_handler_details():
     """

@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Purchase Order Summary</title>
+<style>
+    body {
+        margin: 0;
+        padding: 0;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: #f0f4f8;
+        color: #333;
+    }
+
+    .container {
+        padding: 20px;
+    }
+
+    h1 {
+        text-align: center;
+        margin-bottom: 20px;
+        color: #004c8a;
+        font-size: 2em;
+        font-weight: 600;
+    }
+
+    .controls {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+
+    .search-container {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .search-container input {
+        padding: 8px 12px;
+        border-radius: 20px;
+        border: 1px solid #ccc;
+        width: 200px;
+        transition: all 0.3s ease;
+    }
+
+    .search-container input:focus {
+        outline: none;
+        border-color: #4cb1ff;
+    }
+
+    .filter-buttons {
+        display: flex;
+        gap: 10px;
+    }
+
+    .filter-buttons button {
+        padding: 8px 14px;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: background 0.3s ease;
+        font-weight: 500;
+    }
+
+    .filter-buttons button:hover {
+        background: #d4d4d4;
+    }
+
+    .filter-buttons button.active {
+        background: #4cb1ff;
+        color: #fff;
+    }
+
+    .table-container {
+        position: relative;
+        overflow: hidden;
+        border-radius: 10px;
+        box-shadow: 0 3px 20px rgba(0,0,0,0.1);
+        background: #fff;
+        animation: fadeIn 0.6s ease-in-out;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 0.9em;
+    }
+
+    thead {
+        background: linear-gradient(135deg, #4cb1ff 0%, #006fbf 100%);
+        color: #fff;
+    }
+
+    thead th {
+        text-align: left;
+        padding: 12px;
+        position: relative;
+        cursor: pointer;
+        user-select: none;
+        font-weight: 500;
+    }
+
+    thead th:hover {
+        background: rgba(255,255,255,0.1);
+    }
+
+    tbody tr {
+        transition: background 0.2s ease;
+    }
+
+    tbody tr:nth-child(even) {
+        background: #f9fcff;
+    }
+
+    tbody tr:hover {
+        background: #eaf4fc;
+        cursor: pointer;
+    }
+
+    td {
+        padding: 12px;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        overflow: hidden;
+    }
+
+    .no-results {
+        text-align: center;
+        padding: 20px;
+        color: #777;
+    }
+
+    /* Sort Indicator */
+    .sort-indicator {
+        display: inline-block;
+        margin-left: 8px;
+        width: 0;
+        height: 0;
+        border-left: 4px solid transparent;
+        border-right: 4px solid transparent;
+    }
+
+    .asc .sort-indicator {
+        border-bottom: 6px solid #fff;
+    }
+
+    .desc .sort-indicator {
+        border-top: 6px solid #fff;
+    }
+
+</style>
+</head>
+<body>
+<div class="container">
+    <h1>Purchase Order Summary</h1>
+    <div class="controls">
+        <div class="search-container">
+            <input type="text" id="searchInput" placeholder="Search description...">
+        </div>
+        <div class="filter-buttons">
+            <button id="approvedFilterBtn">Approved Vendors</button>
+            <button id="onFileFilterBtn">Payment Details On File</button>
+            <button id="clearFilterBtn">Clear Filters</button>
+        </div>
+    </div>
+    <div class="table-container">
+        <table id="dataTable">
+            <thead>
+                <tr>
+                    <th data-column="Contact Name">Contact Name <span class="sort-indicator"></span></th>
+                    <th data-column="Project ID">Project ID <span class="sort-indicator"></span></th>
+                    <th data-column="PO #">PO # <span class="sort-indicator"></span></th>
+                    <th data-column="Description">Description <span class="sort-indicator"></span></th>
+                    <th data-column="Tax Form Link Exists">Tax Form Link Exists <span class="sort-indicator"></span></th>
+                    <th data-column="Total Amount">Total Amount <span class="sort-indicator"></span></th>
+                    <th data-column="PO Status">PO Status <span class="sort-indicator"></span></th>
+                    <th data-column="Payment Details">Payment Details <span class="sort-indicator"></span></th>
+                    <th data-column="Folder Link Exists">Folder Link Exists <span class="sort-indicator"></span></th>
+                    <th data-column="Contact Email">Contact Email <span class="sort-indicator"></span></th>
+                    <th data-column="Contact Phone">Contact Phone <span class="sort-indicator"></span></th>
+                </tr>
+            </thead>
+            <tbody id="tableBody">
+            </tbody>
+        </table>
+        <div class="no-results" id="noResults" style="display: none;">No results found</div>
+    </div>
+</div>
+
+<script>
+    // Inject data from Python into JS
+    let data = {{ data|tojson }};
+    let originalData = [...data];
+
+    const tableBody = document.getElementById('tableBody');
+    function renderTableRows(d) {
+        tableBody.innerHTML = '';
+        if (d.length === 0) {
+            document.getElementById('noResults').style.display = 'block';
+            return;
+        } else {
+            document.getElementById('noResults').style.display = 'none';
+        }
+        d.forEach(item => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${item["Contact Name"] || ''}</td>
+                <td>${item["Project ID"] || ''}</td>
+                <td>${item["PO #"] || ''}</td>
+                <td>${item["Description"] || ''}</td>
+                <td>${item["Tax Form Link Exists"] || ''}</td>
+                <td>${item["Total Amount"] || ''}</td>
+                <td>${item["PO Status"] || ''}</td>
+                <td>${item["Payment Details"] || ''}</td>
+                <td>${item["Folder Link Exists"] || ''}</td>
+                <td>${item["Contact Email"] || ''}</td>
+                <td>${item["Contact Phone"] || ''}</td>
+            `;
+            tableBody.appendChild(tr);
+        });
+    }
+
+    // Initial render with data from the server
+    renderTableRows(data);
+
+
+// Search functionality
+const searchInput = document.getElementById('searchInput');
+searchInput.addEventListener('input', (e) => {
+    const query = e.target.value.toLowerCase();
+    const filtered = data.filter(item => (item["Description"] || '').toLowerCase().includes(query));
+    renderTableRows(filtered);
+});
+
+// Sorting
+let currentSort = { column: null, direction: 'asc' };
+document.querySelectorAll('thead th').forEach(th => {
+    th.addEventListener('click', () => {
+        const column = th.getAttribute('data-column');
+        if (currentSort.column === column) {
+            currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+        } else {
+            currentSort.column = column;
+            currentSort.direction = 'asc';
+        }
+
+        const sortedData = [...data].sort((a, b) => {
+            let aVal = a[column] || '';
+            let bVal = b[column] || '';
+            if (!isNaN(parseFloat(aVal)) && !isNaN(parseFloat(bVal)) && aVal !== '' && bVal !== '') {
+                aVal = parseFloat(aVal);
+                bVal = parseFloat(bVal);
+            } else {
+                aVal = aVal.toString().toLowerCase();
+                bVal = bVal.toString().toLowerCase();
+            }
+
+            if (aVal < bVal) return currentSort.direction === 'asc' ? -1 : 1;
+            if (aVal > bVal) return currentSort.direction === 'asc' ? 1 : -1;
+            return 0;
+        });
+
+        data = sortedData;
+        renderTableRows(data);
+
+        // Update sort indicators
+        document.querySelectorAll('thead th').forEach(x => x.classList.remove('asc', 'desc'));
+        th.classList.add(currentSort.direction);
+    });
+});
+
+// Filter buttons
+const approvedFilterBtn = document.getElementById('approvedFilterBtn');
+const onFileFilterBtn = document.getElementById('onFileFilterBtn');
+const clearFilterBtn = document.getElementById('clearFilterBtn');
+
+approvedFilterBtn.addEventListener('click', () => {
+    // Toggle button state
+    approvedFilterBtn.classList.toggle('active');
+    onFileFilterBtn.classList.remove('active');
+    applyFilters();
+});
+
+onFileFilterBtn.addEventListener('click', () => {
+    // Toggle button state
+    onFileFilterBtn.classList.toggle('active');
+    approvedFilterBtn.classList.remove('active');
+    applyFilters();
+});
+
+clearFilterBtn.addEventListener('click', () => {
+    approvedFilterBtn.classList.remove('active');
+    onFileFilterBtn.classList.remove('active');
+    data = [...originalData];
+    searchInput.value = '';
+    renderTableRows(data);
+});
+
+function applyFilters() {
+    let filtered = [...originalData];
+
+    // Filter for Approved Vendors if active
+    if (approvedFilterBtn.classList.contains('active')) {
+        filtered = filtered.filter(item =>
+            item["PO Status"] && item["PO Status"].toLowerCase() === 'approved'
+        );
+    }
+
+    // Filter for Vendors with payment details "On File" if active
+    if (onFileFilterBtn.classList.contains('active')) {
+        // "On File" here means Payment Details column is not null/empty.
+        filtered = filtered.filter(item =>
+            item["Payment Details"] && item["Payment Details"].trim() !== ''
+        );
+    }
+
+    // Apply search if there's a current search query
+    const query = searchInput.value.toLowerCase();
+    if (query) {
+        filtered = filtered.filter(item => (item["Description"] || '').toLowerCase().includes(query));
+    }
+
+    data = filtered;
+    renderTableRows(data);
+}
+</script>
+</body>
+</html>

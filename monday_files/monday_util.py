@@ -3,6 +3,12 @@
 import json
 import logging
 import os
+from decimal import Decimal, InvalidOperation
+import re
+
+from dateutil import parser
+from datetime import datetime, timedelta
+
 import requests
 from dotenv import load_dotenv
 from monday import MondayClient
@@ -37,14 +43,16 @@ class MondayUtil(metaclass=SingletonMeta):
     # Column IDs for Subitems
     SUBITEM_NOTES_COLUMN_ID = 'payment_notes__1'
     SUBITEM_STATUS_COLUMN_ID = 'status4'
-    SUBITEM_ID_COLUMN_ID = 'text0'  # Receipt / Invoice column ID
+    SUBITEM_ID_COLUMN_ID = 'numeric__1'  # Receipt / Invoice column ID
     SUBITEM_DESCRIPTION_COLUMN_ID = 'text98'  # Description column ID
     SUBITEM_QUANTITY_COLUMN_ID = 'numbers0'  # Quantity column ID
     SUBITEM_RATE_COLUMN_ID = 'numbers9'  # Rate column ID
     SUBITEM_DATE_COLUMN_ID = 'date'  # Date column ID
     SUBITEM_DUE_DATE_COLUMN_ID = 'date_1__1'
-    SUBITEM_ACCOUNT_NUMBER_COLUMN_ID = 'dropdown'  # Account Number column ID
+    SUBITEM_ACCOUNT_NUMBER_COLUMN_ID = 'numbers__1'  # Account Number column ID
     SUBITEM_LINK_COLUMN_ID = 'link'  # Link column ID
+    SUBITEM_OT_COLUMN_ID = 'numbers0__1'
+    SUBITEM_FRINGE_COLUMN_ID = 'numbers9__1'
 
     # Column IDs for Contacts
     CONTACT_NAME = 'name'
@@ -428,12 +436,14 @@ class MondayUtil(metaclass=SingletonMeta):
         self.logger.debug(f"Formatted PO column values: {column_values}")
         return json.dumps(column_values)
 
+    def prep_po_log_item_for_monday(self, item):
+        pass
 
     # --------------------- SUBITEM METHODS ---------------------
 
-    def subitem_column_values_formatter(self, notes=None, status=None, file_id=None, description=None,
+    def subitem_column_values_formatter(self, notes=None, status=None, description=None,
                                         quantity=None, rate=None, date=None, due_date=None,
-                                        account_number=None, link=None):
+                                        account_number=None, link=None, item_number=None, OT=None, fringes=None):
         """
         Formats the column values for creating or updating a subitem.
 
@@ -454,6 +464,7 @@ class MondayUtil(metaclass=SingletonMeta):
         """
 
         # Mapping of account numbers to Monday IDs
+
         account_number_to_id_map = {
             "5300": 1,
             "5000": 2,
@@ -462,30 +473,96 @@ class MondayUtil(metaclass=SingletonMeta):
         }
 
         column_values = {}
-        if notes:
-            column_values[self.SUBITEM_NOTES_COLUMN_ID] = notes
-        if status:
-            column_values[self.SUBITEM_STATUS_COLUMN_ID] = {'label': status}
-        if file_id:
-            column_values[self.SUBITEM_ID_COLUMN_ID] = file_id
-        if description:
-            column_values[self.SUBITEM_DESCRIPTION_COLUMN_ID] = description
-        if quantity is not None:
-            column_values[self.SUBITEM_QUANTITY_COLUMN_ID] = quantity
-        if rate is not None:
-            column_values[self.SUBITEM_RATE_COLUMN_ID] = rate
-        if date:
-            column_values[self.SUBITEM_DATE_COLUMN_ID] = {'date': date}
-        if due_date:
-            column_values[self.SUBITEM_DUE_DATE_COLUMN_ID] = {'date': due_date}
-        if account_number:
-            mapped_id = account_number_to_id_map.get(str(account_number))
-            column_values[self.SUBITEM_ACCOUNT_NUMBER_COLUMN_ID] = {'ids': [str(mapped_id)]} if mapped_id else {}
-        if link:
-            column_values[self.SUBITEM_LINK_COLUMN_ID] = {'url': link, 'text': 'Link'}
 
-        self.logger.info(f"Formatted subitem column values: {column_values}")
-        return column_values
+        # NOTES 📝
+        if notes: column_values[self.SUBITEM_NOTES_COLUMN_ID] = notes
+
+        # STATUS ✅
+        if status: column_values[self.SUBITEM_STATUS_COLUMN_ID] = {'label': status}
+
+        # DESCRIPTION ✍️
+        if description: column_values[self.SUBITEM_DESCRIPTION_COLUMN_ID] = description
+
+        # QUANTITY 🧳
+        if quantity is not None:
+            try:
+                # Clean the quantity: remove commas, strip whitespace, and convert to Decimal
+                cleaned_quantity = Decimal(str(quantity).replace(',', '').strip())
+                column_values[self.SUBITEM_QUANTITY_COLUMN_ID] = float(cleaned_quantity)  # Convert to float if required
+            except (ValueError, InvalidOperation) as e:
+                self.logger.error(f"Invalid quantity value '{quantity}': {e}")
+                column_values[self.SUBITEM_QUANTITY_COLUMN_ID] = None
+
+        # RATE 💰
+        if rate is not None:
+            try:
+                # Clean the rate: remove commas, strip whitespace, and convert to Decimal
+                cleaned_rate = Decimal(str(rate).replace(',', '').strip())
+                column_values[self.SUBITEM_RATE_COLUMN_ID] = float(cleaned_rate)  # Convert to float if required
+            except (ValueError, InvalidOperation) as e:
+                self.logger.error(f"Invalid rate value '{rate}': {e}")
+                column_values[self.SUBITEM_RATE_COLUMN_ID] = None
+
+        # OT
+        if OT is not None: column_values[self.SUBITEM_OT_COLUMN_ID] = OT
+
+        # FRINGES
+        if fringes is not None: column_values[self.SUBITEM_FRINGE_COLUMN_ID] = fringes
+
+        # TRANSACTION DATE 📆
+        if date:
+            try:
+                # Check if `date` is a valid non-empty string
+                if isinstance(date, str) and date.strip():
+                    # Parse and format the `date` to ensure it's in 'YYYY-MM-DD'
+                    parsed_date = parser.parse(date.strip())
+                    formatted_date = parsed_date.strftime('%Y-%m-%d')
+                    column_values[self.SUBITEM_DATE_COLUMN_ID] = {'date': formatted_date}
+                else:
+                    raise ValueError(f"Invalid date value: {date}")
+
+            except Exception as e:
+                self.logger.error(f"Error parsing and formatting date '{date}': {e}")
+
+        # DUE DATE 📆
+        if due_date:
+            try:
+                # Check if `date` is a valid non-empty string
+                if isinstance(date, str) and date.strip():
+                    # Parse and format the `date` to ensure it's in 'YYYY-MM-DD'
+                    parsed_date = parser.parse(date.strip())
+                    formatted_due_date = parsed_date.strftime('%Y-%m-%d')
+                    column_values[self.SUBITEM_DUE_DATE_COLUMN_ID] = {'date': formatted_due_date}
+                else:
+                    raise ValueError(f"Invalid date value: {date}")
+            except Exception as e:
+                self.logger.error(f"Error parsing and formatting date '{date}': {e}")
+
+        # ACCOUNT NUMBER 🧾
+        if account_number:
+            try:
+                # Clean and extract only numeric parts from the account number
+                cleaned_account_number = re.sub(r'[^\d]', '', str(account_number).strip())
+
+                # Convert the cleaned value to an integer
+                if cleaned_account_number:
+                    column_values[self.SUBITEM_ACCOUNT_NUMBER_COLUMN_ID] = int(cleaned_account_number)
+                else:
+                    raise ValueError(f"Account number '{account_number}' resulted in an empty value after cleaning.")
+            except (ValueError, TypeError) as e:
+                self.logger.error(f"Invalid account number value '{account_number}': {e}")
+                column_values[self.SUBITEM_ACCOUNT_NUMBER_COLUMN_ID] = None
+
+       # INVOICE OR RECEIPT LINK 🔗
+        if link: column_values[self.SUBITEM_LINK_COLUMN_ID] = {'url': link, 'text': 'Link'}
+
+        # INVOICE OR RECEIPT NUMBER 📇
+        #region
+        if item_number:
+            column_values[self.SUBITEM_ID_COLUMN_ID] = item_number
+        self.logger.debug(f"Formatted subitem column values: {column_values}")
+        return json.dumps(column_values)
+        #endregion
 
 
     def create_subitem(self, parent_item_id, subitem_name, column_values):
@@ -588,6 +665,9 @@ class MondayUtil(metaclass=SingletonMeta):
             self.logger.error(f"HTTP Error {response.status_code}: {response.text}")
             return False
 
+    def prep_po_log_detail_for_monday(self, item):
+        pass
+
     # --------------------- CONTACT METHODS ---------------------
 
     def link_contact_to_po_item(self, po_item_id, contact_item_id):
@@ -646,6 +726,9 @@ class MondayUtil(metaclass=SingletonMeta):
         else:
             self.logger.error(f"HTTP Error {response.status_code}: {response.text}")
             return False
+
+    def prep_po_log_contact_for_monday(self, item):
+        pass
 
 
     # --------------------- VALIDATION METHODS ---------------------

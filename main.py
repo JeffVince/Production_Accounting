@@ -1,6 +1,9 @@
 # main.py
 
 import logging
+
+from config import Config
+config = Config()
 from utilities.logger import setup_logging
 
 setup_logging()
@@ -16,13 +19,25 @@ from webhook_main import app  # Import the Flask app instance
 from werkzeug.serving import make_server
 
 
-
 def run_flask_app():
     """Function to run the Flask app."""
     logger = logging.getLogger("app_logger")  # Use the named logger
     logger.info("Starting Flask server for webhooks...")
+
+    # Enable template auto-reloading
+    app.config['TEMPLATES_AUTO_RELOAD'] = config.APP_DEBUG
+
+    # Optionally set debugging mode for easier development
+    app.debug = config.APP_DEBUG
+
+    # Initialize and start the server
     server = make_server('0.0.0.0', Config.WEBHOOK_MAIN_PORT, app)
-    server.serve_forever()
+    try:
+        logger.info(f"Flask server running on port {Config.WEBHOOK_MAIN_PORT}.")
+        server.serve_forever()
+    except KeyboardInterrupt:
+        logger.info("Shutting down Flask server...")
+        server.shutdown()
 
 
 def main():

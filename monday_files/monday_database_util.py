@@ -372,14 +372,14 @@ class MondayDatabaseUtil(metaclass=SingletonMeta):
                     }
             except IntegrityError as ie:
                 session.rollback()
-                self.logger.error(f"IntegrityError processing DetailItem in DB: {ie}")
+                self.logger.exception(f"IntegrityError processing DetailItem in DB: {ie}")
                 return {
                     "status": "Fail",
                     "error": str(ie)
                 }
             except Exception as e:
                 session.rollback()
-                self.logger.error(f"Error processing DetailItem in DB: {e}")
+                self.logger.exception(f"Error processing DetailItem in DB: {e}")
                 return {
                     "status": "Fail",
                     "error": str(e)

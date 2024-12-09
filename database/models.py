@@ -48,12 +48,13 @@ class AicpCode(Base):
 
     aicp_code_surrogate_id = Column(MYSQL_INTEGER, primary_key=True, autoincrement=True)
     code = Column(String(45), nullable=False, unique=True)
-    tax_code_id = Column(
+    tax_code = Column(
         MYSQL_INTEGER,
         ForeignKey('tax_accounts.tax_code_id', onupdate='CASCADE', ondelete='RESTRICT'),
         nullable=False,
     )
-    description = Column(String(45), nullable=True)
+    tax_description = Column(String(45), nullable=True)
+    aicp_description = Column(String(45), nullable=True)
 
     # Relationships
     tax_account = relationship('TaxAccount', back_populates='aicp_codes')
@@ -148,6 +149,17 @@ class PurchaseOrder(Base):
     detail_items = relationship('DetailItem', back_populates='purchase_order')
     invoices = relationship('Invoice', back_populates='purchase_order')
 
+    def to_dict(self):
+        return {
+            "project_id": self.project_id,
+            "po_number": self.po_number,
+            "amount_total": self.amount_total,
+            "folder": self.folder_link,
+            "description": self.description,
+        }
+
+
+
 
 # Invoice Model
 class Invoice(Base):
@@ -232,6 +244,9 @@ class DetailItem(Base):
         nullable=False
     )  # Generated column
     payment_type = Column(String(45))
+    ot = Column(MYSQL_DECIMAL(15, 2))
+    fringes = Column(MYSQL_DECIMAL(15, 2))
+    vendor = Column(String(255))
     description = Column(String(255), nullable=True)
     file_link = Column(String(255), nullable=True, comment='Link to invoice or receipt in Dropbox')
     state = Column(
@@ -239,19 +254,21 @@ class DetailItem(Base):
         nullable=False,
         default='PENDING',
     )
-    account_number_id = Column(
-        MYSQL_INTEGER, ForeignKey('aicp_codes.aicp_code_surrogate_id'), nullable=True
+    account_number = Column(
+        MYSQL_INTEGER, ForeignKey('aicp_codes.code'), nullable=True
     )
-    parent_id = Column(
+    parent_surrogate_id = Column(
         MYSQL_INTEGER(unsigned=True),
         ForeignKey('purchase_orders.po_surrogate_id'),
         nullable=False,
     )
-    detail_item_number = Column(MYSQL_INTEGER(unsigned=True), nullable=False, default=1)
+    parent_pulse_id = Column(MYSQL_BIGINT, nullable=True, unique=False)
+
+    detail_item_number = Column(MYSQL_DECIMAL(4, 2), nullable=False, default=1)
 
     # Indexes
-    Index('account_number_idx', 'account_number_id')
-    Index('fk_parent_pulse_id_idx', 'parent_id')
+    Index('account_number_idx', 'account_number')
+    Index('fk_parent_pulse_id_idx', 'parent_pulse_id')
 
     # Relationships
     purchase_order = relationship('PurchaseOrder', back_populates='detail_items')

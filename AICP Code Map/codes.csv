@@ -1,0 +1,590 @@
+AICP Number,Tax Code,Tax Description,AICP Description
+1,5300,Subcontractor,Producer
+2,5300,Subcontractor,Production Coordinator
+3,5300,Subcontractor,Director
+4,5300,Subcontractor,Director of Photography
+5,5300,Subcontractor,First Assistant Camera
+6,5300,Subcontractor,DIT
+7,5300,Subcontractor,Prop Master
+8,5300,Subcontractor,Asst Props
+9,5300,Subcontractor,Local Production Super
+10,5300,Subcontractor,Camera Op
+11,5300,Subcontractor,Gaffer
+12,5300,Subcontractor,Dim Board Op
+13,5300,Subcontractor,3rd Electric
+15,5300,Subcontractor,Prep/Strike/Pre Rig Crew
+16,5300,Subcontractor,Key Grip
+17,5300,Subcontractor,Best Boy Grip
+18,5300,Subcontractor,3rd Grip
+19,5300,Subcontractor,Grip/Driver
+20,5300,Subcontractor,Crane Tech 2x
+21,5300,Subcontractor,Movement Director
+22,5300,Subcontractor,Stedi Cam Op
+23,5300,Subcontractor,Underwater Cam Op
+24,5300,Subcontractor,Make Up Artist
+25,5300,Subcontractor,Hair
+26,5300,Subcontractor,Stylist
+27,5300,Subcontractor,Assistant Stylist
+28,5300,Subcontractor,Script Supervisor
+29,5300,Subcontractor,Boom Operator
+30,5300,Subcontractor,Sound Mixer
+31,5300,Subcontractor,VTR Operator
+32,5300,Subcontractor,Stunt Coordinator
+33,5300,Subcontractor,Covid Compliance Officer
+34,5300,Subcontractor,Site Rep
+35,5300,Subcontractor,Storyboard Artist
+36,5300,Subcontractor,Catering Crew
+37,5300,Subcontractor,Location Scout
+38,5300,Subcontractor,Compliance Assistant
+39,5300,Subcontractor,2nd A.D.
+40,5300,Subcontractor,Medic
+41,5300,Subcontractor,Craft Services
+42,5300,Subcontractor,Firefighter
+43,5300,Subcontractor,Police Officers/Ranger
+44,5300,Subcontractor,Welfare/Teacher
+45,5300,Subcontractor,Gang Boss
+46,5300,Subcontractor,Teamster Drivers / Animal Wranglers
+47,5300,Subcontractor,Production Coordinator
+48,5300,Subcontractor,Production Assistant
+49,5300,Subcontractor,Production Assistant Driver
+50,5000,Cost of Goods Sold,Fringes
+51,5300,Subcontractor,Producer
+52,5300,Subcontractor,Production Coordinator
+53,5300,Subcontractor,Director
+54,5300,Subcontractor,Director of Photography
+55,5300,Subcontractor,First Assistant Camera
+56,5300,Subcontractor,DIT
+57,5300,Subcontractor,Prop Master
+58,5300,Subcontractor,Asst Props
+59,5300,Subcontractor,Local Production Super
+60,5300,Subcontractor,Camera Op
+61,5300,Subcontractor,Gaffer
+62,5300,Subcontractor,Dim Board Op
+63,5300,Subcontractor,3rd Electric
+64,5300,Subcontractor,Electric/Driver
+65,5300,Subcontractor,Prep/Strike/Pre Rig Crew
+66,5300,Subcontractor,Key Grip
+67,5300,Subcontractor,Best Boy Grip
+68,5300,Subcontractor,3rd Grip
+69,5300,Subcontractor,Grip/Driver
+70,5300,Subcontractor,Movement Director
+71,5300,Subcontractor,Crane Head Tech
+72,5300,Subcontractor,Underwater Cam Op
+73,5300,Subcontractor,Make Up Artist
+75,5300,Subcontractor,Hair
+76,5300,Subcontractor,Stylist
+77,5300,Subcontractor,Assistant Stylist
+78,5300,Subcontractor,Script Supervisor
+79,5300,Subcontractor,Boom Operator
+80,5300,Subcontractor,Sound Mixer
+81,5300,Subcontractor,VTR Operator
+82,5300,Subcontractor,Stunt Coordinator
+83,5300,Subcontractor,Covid Compliance Officer
+84,5300,Subcontractor,Site Rep
+85,5300,Subcontractor,Storyboard Artist
+86,5300,Subcontractor,Catering Crew
+87,5300,Subcontractor,Location Scout
+88,5300,Subcontractor,Compliance Assistant
+89,5300,Subcontractor,2nd A.D.
+90,5300,Subcontractor,Medic
+91,5300,Subcontractor,Craft Services
+92,5300,Subcontractor,Firefighter
+93,5300,Subcontractor,Police Officers/Ranger
+94,5300,Subcontractor,Welfare/Teacher
+95,5300,Subcontractor,Gang Boss
+96,5300,Subcontractor,Teamster Drivers / Animal Wranglers
+97,5300,Subcontractor,Production Coordinator
+98,5300,Subcontractor,Production Assistant
+99,5300,Subcontractor,Production Assistant Driver
+100,5000,Cost of Goods Sold,
+101,5000,Cost of Goods Sold,Craft Service
+102,5000,Cost of Goods Sold,Covid Tests
+103,5200,Travel,Hotels
+104,5200,Travel,Scouting Expenses
+105,5200,Travel,Deliveries & Taxi
+106,5200,Travel,Car Rental
+107,5200,Travel,Trucking
+108,6110,Automobile Expense,Gas
+109,5000,Cost of Goods Sold,Casting Facility
+110,5000,Cost of Goods Sold,Home Econ Supplies
+111,5000,Cost of Goods Sold,Telephone & Cable
+112,5000,Cost of Goods Sold,Working Meals
+113,5200,Travel,Messengers
+114,5000,Cost of Goods Sold,Location Fees
+115,5300,Subcontractor,Site Rep
+116,5000,Cost of Goods Sold,Permit
+117,5300,Subcontractor,Set Security
+118,5200,Travel,Cargo Van
+119,5200,Travel,Production Trucking
+120,5200,Travel,Camera Truck
+121,5200,Travel,Car Rentals
+122,5200,Travel,Bus Rentals
+123,5200,Travel,Limousines (Celebrities)
+124,5200,Travel,Dressing Room Vehicles
+125,5200,Travel,Talent Trailer / Honeywagon
+126,5200,Travel,Other Vehicles
+127,6110,Automobile Expense,Parking/Tolls/Gas
+128,5200,Travel,Excess Bags/Homeland Security
+129,5200,Travel,Air Fares
+130,5200,Travel,Hotels
+131,5200,Travel,Per Diems
+132,5000,Cost of Goods Sold,Craft Services
+133,5000,Cost of Goods Sold,Breakfast
+134,5000,Cost of Goods Sold,Lunch
+135,5000,Cost of Goods Sold,Dinner
+136,5200,Travel,Cabs/ Ubers/ Other Transportation
+137,5000,Cost of Goods Sold,Kit Rental
+138,5000,Cost of Goods Sold,Art Work
+139,5000,Cost of Goods Sold,Sustainable Practices
+140,5000,Cost of Goods Sold,Prop Rental
+141,5000,Cost of Goods Sold,Prop Purchase
+142,5000,Cost of Goods Sold,Prop Fabrication
+143,5000,Cost of Goods Sold,Esty Custom Wardrobe
+144,5000,Cost of Goods Sold,Wardrobe
+145,5000,Cost of Goods Sold,Wardrobe
+146,5000,Cost of Goods Sold,Picture Vehicles
+147,5300,Subcontractor,Animals & Handlers
+148,5000,Cost of Goods Sold,Theatrical Makeup
+149,5000,Cost of Goods Sold,Product Prep / Color Correct
+150,5000,Cost of Goods Sold,Greens
+151,5000,Cost of Goods Sold,Rental For Build Days
+152,5000,Cost of Goods Sold,Build OT Hours
+153,5000,Cost of Goods Sold,Rental for Pre-Lite Days
+154,5000,Cost of Goods Sold,Pre-Lite OT Hours
+155,5000,Cost of Goods Sold,Rental for Shoot Days
+156,5000,Cost of Goods Sold,Shoot OT Hours
+157,5000,Cost of Goods Sold,Rental for Strike Days
+158,5000,Cost of Goods Sold,Strike OT Hours
+159,5000,Cost of Goods Sold,Generator and Operator
+160,5300,Subcontractor,Stage Manager/Studio Security
+161,5000,Cost of Goods Sold,Power Charges
+162,5000,Cost of Goods Sold,Crafty
+163,5000,Cost of Goods Sold,Meals for Crew & Talent
+164,5000,Cost of Goods Sold,Breakfast
+165,6110,Automobile Expense,Crew Parking
+166,5000,Cost of Goods Sold,Condor/Scissor Lift
+167,5000,Cost of Goods Sold,Steeldeck
+168,5300,Subcontractor,Production Designer/Art Director
+169,5300,Subcontractor,Production Designer/Art Director PREP
+170,5300,Subcontractor,Set Decorator
+171,5300,Subcontractor,Art Dept Coordinator
+172,5300,Subcontractor,Prop Master
+173,5300,Subcontractor,Asst Props
+174,5300,Subcontractor,Swing
+175,5300,Subcontractor,Leadman
+176,5300,Subcontractor,Set Dresser
+177,5300,Subcontractor,Scenics
+178,5300,Subcontractor,Grips / Riggers
+179,5000,Cost of Goods Sold,
+180,5000,Cost of Goods Sold,
+181,5000,Cost of Goods Sold,Set Decoration
+182,5000,Cost of Goods Sold,Props
+183,5000,Cost of Goods Sold,Dolly Track, Skates
+184,5000,Cost of Goods Sold,Dolly or Other Cam Support
+185,5000,Cost of Goods Sold,Art Dept Kit Rental
+186,5000,Cost of Goods Sold,Special Effects Rental
+187,5200,Travel,Art Dept Trucking
+188,5000,Cost of Goods Sold,Outside Construction
+189,5000,Cost of Goods Sold,Car Prep
+190,5000,Cost of Goods Sold,Art Dept Meals
+191,5200,Travel,Messengers/Deliveries
+193,5000,Cost of Goods Sold,Camera Rental
+194,5000,Cost of Goods Sold,Lens Rental
+195,5000,Cost of Goods Sold,Lighting Rental
+196,5000,Cost of Goods Sold,Grip Rental
+197,5000,Cost of Goods Sold,Steadicam
+198,5000,Cost of Goods Sold,Crane Rental
+199,5000,Cost of Goods Sold,VTR Rental
+200,5000,Cost of Goods Sold,Walkie Talkie Rental
+201,5000,Cost of Goods Sold,File Conversion & Transcoding
+202,5000,Cost of Goods Sold,Breakdown
+203,5000,Cost of Goods Sold,Stock Footage Search
+204,5000,Cost of Goods Sold,Digital Dailies Transfer
+205,5000,Cost of Goods Sold,Transcription / Translation
+206,5000,Cost of Goods Sold,
+207,5000,Cost of Goods Sold,
+208,5000,Cost of Goods Sold,
+209,5000,Cost of Goods Sold,
+210,5000,Cost of Goods Sold,Offline Edit System
+211,5000,Cost of Goods Sold,Media / Drives
+212,5000,Cost of Goods Sold,Film
+213,5000,Cost of Goods Sold,Transcode / Transfer
+214,5000,Cost of Goods Sold,Process
+215,5000,Cost of Goods Sold,Dailies
+216,5000,Cost of Goods Sold,
+217,5000,Cost of Goods Sold,Deliveries & Messengers
+218,5200,Travel,Air Fares
+219,5000,Cost of Goods Sold,Cabs And Transportations
+220,5000,Cost of Goods Sold,Phones and Cables
+221,5000,Cost of Goods Sold,Per Diems
+222,6320,Insurance,Special Insurance
+223,5000,Cost of Goods Sold,Cell Phones
+224,5300,Subcontractor,Foreign Production Service Co
+225,5000,Cost of Goods Sold,Covid Tests
+226,5000,Cost of Goods Sold,
+227,5300,Subcontractor,Director Prep
+228,5200,Travel,Director Travel
+229,5300,Subcontractor,Director Shoot
+230,5300,Subcontractor,Director Post
+231,5000,Cost of Goods Sold,Fringes
+232,5000,Cost of Goods Sold,
+233,5000,Cost of Goods Sold,
+235,5300,Subcontractor,Dancer
+236,5300,Subcontractor,O/C Principal
+237,5300,Subcontractor,Dancer
+238,5300,Subcontractor,Dancer
+239,5300,Subcontractor,Truck Driver
+240,5300,Subcontractor,Studio Teacher
+241,5300,Subcontractor,O/C Principals
+242,5300,Subcontractor,O/C Principals
+243,5000,Cost of Goods Sold,
+244,5300,Subcontractor,Office Extras
+245,5000,Cost of Goods Sold,
+246,5300,Subcontractor,Crowd Extras
+247,5300,Subcontractor,General Extras
+248,5300,Subcontractor,General Extras
+249,5300,Subcontractor,General Extras
+250,5300,Subcontractor,General Extras
+251,5300,Subcontractor,General Extras
+252,5000,Cost of Goods Sold,
+253,5000,Cost of Goods Sold,
+254,5000,Cost of Goods Sold,
+255,5300,Subcontractor,Hand Models
+256,5000,Cost of Goods Sold,
+258,5300,Subcontractor,Voice Over
+259,5000,Cost of Goods Sold,Fitting Fees
+260,5000,Cost of Goods Sold,Fitting Fees
+261,5000,Cost of Goods Sold,
+262,5000,Cost of Goods Sold,Audition Fees
+263,5000,Cost of Goods Sold,Audition Fees
+264,5000,Cost of Goods Sold,
+265,5000,Cost of Goods Sold,
+268,5000,Cost of Goods Sold,Talent Wardrobe Allowance
+269,5000,Cost of Goods Sold,
+270,5000,Cost of Goods Sold,
+270.1,5000,Cost of Goods Sold,Fringes
+271,5200,Travel,Per Diems
+272,5200,Travel,Air Fares
+273,5200,Travel,Cabs And Transportations
+274,5000,Cost of Goods Sold,
+275,5000,Cost of Goods Sold,
+276,5000,Cost of Goods Sold,
+276.1,5000,Cost of Goods Sold,Handling Fee
+277,5000,Cost of Goods Sold,
+278,5000,Cost of Goods Sold,
+279,5000,Cost of Goods Sold,
+280,5000,Cost of Goods Sold,
+281,5000,Cost of Goods Sold,
+282,5000,Cost of Goods Sold,
+283,5000,Cost of Goods Sold,
+284,5000,Cost of Goods Sold,
+285,5000,Cost of Goods Sold,
+286,5000,Cost of Goods Sold,
+287,5000,Cost of Goods Sold,
+288,5000,Cost of Goods Sold,
+289,5000,Cost of Goods Sold,
+290,5000,Cost of Goods Sold,
+291,5000,Cost of Goods Sold,
+292,5000,Cost of Goods Sold,
+293,5000,Cost of Goods Sold,
+294,5000,Cost of Goods Sold,
+295,5000,Cost of Goods Sold,
+296,5000,Cost of Goods Sold,
+297,5000,Cost of Goods Sold,
+298,5000,Cost of Goods Sold,
+299,5000,Cost of Goods Sold,
+300,5000,Cost of Goods Sold,
+400,5000,Cost of Goods Sold,
+400.1,5000,Cost of Goods Sold,Handling Fee
+2010,5000,Cost of Goods Sold,File Conversion & Transcoding
+2020,5000,Cost of Goods Sold,Breakdown
+2030,5000,Cost of Goods Sold,Stock Footage Search
+2040,5000,Cost of Goods Sold,Digital Dailies Transfer
+2050,5000,Cost of Goods Sold,Transcription / Translation
+2060,5000,Cost of Goods Sold,
+2070,5000,Cost of Goods Sold,
+2080,5000,Cost of Goods Sold,
+2090,5000,Cost of Goods Sold,
+2110,5000,Cost of Goods Sold,Offline Edit System
+2120,5000,Cost of Goods Sold,Off-Line Graphics System
+2130,5000,Cost of Goods Sold,Data Backup / Restore
+2140,5000,Cost of Goods Sold,Conform
+2150,5000,Cost of Goods Sold,Hi-Res Conform
+2160,5000,Cost of Goods Sold,
+2170,5000,Cost of Goods Sold,
+2180,5000,Cost of Goods Sold,
+2190,5000,Cost of Goods Sold,
+2210,5000,Cost of Goods Sold,Mix Prep
+2220,5000,Cost of Goods Sold,Color Prep
+2230,5000,Cost of Goods Sold,Conform Prep
+2240,5000,Cost of Goods Sold,Graphics Prep
+2250,5000,Cost of Goods Sold,
+2260,5000,Cost of Goods Sold,
+2270,5000,Cost of Goods Sold,
+2280,5000,Cost of Goods Sold,
+2290,5000,Cost of Goods Sold,
+2310,5000,Cost of Goods Sold,Remote Off-Line Edit Suite
+2320,5000,Cost of Goods Sold,Digital Media
+2330,5000,Cost of Goods Sold,Offline Posting
+2340,5000,Cost of Goods Sold,Backup /  Restore
+2350,5000,Cost of Goods Sold,Archiving
+2360,5000,Cost of Goods Sold,
+2370,5000,Cost of Goods Sold,
+2380,5000,Cost of Goods Sold,
+2390,5000,Cost of Goods Sold,
+2410,5200,Travel,Deliveries & Messengers
+2420,5200,Travel,Shipping
+2430,5000,Cost of Goods Sold,Inventory/Packing
+2440,5200,Travel,Shipping to Storage
+2450,5000,Cost of Goods Sold,Shipping to Storage
+2460,5000,Cost of Goods Sold,
+2470,5000,Cost of Goods Sold,
+2480,5000,Cost of Goods Sold,
+2490,5000,Cost of Goods Sold,
+2510,5200,Travel,Airfare
+2520,5200,Travel,Hotel
+2530,5200,Travel,Per Diem
+2540,5200,Travel,Transportation
+2550,5200,Travel,Assistant Editor Travel
+2560,5000,Cost of Goods Sold,Editorial Supplies
+2570,5000,Cost of Goods Sold,Equipment Rental
+2580,5000,Cost of Goods Sold,Working Meals
+2590,5000,Cost of Goods Sold,Weekend Fee
+3010,5000,Cost of Goods Sold,Additional Cleanup
+3020,5000,Cost of Goods Sold,Re-position / Re-composite
+3030,5000,Cost of Goods Sold,Re-animate
+3040,5000,Cost of Goods Sold,Frame Extension
+3050,5000,Cost of Goods Sold,
+3060,5000,Cost of Goods Sold,
+3070,5000,Cost of Goods Sold,
+3080,5000,Cost of Goods Sold,
+3090,5000,Cost of Goods Sold,
+3110,5000,Cost of Goods Sold,Additional Grading
+3120,5000,Cost of Goods Sold,File Versioning / Compression
+3130,5000,Cost of Goods Sold,Reformatting 1 x 1
+3140,5000,Cost of Goods Sold,Reformatting 9 x 16
+3150,5000,Cost of Goods Sold,Reformatting 4 x 3
+3160,5000,Cost of Goods Sold,Reformatting 5 x 4
+3170,5000,Cost of Goods Sold,
+3180,5000,Cost of Goods Sold,
+3190,5000,Cost of Goods Sold,
+3210,5000,Cost of Goods Sold,Reframing 1 x 1
+3220,5000,Cost of Goods Sold,Reframing 9 x 16
+3230,5000,Cost of Goods Sold,Reframing 4 x 3
+3240,5000,Cost of Goods Sold,Reframing 5 x 4
+3250,5000,Cost of Goods Sold,
+3260,5000,Cost of Goods Sold,
+3270,5000,Cost of Goods Sold,
+3280,5000,Cost of Goods Sold,
+3290,5000,Cost of Goods Sold,
+3310,5000,Cost of Goods Sold,Social mixes
+3320,5000,Cost of Goods Sold,Social Music Edits
+3330,5300,Subcontractor,Additional VO Record
+3340,5000,Cost of Goods Sold,
+3350,5000,Cost of Goods Sold,
+3360,5000,Cost of Goods Sold,
+3370,5000,Cost of Goods Sold,
+3380,5000,Cost of Goods Sold,
+3390,5000,Cost of Goods Sold,
+3410,5000,Cost of Goods Sold,Additional Drives
+3420,5000,Cost of Goods Sold,Postings / Digital Delivery / QC
+3430,5000,Cost of Goods Sold,
+3440,5000,Cost of Goods Sold,
+3450,5000,Cost of Goods Sold,
+3460,5000,Cost of Goods Sold,
+3470,5000,Cost of Goods Sold,
+3480,5000,Cost of Goods Sold,
+3490,5000,Cost of Goods Sold,
+3510,5000,Cost of Goods Sold,Additional Drives
+3520,5000,Cost of Goods Sold,Postings / Digital Delivery / QC
+3530,5000,Cost of Goods Sold,
+3540,5000,Cost of Goods Sold,
+3650,5000,Cost of Goods Sold,
+3560,5000,Cost of Goods Sold,
+3570,5000,Cost of Goods Sold,
+3580,5000,Cost of Goods Sold,
+3590,5000,Cost of Goods Sold,
+4010,5000,Cost of Goods Sold,Pre-Load, Encode and Mix Prep
+4020,5000,Cost of Goods Sold,Sound Effects / Music Search
+4030,5000,Cost of Goods Sold,Voice Casting
+4040,5000,Cost of Goods Sold,Transcription / Translation
+4050,5000,Cost of Goods Sold,
+4060,5000,Cost of Goods Sold,
+4070,5000,Cost of Goods Sold,
+4110,5300,Subcontractor,VO Record
+4120,5300,Subcontractor,ADR
+4130,5000,Cost of Goods Sold,5.1 Mix
+4140,5000,Cost of Goods Sold,Other Format Mixing
+4150,5000,Cost of Goods Sold,Record and Mix
+4160,5300,Subcontractor,Scratch Record
+4170,5000,Cost of Goods Sold,Record and Mix  - Overtime
+4180,5000,Cost of Goods Sold,
+4190,5000,Cost of Goods Sold,
+4210,5000,Cost of Goods Sold,Music Licensing (Stock/Original)
+4220,5000,Cost of Goods Sold,Sound Effects
+4230,5000,Cost of Goods Sold,Sound Design
+4240,5000,Cost of Goods Sold,Digital Edit
+4250,5000,Cost of Goods Sold,
+4260,5000,Cost of Goods Sold,
+4270,5000,Cost of Goods Sold,
+4310,5000,Cost of Goods Sold,Remote Studio Costs
+4320,5000,Cost of Goods Sold,Digital Patch: ISDN
+4330,5000,Cost of Goods Sold,Digital Patch: ISDN INT'L
+4340,5000,Cost of Goods Sold,Digital Patch: Source Connect
+4350,5000,Cost of Goods Sold,Digital Patch: Skype / Phone
+4360,5300,Subcontractor,Field Recording
+4370,5000,Cost of Goods Sold,
+4380,5000,Cost of Goods Sold,
+4390,5000,Cost of Goods Sold,
+4410,5000,Cost of Goods Sold,Media
+4420,5000,Cost of Goods Sold,Digital File Creation
+4430,5000,Cost of Goods Sold,Uploads & Machine Room
+4440,5000,Cost of Goods Sold,Archive
+4450,5000,Cost of Goods Sold,Audio Relay
+4460,5000,Cost of Goods Sold,Facility Overtime
+4470,5000,Cost of Goods Sold,Weekend Key Fee
+4480,5000,Cost of Goods Sold,Transfer & Stock
+4490,5000,Cost of Goods Sold,
+4510,5200,Travel,Deliveries & Messengers
+4520,5200,Travel,Shipping
+4530,5000,Cost of Goods Sold,Inventory/Packing
+4540,5200,Travel,Shipping to Storage
+4550,5000,Cost of Goods Sold,
+4610,5000,Cost of Goods Sold,
+4620,5000,Cost of Goods Sold,
+4630,5000,Cost of Goods Sold,
+4640,5000,Cost of Goods Sold,
+4650,5000,Cost of Goods Sold,
+4660,5000,Cost of Goods Sold,
+4670,5000,Cost of Goods Sold,
+4680,5000,Cost of Goods Sold,
+5010,5000,Cost of Goods Sold,Titling
+5020,5000,Cost of Goods Sold,Color Grading
+5030,5000,Cost of Goods Sold,Pre Load/Scanning
+5040,5000,Cost of Goods Sold,Data I/O
+5050,5000,Cost of Goods Sold,Transfers
+5060,5000,Cost of Goods Sold,Remote Set Up
+5070,5000,Cost of Goods Sold,Remote Room
+5080,5000,Cost of Goods Sold,Additional Machines
+5090,5000,Cost of Goods Sold,
+5110,5000,Cost of Goods Sold,Final Conform
+5120,5000,Cost of Goods Sold,Compositing / VFX
+5130,5300,Subcontractor,Flame Assistant - Roto
+5140,5300,Subcontractor,2D GFX / Design
+5150,5300,Subcontractor,Motion Graphics
+5160,5000,Cost of Goods Sold,Color Correction
+5170,5000,Cost of Goods Sold,3D Animation
+5180,5000,Cost of Goods Sold,3D Modeling
+5190,5000,Cost of Goods Sold,
+5210,5000,Cost of Goods Sold,Archiving
+5220,5000,Cost of Goods Sold,Uncompressed Files
+5230,5000,Cost of Goods Sold,Retouching
+5240,5000,Cost of Goods Sold,Standards Conversions
+5250,5000,Cost of Goods Sold,
+5260,5000,Cost of Goods Sold,
+5270,5000,Cost of Goods Sold,
+5280,5000,Cost of Goods Sold,
+5290,5000,Cost of Goods Sold,
+5310,5000,Cost of Goods Sold,Additional Machines
+5320,5000,Cost of Goods Sold,Drives / Media
+5330,5000,Cost of Goods Sold,Generic Master
+5340,5000,Cost of Goods Sold,Master
+5350,5000,Cost of Goods Sold,Deliverables
+5360,5000,Cost of Goods Sold,Additional Outputs
+5370,5000,Cost of Goods Sold,Archiving Storage Device
+5380,5000,Cost of Goods Sold,Compressed File Dubs
+5390,5000,Cost of Goods Sold,Postings
+5410,5200,Travel,Deliveries & Messengers
+5420,5200,Travel,Shipping
+5430,5000,Cost of Goods Sold,Inventory/Packing
+5440,5200,Travel,Shipping to Storage
+5460,5000,Cost of Goods Sold,
+5470,5000,Cost of Goods Sold,
+5480,5000,Cost of Goods Sold,
+5490,5000,Cost of Goods Sold,
+5510,5000,Cost of Goods Sold,
+5520,5000,Cost of Goods Sold,
+5530,5000,Cost of Goods Sold,
+5540,5000,Cost of Goods Sold,
+5550,5000,Cost of Goods Sold,
+5560,5000,Cost of Goods Sold,
+5570,5000,Cost of Goods Sold,
+5580,5000,Cost of Goods Sold,
+5590,5000,Cost of Goods Sold,
+7010,5000,Cost of Goods Sold,Storage Devices
+7020,5000,Cost of Goods Sold,Archiving/LTO
+7030,5000,Cost of Goods Sold,Archive Storage Devices
+7040,5000,Cost of Goods Sold,Tape-to-Film Transfer
+7050,5000,Cost of Goods Sold,Standards Conversion
+7060,5000,Cost of Goods Sold,Stock Footage
+7070,5000,Cost of Goods Sold,Satellite/Digital Transmission
+7080,5000,Cost of Goods Sold,Data Transmission Charge
+7090,5000,Cost of Goods Sold,
+7110,5200,Travel,Deliveries & Messengers
+7120,5200,Travel,Shipping
+7130,5000,Cost of Goods Sold,Inventory/Packing
+7140,5200,Travel,Shipping to Storage
+7150,5000,Cost of Goods Sold,Additional Machines
+7160,5000,Cost of Goods Sold,
+7170,5000,Cost of Goods Sold,
+7180,5000,Cost of Goods Sold,
+7190,5000,Cost of Goods Sold,
+7210,5200,Travel,Airfare
+7220,5200,Travel,Hotel
+7230,5200,Travel,Per Diem
+7240,5200,Travel,Transportation
+7250,5200,Travel,Assistant Editor Travel
+7260,5000,Cost of Goods Sold,
+7270,5000,Cost of Goods Sold,
+7280,5000,Cost of Goods Sold,
+7290,5000,Cost of Goods Sold,
+7310,5000,Cost of Goods Sold,Editorial Supplies
+7320,5000,Cost of Goods Sold,Equipment Rental
+7330,5000,Cost of Goods Sold,Working Meals
+7340,5000,Cost of Goods Sold,Weekend Fee
+7350,5000,Cost of Goods Sold,
+7360,5000,Cost of Goods Sold,
+7370,5000,Cost of Goods Sold,
+8010,5300,Subcontractor,Pre-Production Labor
+8020,5300,Subcontractor,Editor Labor
+8030,5300,Subcontractor,Editor OT/Weekend
+8040,5300,Subcontractor,Assistant Labor
+8050,5300,Subcontractor,Assistant IT/Weekend
+8060,5300,Subcontractor,Session Supervisory Fee
+8070,5300,Subcontractor,Producer / Coordinator
+8080,5300,Subcontractor,Set Supervision
+8090,5000,Cost of Goods Sold,
+8100,5300,Subcontractor,Creative Fees
+8110,5000,Cost of Goods Sold,
+8120,5000,Cost of Goods Sold,
+8130,5000,Cost of Goods Sold,
+8140,5000,Cost of Goods Sold,
+10000,5000,Cost of Goods Sold,VFX
+10000-1,5300,Subcontractor,Visual Effects Artist
+10000-2,5000,Cost of Goods Sold,
+10000-3,5000,Cost of Goods Sold,
+10000-4,5000,Cost of Goods Sold,
+10001,5000,Cost of Goods Sold,Section Title
+10001-1,5000,Cost of Goods Sold,
+10001-2,5000,Cost of Goods Sold,
+10001-3,5000,Cost of Goods Sold,
+10001-4,5000,Cost of Goods Sold,
+10001-5,5000,Cost of Goods Sold,
+10002,5000,Cost of Goods Sold,Section Title
+10002-1,5000,Cost of Goods Sold,
+10002-2,5000,Cost of Goods Sold,
+10002-3,5000,Cost of Goods Sold,
+10002-4,5000,Cost of Goods Sold,
+10002-5,5000,Cost of Goods Sold,
+10003,5000,Cost of Goods Sold,Section Title
+10003-1,5000,Cost of Goods Sold,
+10003-2,5000,Cost of Goods Sold,
+1000-3,5000,Cost of Goods Sold,
+10003-4,5000,Cost of Goods Sold,
+10003-5,5000,Cost of Goods Sold,
+10004,5000,Cost of Goods Sold,Section Title
+10004-1,5000,Cost of Goods Sold,
+10004-2,5000,Cost of Goods Sold,
+10004-3,5000,Cost of Goods Sold,
+10004-4,5000,Cost of Goods Sold,
+10004-5,5000,Cost of Goods Sold,

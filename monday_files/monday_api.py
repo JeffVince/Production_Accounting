@@ -64,7 +64,7 @@ class MondayAPI(metaclass=SingletonMeta):
     def create_subitem(self, parent_item_id: int, subitem_name: str, column_values: dict):
         """Creates a subitem under a parent item."""
         query = '''
-        mutation ($parent_item_id: Int!, $subitem_name: String!, $column_values: JSON!) {
+        mutation ($parent_item_id: ID!, $subitem_name: String!, $column_values: JSON!) {
             create_subitem(parent_item_id: $parent_item_id, item_name: $subitem_name, column_values: $column_values) {
                 id
             }
@@ -93,7 +93,7 @@ class MondayAPI(metaclass=SingletonMeta):
         }
         return self._make_request(query, variables)
 
-    def update_item(self, item_id: str, column_values: dict):
+    def update_item(self, item_id: str, column_values: dict, type="main"):
         """Updates an existing item."""
         query = '''
         mutation ($board_id: ID!, $item_id: ID!, $column_values: JSON!) {
@@ -102,8 +102,16 @@ class MondayAPI(metaclass=SingletonMeta):
             }
         }
         '''
+
+        if type == "main":
+            board_id = self.po_board_id
+        elif type == "subitem":
+            board_id = self.SUBITEM_BOARD_ID
+        else:
+            board_id = self.CONTACT_BOARD_ID
+
         variables = {
-            'board_id': str(self.po_board_id),  # Ensure this is the board ID
+            'board_id': str(board_id),  # Ensure this is the board ID
             'item_id': str(item_id),  # Ensure this is the item ID
             'column_values': column_values  # JSON object with column values
         }
@@ -503,7 +511,7 @@ class MondayAPI(metaclass=SingletonMeta):
         else:
             contact = None
 
-    def fetch_item_by_name(self, name):
+    def fetch_item_by_name(self, name, board='PO'):
         query = '''
         query ($board_id: ID!, $name: String!) {
                   items_page_by_column_values (limit: 1, board_id: $board_id, columns: [{column_id: "name", column_values: [$name]}]) {
@@ -517,8 +525,16 @@ class MondayAPI(metaclass=SingletonMeta):
                   }
                 }
                 }'''
+
+        if board == "PO":
+            board_id = self.po_board_id
+        elif board == "Contacts":
+            board_id = self.CONTACT_BOARD_ID
+        else:
+            board_id = self.SUBITEM_BOARD_ID
+
         variables = {
-            'board_id': int(self.po_board_id),
+            'board_id': int(board_id),
             'name': str(name),
         }
         response = self._make_request(query, variables)
@@ -526,6 +542,7 @@ class MondayAPI(metaclass=SingletonMeta):
         if not len(item) == 1:
             return None
         return item
+
     #🙆‍
     def find_or_create_contact_in_monday(self, name):
         contact = self.fetch_contact_by_name(name)
@@ -541,33 +558,154 @@ class MondayAPI(metaclass=SingletonMeta):
         if len(response_item) == 1:  # item exists
             response_item = response_item[0]
             item["item_pulse_id"] = response_item["id"]
-            if not response_item["name"] == item["Vendor"] and not item["po_type"] == "CC / PC": #if the names don't match for a vendor
+            if not response_item["name"] == item["name"] and not item["po_type"] == "CC" and not item["po_type"] == "PC" : #if the names don't match for a vendor
                 # update name in Monday
-                column_values = self.monday_util.po_column_values_formatter(name=item["Vendor"], contact_pulse_id=item["contact_pulse_id"])
+                column_values = self.monday_util.po_column_values_formatter(name=item["name"], contact_pulse_id=item["contact_pulse_id"])
                 self.update_item(response_item["id"], column_values)
                 return item
             else:
                 return item
         else:  # create item
-            response = self.create_item(self.po_board_id, item["group_id"], item["Vendor"], column_values)
-            item["item_pulse_id"] = response["data"]['create_item']["id"]
+            response = self.create_item(self.po_board_id, item["group_id"], item["name"], column_values)
+            try:
+                item["item_pulse_id"] = response["data"]['create_item']["id"]
+            except Exception as e:
+                self.logger.error(f"Response Error:    {response}")
+                raise e
             return item
+    #👻
+    def find_or_create_sub_item_in_monday(self, sub_item, parent_item):
+        try:
+            # Search for existing sub-items in Monday based on project, PO, Detail Item Number, and parent pulse ID
+            result = self.fetch_subitem_by_project_PO_receipt(
+                parent_item["project_id"],
+                sub_item["PO"],
+                sub_item["item_id"],
+                parent_item["item_pulse_id"]
+            )
 
-    def find_or_create_sub_item_in_monday(self, sub_item, parent_item, column_values):
-        # search for item
-        result =  self.fetch_subitem_by_project_PO_receipt(parent_item["project_id"], sub_item["PO"], sub_item["Detail Item Number"], parent_item["item_pulse_id"])
-        subitems = result['data']['items'][0]['subitems']
-        if len(subitems) > 0:
-            for subitem in subitems:
-                subitem["column_values"] = list_to_dict(subitem["column_values"])
-                if subitem["column_values"]["text0"]["text"] == sub_item["Detail Item Number"]:
-                        sub_item["pulse_id"] = subitem['id']
-                        #IF STATUS IS NOT PAID OR RECONCILED
-                        #UPDATE THE SUBITEM DETAILS
-                        #THEN RETURN THE SUBITEM + PULSE
-                        return sub_item
-        # not found
-                # create
-                #return  subitem + pulse
+            # Validate the response structure
+            if not result.get('data', {}).get('items'):
+                self.logger.error("No items found in the result data.")
+                subitems = []
+            else:
+                subitems = result['data']['items'][0].get('subitems', [])
+
+            if subitems:
+                self.logger.info(f"Found {len(subitems)} subitems for PO {sub_item['PO']}.")
+                match_found = False  # Flag to track if a matching sub-item is found
+
+                for existing_subitem in subitems:
+                    existing_subitem["column_values"] = list_to_dict(existing_subitem["column_values"])
+
+                    # Debug log to inspect subitem details
+                    self.logger.debug(f"Inspecting subitem: {existing_subitem}")
+
+                    # Check if the Detail Item Number matches
+                    if existing_subitem["column_values"][self.monday_util.SUBITEM_ID_COLUMN_ID]["text"] == sub_item["item_id"]:
+                        self.logger.info(
+                            f"Matching subitem found for Detail Item Number {sub_item['item_id']}.")
+                        sub_item["pulse_id"] = existing_subitem["id"]
+
+                        if not sub_item["pulse_id"]:
+                            self.logger.exception("subitem['id'] is missing.")
+                            continue  # Skip updating if 'id' is not present
+
+                        # Check and update status if necessary
+                        status_text = existing_subitem["column_values"][self.monday_util.SUBITEM_STATUS_COLUMN_ID]["text"].strip().lower()
+                        if status_text not in ["paid", "reconciled", "rtp"]:
+                            status = "RTP" if parent_item.get("status") == "RTP" else "PENDING"
+
+                            # Format column values for the update
+                            column_values = self.monday_util.subitem_column_values_formatter(
+                                date=sub_item["date"],
+                                due_date=sub_item["due date"],
+                                account_number=sub_item["account"],
+                                description=sub_item["description"],
+                                rate=sub_item["rate"],
+                                OT=sub_item["OT"],
+                                fringes=sub_item["fringes"],
+                                quantity=sub_item["quantity"],
+                                status=status,
+                                item_number=sub_item["item_id"]
+                            )
+
+                            # Update the sub-item in Monday
+                            update_result = self.update_item(sub_item["pulse_id"], column_values, type="subitem")
+                            self.logger.info(f"Updated subitem {sub_item['pulse_id']} with new column values.")
+
+                        match_found = True
+                        break  # Exit the loop after finding the first matching sub-item
+
+                if not match_found:
+                    self.logger.warning(
+                        f"No matching subitem found for Detail Item Number {sub_item['item_id']}. Creating a new subitem.")
+                    # Proceed to create a new subitem since no match was found
+                    status = "RTP" if parent_item.get("St/Type") == "RTP" else "PENDING"
+
+                    # Format column values for the new sub-item
+                    column_values = self.monday_util.subitem_column_values_formatter(
+                        date=sub_item.get("date"),
+                        due_date=sub_item["due date"],
+                        account_number=sub_item.get("account"),
+                        description=sub_item.get("description"),
+                        rate=sub_item["rate"],
+                        OT=sub_item["OT"],
+                        fringes=sub_item["fringes"],
+                        quantity=sub_item["quantity"],
+                        status=status,
+                        item_number=sub_item.get("item_id")
+                    )
+
+                    # Create the sub-item in Monday
+                    create_result = self.create_subitem(parent_item["item_pulse_id"], sub_item["vendor"],
+                                                        column_values)
+
+                    # Validate the creation result
+                    new_pulse_id = create_result.get('data', {}).get('create_subitem', {}).get('id')
+                    if new_pulse_id:
+                        sub_item["pulse_id"] = new_pulse_id
+                        self.logger.info(f"Created new subitem with pulse_id {sub_item['pulse_id']}.")
+                    else:
+                        self.logger.exception("Failed to create a new subitem. 'id' not found in the response.")
+
+            else:
+                self.logger.info("No existing subitems found. Creating a new subitem.")
+                # No subitems exist; create a new one
+                status = "RTP" if parent_item.get("status") == "RTP" else "PENDING"
+
+                # Format column values for the new sub-item
+                column_values = self.monday_util.subitem_column_values_formatter(
+                    date=sub_item.get("date"),
+                    due_date=sub_item["due date"],
+                    account_number=sub_item.get("account"),
+                    description=sub_item.get("description"),
+                    rate=sub_item["rate"],
+                    OT= sub_item["OT"],
+                    fringes = sub_item["fringes"],
+                    quantity=sub_item["quantity"],
+                    status=status,
+                    item_number=sub_item.get("item_id")
+                )
+
+                # Create the sub-item in Monday
+                create_result = self.create_subitem(parent_item["item_pulse_id"], parent_item["name"], column_values)
+
+                # Validate the creation result
+                new_pulse_id = create_result['data']['create_subitem']['id']
+                if new_pulse_id:
+                    sub_item["pulse_id"] = new_pulse_id
+                    self.logger.info(f"Created new subitem with pulse_id {sub_item['pulse_id']}.")
+                else:
+                    self.logger.exception("Failed to create a new subitem. 'id' not found in the response.")
+
+        except Exception as e:
+            self.logger.exception(f"Exception occurred in find_or_create_sub_item_in_monday: {e}")
+            # Depending on your application's needs, you might want to re-raise the exception or handle it accordingly
+
+        return sub_item
+
+
 
 monday_api = MondayAPI()
+

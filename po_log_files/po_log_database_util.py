@@ -1,7 +1,8 @@
-import json
 import logging
+import re
+from decimal import Decimal, InvalidOperation
 
-
+from dateutil.parser import parser
 from sqlalchemy.exc import IntegrityError
 
 from database.db_util import get_db_session
@@ -10,7 +11,8 @@ from database.models import (
     PurchaseOrder, DetailItem
 )
 from utilities.singleton import SingletonMeta
-
+from dateutil import parser
+from datetime import datetime, timedelta
 
 class PoLogDatabaseUtil(metaclass=SingletonMeta):
     def __init__(self):
@@ -169,12 +171,14 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
         db_item["project_id"] = item['project_id']
         db_item["po_number"] = item['PO']
         db_item["contact_id"] = item['contact_surrogate_id']
-        db_item["description"] = item["Purpose"]
+        db_item["description"] = item["description"]
         db_item["po_type"] = item["po_type"]
         db_item["pulse_id"] = item["item_pulse_id"]
         db_item["state"] = item["contact_status"]
-        if db_item["po_type"] == "CC / PC":
+        if db_item["po_type"] == "CC":
             db_item["description"] = "Credit Card Purchases"
+        if db_item["po_type"] == "PC":
+            db_item["description"] = "Petty Cash Purchases"
         with get_db_session() as session:
             try:
                 # Check if the item already exists in the database - update contact.
@@ -187,10 +191,8 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
                     if not db_item["description"] == "":
                         po_item.description = db_item["description"]
                     session.commit()
-                    result = {
-                        "stats": "Updated",
-                        "po_surrogate_id": po_item.po_surrogate_id
-                    }
+                    item["po_surrogate_id"] = po_item.po_surrogate_id
+                    return item
                 else:  # Create a new record
                     new_item = PurchaseOrder(**db_item)
                     session.add(new_item)
@@ -198,15 +200,14 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
                     self.logger.info(f"Created new Purchase Order: {db_item['project_id']}_{ db_item['po_number']}")
                     po_item = session.query(PurchaseOrder).filter_by(po_number=db_item['po_number'],
                                                                      project_id=db_item['project_id']).one_or_none()
-                    item["contact_surrogate_id"] = po_item.po_surrogate_id
+                    item["po_surrogate_id"] = po_item.po_surrogate_id
                     return item
             except Exception as e:
                 session.rollback()
                 self.logger.error(f"Error processing PurchaseOrder in DB: {e}")
                 return None
 
-
-    def create_or_update_sub_item_in_db(self, item_data):
+    def create_or_update_sub_item_in_db(self, item):
         """
         Creates or updates a subitem record in the database.
 
@@ -216,42 +217,102 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
         Returns:
             dict: Status message indicating success, creation, or failure.
         """
-        pulse_id = item_data.get("pulse_id")
+        db_item = {}
+        db_item["quantity"] = 1
+        db_item["payment_type"] = item["payment_type"]
+        db_item["description"] = item["description"]
+        db_item["parent_pulse_id"] = item["parent_pulse_id"]
+        db_item["detail_item_number"] = item["item_id"]
+        db_item["pulse_id"] = item["pulse_id"]
+        db_item["parent_surrogate_id"] = item["po_surrogate_id"]
+        db_item["ot"] = item["OT"]
+        db_item["fringes"] = item["fringes"]
+        db_item["vendor"] = item["vendor"]
+        if item["parent_status"] == "RTP":
+            db_item["state"] = "RTP"
+        else:
+            db_item["state"] = "PENDING"
+
+        rate = item["rate"]
+        #region RATE CLEANER
+        try:
+            # Clean the rate: remove commas, strip whitespace, and convert to Decimal
+            cleaned_rate = Decimal(str(rate).replace(',', '').strip())
+            db_item["rate"] = float(cleaned_rate)  # Convert to float if required
+        except (ValueError, InvalidOperation) as e:
+            self.logger.error(f"Invalid rate value '{rate}': {e}")
+            db_item["rate"]  = None
+        #endregion
+
+        date =  item["date"]
+        #region DATE CLEANER
+        try:
+            # Check if `date` is a valid non-empty string
+            if isinstance(date, str) and date.strip():
+                # Parse and format the `date` to ensure it's in 'YYYY-MM-DD'
+                parsed_date = parser.parse(date.strip())
+                formatted_date = parsed_date.strftime('%Y-%m-%d')
+                db_item["transaction_date"] = formatted_date
+                if item["payment_type"] == "CRD":
+                    db_item["due_date"] = formatted_date
+                else:
+                    # Ensure due_date is 30 days after the parsed and formatted date
+                    due_date = (parsed_date + timedelta(days=30)).strftime('%Y-%m-%d')
+                    db_item["due_date"] = due_date
+            else:
+                raise ValueError(f"Invalid date value: {date}")
+        except Exception as e:
+            self.logger.error(f"Error parsing and formatting date '{date}': {e}")
+        #endregion
+
+        account_number = item["account"]
+        #region ACCOUNT CLEANER
+        try:
+            # Clean and extract only numeric parts from the account number
+            cleaned_account_number = re.sub(r'[^\d]', '', str(account_number).strip())
+            # Convert the cleaned value to an integer
+            if cleaned_account_number:
+                db_item["account_number"] = int(cleaned_account_number)
+            else:
+                raise ValueError(f"Account number '{account_number}' resulted in an empty value after cleaning.")
+        except (ValueError, TypeError) as e:
+            self.logger.error(f"Invalid account number value '{account_number}': {e}")
+            db_item["account_number"] = None
+        #endregion
 
         with get_db_session() as session:
             try:
                 # Check if detail item exists
-                detail_item = session.query(DetailItem).filter_by(pulse_id=pulse_id).one_or_none()
+                detail_item = session.query(DetailItem).filter_by(parent_surrogate_id=item["po_surrogate_id"], detail_item_number = item["item_id"]).one_or_none()
                 # If exists, update it
                 if detail_item:
-                    for db_field, value in item_data.items():
+                    for db_field, value in item.items():
                         if value is not None:
                             setattr(detail_item, db_field, value)
                     session.commit()
-                    self.logger.debug(f"Updated existing DetailItem with pulse_id: {pulse_id}")
-                    return {
-                        "status": "Updated",
-                    }
+                    self.logger.debug(f"Updated existing DetailItem: {item['vendor']}")
                 else:
                     # Create a new DetailItem
-                    new_detail_item = DetailItem(**item_data)
+                    new_detail_item = DetailItem(**db_item)
                     session.add(new_detail_item)
                     session.commit()
                     self.logger.info(
-                        f"Created new DetailItem with pulse_id: {pulse_id}, surrogate_id: {new_detail_item.detail_item_surrogate_id}")
-                    return {
-                        "status": "Created",
-                    }
+                        f"Created new DetailItem: {item['vendor']}, surrogate_id: {new_detail_item.detail_item_surrogate_id}")
+
+                detail_item = session.query(DetailItem).filter_by(parent_surrogate_id=item["po_surrogate_id"], detail_item_number = item["item_id"]).one_or_none()
+                item["detail_item_surrogate_id"] = detail_item.detail_item_surrogate_id
+                return item
+
             except IntegrityError as ie:
                 session.rollback()
-                self.logger.error(f"IntegrityError processing DetailItem in DB: {ie}")
+                self.logger.exception(f"IntegrityError processing DetailItem in DB: {ie}")
                 return {
                     "status": "Fail",
                     "error": str(ie)
                 }
             except Exception as e:
                 session.rollback()
-                self.logger.error(f"Error processing DetailItem in DB: {e}")
+                self.logger.exception(f"Error processing DetailItem in DB: {e}")
                 return {
                     "status": "Fail",
                     "error": str(e)
@@ -268,7 +329,7 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
             str: Status message indicating success, creation, or failure.
         """
         db_item = {}
-        db_item["name"] = item["Vendor"]
+        db_item["name"] = item["name"]
         db_item["vendor_status"] = item["contact_status"]
         db_item["payment_details"] = item["contact_payment_details"]
         db_item["pulse_id"] = item["contact_pulse_id"]
@@ -285,10 +346,15 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
 
         with get_db_session() as session:
             try:
-                if item["po_type"] == "CC / PC":
+                if item["po_type"] == "CC":
                     cc_item = session.query(Contact).filter_by(name="Company Credit Card").one_or_none()
-                    status = cc_item.contact_surrogate_id
-                    return status
+                    item["contact_surrogate_id"] = cc_item.contact_surrogate_id
+                    return item
+                elif item["po_type"] == "PC":
+                    pc_item = session.query(Contact).filter_by(name="PETTY CASH").one_or_none()
+                    item["contact_surrogate_id"] = pc_item.contact_surrogate_id
+                    return item
+
                 # Check if the contact already exists in the database
                 contact_item = session.query(Contact).filter_by(pulse_id=db_item["pulse_id"]).one_or_none()
                 if contact_item:
@@ -296,8 +362,8 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
                         setattr(contact_item, key, value)
                     session.commit()
                     self.logger.info(f"Existing Contact with name: {db_item['name']}")
-                    status = contact_item.contact_surrogate_id
-                    return status
+                    item["contact_surrogate_id"] = contact_item.contact_surrogate_id
+                    return item
                 else:  # Create a new record
                     new_contact = Contact(**db_item)
                     session.add(new_contact)
@@ -305,8 +371,8 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
                     # Commit the transaction
                     session.commit()
                     contact_item = session.query(Contact).filter_by(name=db_item['name']).one_or_none()
-                    status =contact_item.contact_surrogate_id
-                    return status
+                    item["contact_surrogate_id"] =contact_item.contact_surrogate_id
+                    return item
             except Exception as e:
                 session.rollback()
                 self.logger.error(f"Error processing Contact in DB: {e}")
@@ -314,8 +380,47 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
 
     # --------------------- READ  -------------------
 
-    def fetch_po_by_id(self, po_surrogate_id):
-        print("test")
+    def fetch_po_by_id(self, project_id):
+        from sqlalchemy.sql import text
+        from flask import jsonify
+
+        with get_db_session() as session:
+            try:
+                # Execute a raw SQL query against the view
+                result = session.execute(text("""
+                    SELECT 
+                        `Contact Name`,
+                        `Project ID`,
+                        `PO #`,
+                        `Description`,
+                        `Tax Form Link Exists`,
+                        `Total Amount`,
+                        `PO Status`,
+                        `Payment Details`,
+                        `Folder Link Exists`,
+                        `Contact Email`,
+                        `Contact Phone`,
+                        `Contact SSN`
+                    FROM `virtual_pm`.`vw_purchase_order_summary`
+                    WHERE `Project ID` = :project_id
+                """), {"project_id": project_id})
+
+                rows = result.fetchall()
+
+                objects_as_dict = []
+                for row in rows:
+                    # row is a Row object from SQLAlchemy
+                    # Use row._mapping which returns a dictionary-like object
+                    row_dict = dict(row._mapping)
+                    objects_as_dict.append(row_dict)
+
+                return jsonify(objects_as_dict)
+
+            except Exception as e:
+                self.logger.error(f"Error retrieving objects from view for project_id {project_id}: {e}")
+                resp = jsonify({"error": "Could not retrieve objects"})
+                resp.status_code = 500
+                return resp
 
     def fetch_detail_by_id(self, detail_surrogate_id):
         print("test")

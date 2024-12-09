@@ -12,7 +12,8 @@ class Config:
 
     USE_TEMP = True
     SKIP_MAIN = False
-    USE_LOCAL = False
+    USE_LOCAL = True
+    APP_DEBUG = True
 
     # WEBHOOK PORTS
     DROPBOX_WEBHOOK_PORT = 5001

@@ -8,13 +8,14 @@ import pytesseract
 from pdf2image import convert_from_path
 
 from config import Config
+from db_util import initialize_database
 from monday_files.monday_api import monday_api
 from monday_files.monday_util import monday_util
 from po_log_files.po_log_database_util import po_log_database_util
 from dropbox_files.dropbox_client import dropbox_client
 from monday_files.monday_service import monday_service
 from dropbox_files.dropbox_util import dropbox_util
-from po_log_files.po_log_processor import po_log_processor
+from po_log_files.po_log_processor import POLogProcessor
 from utilities.singleton import SingletonMeta
 import logging
 
@@ -29,7 +30,7 @@ class DropboxService(metaclass=SingletonMeta):
             # import monday service
             self.monday_service = monday_service
             self.dropbox_client = dropbox_client
-            self.po_log_processor = po_log_processor
+            self.po_log_processor = POLogProcessor()
             self.dropbox_util = dropbox_util
             self.monday_api = monday_api
             self.monday_util = monday_util
@@ -82,10 +83,10 @@ class DropboxService(metaclass=SingletonMeta):
             return None
 
         except Exception as e:
-            self.logger.error(f"Error determining file type for {filename}: {e}", exc_info=True)
+            self.logger.exception( f"Error determining file type for {filename}: {e}", exc_info=True)
             return None
 
-    def process_po_log(self, path, project_id):
+    def process_po_log(self, path):
         """
         Process a PO Log file.
 
@@ -93,9 +94,9 @@ class DropboxService(metaclass=SingletonMeta):
             path (str): The Dropbox path to the PO Log file.
             project_id (str): The Project ID extracted from the filename.
         """
-        temp_file_path = f"temp_{os.path.basename(path)}"
+        temp_file_path = f"./temp_files/{os.path.basename(path)}"
         self.logger.debug(f"Opening {temp_file_path}")
-
+        project_id = self.extract_project_id(temp_file_path)
         try:
             if not self.config.USE_TEMP:  # 🙆‍
                 self.logger.info(
@@ -112,71 +113,54 @@ class DropboxService(metaclass=SingletonMeta):
                         temp_file.write(file_content)
                         self.logger.info(f"Temporary file created for processing: {temp_file_path}")
                 except Exception as e:
-                    self.logger.error(f"Failed to download or save file from Dropbox: {e}")
+                    self.logger.exception( f"Failed to download or save file from Dropbox: {e}")
                     return
 
             try:
                 # PO_LOG GET LISTS
-                main_items = self.po_log_processor.parse_po_log_main_items(temp_file_path)
-                detail_items = self.po_log_processor.parse_po_log_sub_items(temp_file_path)
-                contacts = self.po_log_processor.get_contacts_list(main_items, detail_items)
+                main_items, detail_items, contacts = self.po_log_processor.parse_showbiz_po_log(temp_file_path)
                 group_id = self.monday_api.fetch_group_ID(project_id)
-
-                # Filter POs by contacts list
-                filtered_items = []
-                for item in main_items:
-                    item["group_id"] = group_id
-                    if not "PLACEHOLDER" in item["Vendor"]:
-                        crd = False
-                        for detail in detail_items:
-                            if item.get("PO") == detail.get("PO"):
-                                if detail.get("Payment Type") == "CRD":
-                                    crd = True
-                        if not crd:
-                            item['po_type'] = 'VENDOR'
-                            item['vendor_status'] = 'PENDING'
-                        else:
-                            item['po_type'] = 'CC / PC'
-                            item['vendor_status'] = 'APPROVED'
-                        filtered_items.append(item)
-
-                self.logger.debug(f"Parsed PO Log main items: {main_items}")
-                self.logger.debug(f"Parsed PO Log detail items: {detail_items}")
-                self.logger.debug(f"Extracted contacts: {contacts}")
             except Exception as e:
-                self.logger.error(f"Failed to parse PO Log: {e}")
+                self.logger.exception( f"Failed to parse PO Log: {e}")
                 return
 
             if not self.config.SKIP_MAIN:  # 🙆‍
                 try:
-                    # PO_LOG BEGIN PROCESSING THE CLEANED ITEMS
-                    for item in filtered_items:
-                        item['project_id'] = project_id
+                    for item in main_items:
+                        item["group_id"] = group_id
+
+                    # PO_LOG BEGIN PROCESSING CONTACTS
                         # MONDAY FIND OR CREATE CONTACT IN MONDAY
                         item = self.populate_contact_details(item)
                         # DB FIND OR CREATE CONTACT IN DB
-                        item["contact_surrogate_id"] = self.po_log_database_util.find_or_create_contact_item_in_db(item)
+                        item = self.po_log_database_util.find_or_create_contact_item_in_db(item)
+
+                    # PO_LOG  BEGIN PROCESSING ITEMS
                         # MONDAY find or create item in MONDAY
-                        column_values = self.monday_util.po_column_values_formatter(
-                            project_id=item["project_id"],
-                            po_number=item["PO"],
-                            description=item["Purpose"],
-                            contact_pulse_id=item["contact_pulse_id"],
-                            status=item["vendor_status"]
-                        )
+                        column_values = self.monday_util.po_column_values_formatter(project_id=item["project_id"], po_number=item["PO"], description=item["description"], contact_pulse_id=item["contact_pulse_id"], status=item["contact_status"] )
                         item = self.monday_api.find_or_create_item_in_monday(item, column_values)
+
                         # DB find or create item in DB
                         result = self.po_log_database_util.create_or_update_main_item_in_db(item)
 
+                    #PO_LOG  BEGIN PROCESSING SUBITEMS
                         for sub_item in detail_items:
-                            if sub_item["PO"] == item["PO"]:
-                                # MONDAY FIND OR CREATE DETAIL ITEM IN MONDAY
-                                sub_item = self.monday_api.find_or_create_sub_item_in_monday(sub_item, item, column_values)
-                                # DB FIND OR CREATE DETAIL ITEM IN DB
-                                self.po_log_database_util.create_or_update_detail_item_in_db(item)
+                            if sub_item:
+                                if sub_item["PO"] == item["PO"]:
+
+                                    #PRE PROCESSING
+                                    sub_item["po_surrogate_id"] = item["po_surrogate_id"]
+                                    sub_item["parent_status"] = item["status"]
+
+                                    # MONDAY FIND OR CREATE DETAIL ITEM IN MONDAY
+                                    sub_item = self.monday_api.find_or_create_sub_item_in_monday(sub_item, item)
+                                    # DB FIND OR CREATE DETAIL ITEM IN DB
+                                    sub_item["parent_pulse_id"] = item["item_pulse_id"]
+                                    self.po_log_database_util.create_or_update_sub_item_in_db(sub_item)
+
 
                 except Exception as e:
-                    self.logger.error(f"Failed to process items: {e}")
+                    self.logger.exception( f"Failed to process items: {e}")
                     return
             if not self.config.USE_TEMP:
                 try:
@@ -263,12 +247,11 @@ class DropboxService(metaclass=SingletonMeta):
                     self.logger.info(
                         f"Successfully linked PO '{po_number}' with Contact '{contact_surrogate_id}' in Monday.com.")
                 else:
-                    self.logger.error(
-                        f"Failed to link PO '{po_number}' with Contact '{contact_surrogate_id}' in Monday.com.")
+                    self.logger.warning(f"Failed to link PO '{po_number}' with Contact '{contact_surrogate_id}' in Monday.com.")
 
             self.logger.info("Completed synchronization with Monday.com")
         except Exception as parse_error:
-            self.logger.error(f"Error processing contacts: {parse_error}", exc_info=True)
+            self.logger.exception( f"Error processing contacts: {parse_error}", exc_info=True)
             raise
 
     def extract_receipt_info_with_openai_from_file(self, dropbox_path):
@@ -431,7 +414,7 @@ class DropboxService(metaclass=SingletonMeta):
             logging.debug(f"Extracted text from image '{file_path}' using OCR.")
             return text
         except Exception as e:
-            self.logger.error(f"Error extracting text with OCR from '{file_path}': {e}", exc_info=True)
+            self.logger.exception( f"Error extracting text with OCR from '{file_path}': {e}", exc_info=True)
             return ""
 
     def populate_contact_details(self, item):
@@ -442,14 +425,11 @@ class DropboxService(metaclass=SingletonMeta):
             item (dict): The item dictionary to populate.
         """
 
-        if item.get("po_type") == "VENDOR":
-            contact_name = item.get("Vendor")
-        else:
-            contact_name = "Company Credit Card"
-
         # Find or create contact in Monday
-        monday_contact_result = self.monday_api.find_or_create_contact_in_monday(contact_name)
-        self.logger.debug(f"Monday Contact Result: {monday_contact_result}")
+        if "placeholder" in item["name"].lower():
+            item["name"] = "PLACEHOLDER"
+
+        monday_contact_result = self.monday_api.find_or_create_contact_in_monday(item["name"])
 
         # Initialize dictionaries to hold processed column values
         column_values = {}
@@ -510,4 +490,43 @@ class DropboxService(metaclass=SingletonMeta):
 
         return item
 
+    def extract_project_id(self, file_name: str) -> str:
+        """
+        Extracts the project_id from the given file name.
+        The project_id is defined as the last four digits in the file name.
+
+        Args:
+            file_name (str): The name of the file (e.g., 'temp_2416.txt').
+
+        Returns:
+            str: The extracted project_id (e.g., '2416').
+
+        Raises:
+            ValueError: If fewer than four digits are found in the file name.
+        """
+        # Find all sequences of digits in the file name
+        digit_sequences = re.findall(r'\d+', file_name)
+
+        if not digit_sequences:
+            raise ValueError(f"No digits found in file name: '{file_name}'")
+
+        # Concatenate all digit sequences into a single string
+        all_digits = ''.join(digit_sequences)
+
+        if len(all_digits) < 4:
+            raise ValueError(f"File name '{file_name}' does not contain at least four digits for project_id.")
+
+        # Extract the last four digits as project_id
+        project_id = all_digits[-4:]
+
+        return project_id
+
+
 dropbox_service = DropboxService()
+
+
+#TESTING
+#path = "/temp_files/temp_2416.txt"
+#result = dropbox_service.process_po_log(path)
+
+#print(dropbox_service.populate_contact_details(item={"name": "Dwane Harris"}))
