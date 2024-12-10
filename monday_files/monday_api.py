@@ -1,7 +1,7 @@
 # monday_files/monday_api.py
 import json
 import logging
-
+import time
 from dotenv import load_dotenv
 import requests
 
@@ -14,8 +14,17 @@ from monday_files.monday_util import monday_util
 
 load_dotenv()
 
+# region 🔧 Configuration and Constants
+# =====================================
+# Emojis and structured comments have been added to improve readability and highlight key sections.
+
+MAX_RETRIES = 3  # 🔄 Number of retries for transient errors
+RETRY_BACKOFF_FACTOR = 2  # 🔄 Exponential backoff factor for retries
+# endregion
 
 class MondayAPI(metaclass=SingletonMeta):
+    # region 🚀 Initialization
+    # ============================================================
     def __init__(self):
         if not hasattr(self, '_initialized'):
             # Setup logging and get the configured logger
@@ -30,19 +39,107 @@ class MondayAPI(metaclass=SingletonMeta):
             self.project_id_column = self.monday_util.PO_PROJECT_ID_COLUMN
             self.po_number_column = self.monday_util.PO_NUMBER_COLUMN
             self.CONTACT_BOARD_ID = self.monday_util.CONTACT_BOARD_ID
-            self.logger.info("Monday API  initialized")
+            self.logger.info("Monday API initialized 🏗️")
             self._initialized = True
+    # endregion
 
-
+    # region 🛡️ Request Handling with Complexity & Rate Limits
+    # =========================================================
     def _make_request(self, query: str, variables: dict = None):
+        """
+        Execute a GraphQL request against the Monday.com API with complexity and retry logic.
+        Ensures that complexity is queried, handles transient errors, and respects rate limits.
+
+        Returns JSON response as before.
+        """
+        # Ensure complexity query is included
+        if "complexity" not in query:
+            # Insert complexity block right after the first '{' after 'query' or 'mutation'
+            # This will give us complexity info on every request.
+            insertion_index = query.find('{', query.find('query') if 'query' in query else query.find('mutation'))
+            if insertion_index != -1:
+                query = query[:insertion_index+1] + " complexity { query before after } " + query[insertion_index+1:]
+
         headers = {"Authorization": self.api_token}
-        response = requests.post(
-            self.api_url,
-            json={'query': query, 'variables': variables},
-            headers=headers
-        )
-        response.raise_for_status()
-        return response.json()
+        attempt = 0
+
+        while attempt < MAX_RETRIES:
+            try:
+                response = requests.post(
+                    self.api_url,
+                    json={'query': query, 'variables': variables},
+                    headers=headers,
+                    timeout=10
+                )
+                response.raise_for_status()
+                data = response.json()
+
+                if "errors" in data:
+                    self._handle_graphql_errors(data["errors"])
+
+                self._log_complexity(data)
+                return data
+
+            except requests.exceptions.ConnectionError as ce:
+                self.logger.warning(
+                    f"⚠️ Connection error: {ce}. Attempt {attempt+1}/{MAX_RETRIES}. Retrying..."
+                )
+                time.sleep(RETRY_BACKOFF_FACTOR ** (attempt+1))
+                attempt += 1
+            except requests.exceptions.HTTPError as he:
+                self.logger.error(f"❌ HTTP error: {he}")
+                if response.status_code == 429:
+                    # Rate limit hit
+                    retry_after = response.headers.get("Retry-After", 10)
+                    self.logger.warning(f"🔄 Rate limit hit. Waiting {retry_after} seconds before retry.")
+                    time.sleep(int(retry_after))
+                    attempt += 1
+                else:
+                    raise
+            except Exception as e:
+                self.logger.error(f"❌ Unexpected exception: {e}")
+                raise
+
+        self.logger.error("❌ Max retries reached without success.")
+        raise ConnectionError("Failed to complete request after multiple retries.")
+
+    def _handle_graphql_errors(self, errors):
+        """
+        Handle GraphQL-level errors returned by Monday.com.
+        """
+        for error in errors:
+            message = error.get("message", "")
+            if "ComplexityException" in message:
+                self.logger.error("💥 Complexity limit reached!")
+                raise Exception("ComplexityException")
+            elif "DAILY_LIMIT_EXCEEDED" in message:
+                self.logger.error("💥 Daily limit exceeded!")
+                raise Exception("DAILY_LIMIT_EXCEEDED")
+            elif "Minute limit rate exceeded" in message:
+                self.logger.warning("⌛ Minute limit exceeded! Waiting before retry...")
+                raise Exception("Minute limit exceeded")
+            elif "Concurrency limit exceeded" in message:
+                self.logger.warning("🕑 Concurrency limit exceeded!")
+                raise Exception("Concurrency limit exceeded")
+            else:
+                self.logger.error(f"💥 GraphQL error: {message}")
+                raise Exception(message)
+
+    def _log_complexity(self, data):
+        """
+        Log complexity information if available.
+        """
+        complexity = data.get("data", {}).get("complexity", {})
+        if complexity:
+            query_complexity = complexity.get("query")
+            before = complexity.get("before")
+            after = complexity.get("after")
+            self.logger.info(f"🔎 Complexity: query={query_complexity}, before={before}, after={after}")
+    # endregion
+
+    # region ✨ CRUD Operations and Fetch Methods
+    # =========================================================
+    # All methods below return the same structure as before.
 
     def create_item(self, board_id: int, group_id: str, name: str, column_values: dict):
         """Creates a new item on a board."""
@@ -111,28 +208,25 @@ class MondayAPI(metaclass=SingletonMeta):
             board_id = self.CONTACT_BOARD_ID
 
         variables = {
-            'board_id': str(board_id),  # Ensure this is the board ID
-            'item_id': str(item_id),  # Ensure this is the item ID
-            'column_values': column_values  # JSON object with column values
+            'board_id': str(board_id),
+            'item_id': str(item_id),
+            'column_values': column_values
         }
         return self._make_request(query, variables)
 
     def fetch_all_items(self, board_id, limit=50):
         """
         Fetch all items from a Monday.com board using cursor-based pagination.
-
-        :param board_id: The ID of the board to fetch items from.
-        :param limit: Number of items to fetch per request (maximum is 500).
-        :return: List of all items from the board.
+        Returns a list of items, unchanged.
         """
         all_items = []
         cursor = None
 
         while True:
             if cursor:
-                # Use next_items_page for subsequent requests
                 query = """
                 query ($cursor: String!, $limit: Int!) {
+                    complexity { query before after }
                     next_items_page(cursor: $cursor, limit: $limit) {
                         cursor
                         items {
@@ -152,27 +246,27 @@ class MondayAPI(metaclass=SingletonMeta):
                     'limit': limit
                 }
             else:
-                # Use items_page for the initial request
                 query = """
                 query ($board_id: [ID!]!, $limit: Int!) {
-                        boards(ids: $board_id) {
-                            items_page(limit: $limit) {
-                                cursor
-                                items {
+                    complexity { query before after }
+                    boards(ids: $board_id) {
+                        items_page(limit: $limit) {
+                            cursor
+                            items {
+                                id
+                                name
+                                column_values {
                                     id
-                                    name
-                                    column_values {
-                                        id
-                                        text
-                                        value
-                                    }
+                                    text
+                                    value
                                 }
                             }
                         }
                     }
+                }
                 """
                 variables = {
-                    'board_id': str(board_id),  # Ensure the board_id is a string
+                    'board_id': str(board_id),
                     'limit': limit
                 }
 
@@ -193,11 +287,8 @@ class MondayAPI(metaclass=SingletonMeta):
 
             items = items_data.get('items', [])
             all_items.extend(items)
-
-            # Extract the next cursor
             cursor = items_data.get('cursor')
 
-            # If there's no cursor, we've fetched all items
             if not cursor:
                 break
 
@@ -207,24 +298,47 @@ class MondayAPI(metaclass=SingletonMeta):
 
     def fetch_all_sub_items(self, limit=100):
         """
-            Fetch all items from a Monday.com board using cursor-based pagination,
-            excluding sub-items with a parent_item of None.
-
-            :param board_id: The ID of the board to fetch items from.
-            :param limit: Number of items to fetch per request (maximum is 500).
-            :return: List of all items from the board with valid parent items.
-            """
+        Fetch all subitems from the subitem board, filtering out those without a parent.
+        Returns the list of valid items as before.
+        """
         all_items = []
         cursor = None
 
         while True:
             if cursor:
-                # Use next_items_page for subsequent requests
                 query = """
-                    query ($cursor: String!, $limit: Int!) {
-                        next_items_page(cursor: $cursor, limit: $limit) {
+                query ($cursor: String!, $limit: Int!) {
+                    complexity { query before after }
+                    next_items_page(cursor: $cursor, limit: $limit) {
+                        cursor
+                        items  {
+                            id
+                            name
+                            parent_item {
+                                id
+                                name
+                            }
+                            column_values {
+                                id
+                                text
+                                value
+                            }
+                        }
+                    }
+                }
+                """
+                variables = {
+                    'cursor': cursor,
+                    'limit': limit
+                }
+            else:
+                query = """
+                query ($board_id: [ID!]!, $limit: Int!) {
+                    complexity { query before after }
+                    boards(ids: $board_id) {
+                        items_page(limit: $limit) {
                             cursor
-                            items  {
+                            items {
                                 id
                                 name
                                 parent_item {
@@ -239,37 +353,10 @@ class MondayAPI(metaclass=SingletonMeta):
                             }
                         }
                     }
-                    """
-                variables = {
-                    'cursor': cursor,
-                    'limit': limit
                 }
-            else:
-                # Use items_page for the initial request
-                query = """
-                    query ($board_id: [ID!]!, $limit: Int!) {
-                        boards(ids: $board_id) {
-                            items_page(limit: $limit) {
-                                cursor
-                                items {
-                                    id
-                                    name
-                                    parent_item {
-                                        id
-                                        name
-                                    }
-                                    column_values {
-                                        id
-                                        text
-                                        value
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    """
+                """
                 variables = {
-                    'board_id': str(self.SUBITEM_BOARD_ID),  # Ensure the board_id is a string
+                    'board_id': str(self.SUBITEM_BOARD_ID),
                     'limit': limit
                 }
 
@@ -290,16 +377,11 @@ class MondayAPI(metaclass=SingletonMeta):
                 items_data = boards_data[0].get('items_page', {})
 
             items = items_data.get('items', [])
-
-            # Filter out items with parent_item as None
             valid_items = [item for item in items if item.get('parent_item') is not None]
 
             all_items.extend(valid_items)
-
-            # Extract the next cursor
             cursor = items_data.get('cursor')
 
-            # If there's no cursor, we've fetched all items
             if not cursor:
                 break
 
@@ -309,20 +391,16 @@ class MondayAPI(metaclass=SingletonMeta):
 
     def fetch_all_contacts(self, board_id: object, limit: object = 150) -> object:
         """
-        Fetch all items from a Monday.com board using cursor-based pagination.
-
-        :param board_id: The ID of the board to fetch items from.
-        :param limit: Number of items to fetch per request (maximum is 500).
-        :return: List of all items from the board.
+        Fetch all contacts from a given board, returns the list of items as before.
         """
         all_items = []
         cursor = None
 
         while True:
             if cursor:
-                # Use next_items_page for subsequent requests
                 query = """
                 query ($cursor: String!, $limit: Int!) {
+                    complexity { query before after }
                     next_items_page(cursor: $cursor, limit: $limit) {
                         cursor
                         items {
@@ -342,27 +420,27 @@ class MondayAPI(metaclass=SingletonMeta):
                     'limit': limit
                 }
             else:
-                # Use items_page for the initial request
                 query = """
                 query ($board_id: [ID!]!, $limit: Int!) {
-                        boards(ids: $board_id) {
-                            items_page(limit: $limit) {
-                                cursor
-                                items {
+                    complexity { query before after }
+                    boards(ids: $board_id) {
+                        items_page(limit: $limit) {
+                            cursor
+                            items {
+                                id
+                                name
+                                column_values {
                                     id
-                                    name
-                                    column_values {
-                                        id
-                                        text
-                                        value
-                                    }
+                                    text
+                                    value
                                 }
                             }
                         }
                     }
+                }
                 """
                 variables = {
-                    'board_id': str(board_id),  # Ensure the board_id is a string
+                    'board_id': str(board_id),
                     'limit': limit
                 }
 
@@ -383,11 +461,8 @@ class MondayAPI(metaclass=SingletonMeta):
 
             items = items_data.get('items', [])
             all_items.extend(items)
-
-            # Extract the next cursor
             cursor = items_data.get('cursor')
 
-            # If there's no cursor, we've fetched all items
             if not cursor:
                 break
 
@@ -399,6 +474,7 @@ class MondayAPI(metaclass=SingletonMeta):
         try:
             query = '''query ( $ID: ID!)
                             {
+                                complexity { query before after }
                                 items (ids: [$ID]) {
                                     id,
                                     name,
@@ -418,7 +494,7 @@ class MondayAPI(metaclass=SingletonMeta):
             }
             response = self._make_request(query, variables)
             items = response['data']["items"]
-            if  len(items) == 0:
+            if len(items) == 0:
                 return None
             return items[0]
         except (TypeError, IndexError, KeyError) as e:
@@ -427,14 +503,15 @@ class MondayAPI(metaclass=SingletonMeta):
 
     def fetch_group_ID(self, project_id):
         query = f'''
-                    query {{
-              boards (ids: {self.po_board_id}) {{
+        query {{
+            complexity {{ query before after }}
+            boards (ids: {self.po_board_id}) {{
                 groups {{
                   title
                   id
                 }}
-              }}
             }}
+        }}
         '''
         response = self._make_request(query, {})
         groups = response["data"]["boards"][0]["groups"]
@@ -446,17 +523,18 @@ class MondayAPI(metaclass=SingletonMeta):
     def fetch_item_by_po_and_project(self, project_id, po_number):
         query = '''
         query ($board_id: ID!, $po_number: String!, $project_id: String!, $project_id_column: String!, $po_column: String!) {
-                  items_page_by_column_values (limit: 1, board_id: $board_id, columns: [{column_id: $project_id_column, column_values: [$project_id]}, {column_id: $po_column, column_values: [$po_number]}]) {
-                    items {
-                      id
-                      name
-                    column_values {
-                        id
-                        value
-                    }
-                    }
+            complexity { query before after }
+            items_page_by_column_values (limit: 1, board_id: $board_id, columns: [{column_id: $project_id_column, column_values: [$project_id]}, {column_id: $po_column, column_values: [$po_number]}]) {
+                items {
+                  id
+                  name
+                  column_values {
+                    id
+                    value
                   }
-                }'''
+                }
+            }
+        }'''
         variables = {
             'board_id': int(self.po_board_id),
             'po_number': str(po_number),
@@ -468,18 +546,19 @@ class MondayAPI(metaclass=SingletonMeta):
 
     def fetch_subitem_by_project_PO_receipt(self, project_id, po_number, receipt_number, parent_pulse_id):
         query = '''
-                        query ($ID: ID!) {
-                                  items (ids: [$ID]) {
-                                    subitems {
-                                      id
-                                      column_values {
-                                        id
-                                        value
-                                        text
-                                      }
-                                    }
-                                  }
-                }'''
+        query ($ID: ID!) {
+            complexity { query before after }
+            items (ids: [$ID]) {
+                subitems {
+                    id
+                    column_values {
+                        id
+                        value
+                        text
+                    }
+                }
+            }
+        }'''
         variables = {
             'ID': parent_pulse_id
         }
@@ -488,14 +567,14 @@ class MondayAPI(metaclass=SingletonMeta):
     def fetch_contact_by_name(self, name):
         query = '''
         query ($board_id: ID!, $name: String!) {
-                  items_page_by_column_values (limit: 1, board_id: $board_id, columns: [{column_id: "name", column_values: [$name]}]) {
-                    items {
-                      id
-                      name
-                      
-                    }
-                  }
-                }'''
+            complexity { query before after }
+            items_page_by_column_values (limit: 1, board_id: $board_id, columns: [{column_id: "name", column_values: [$name]}]) {
+                items {
+                  id
+                  name
+                }
+            }
+        }'''
         variables = {
             'board_id': int(self.CONTACT_BOARD_ID),
             'name': str(name),
@@ -514,17 +593,18 @@ class MondayAPI(metaclass=SingletonMeta):
     def fetch_item_by_name(self, name, board='PO'):
         query = '''
         query ($board_id: ID!, $name: String!) {
-                  items_page_by_column_values (limit: 1, board_id: $board_id, columns: [{column_id: "name", column_values: [$name]}]) {
-                    items {
-                      id
-                      name
-                      column_values {
-                        id
-                        value
-                    }
+            complexity { query before after }
+            items_page_by_column_values (limit: 1, board_id: $board_id, columns: [{column_id: "name", column_values: [$name]}]) {
+                items {
+                  id
+                  name
+                  column_values {
+                    id
+                    value
                   }
                 }
-                }'''
+            }
+        }'''
 
         if board == "PO":
             board_id = self.po_board_id
@@ -543,7 +623,7 @@ class MondayAPI(metaclass=SingletonMeta):
             return None
         return item
 
-    #🙆‍
+    # 🙆‍
     def find_or_create_contact_in_monday(self, name):
         contact = self.fetch_contact_by_name(name)
         if contact:  # contact exists
@@ -551,14 +631,15 @@ class MondayAPI(metaclass=SingletonMeta):
         else:  # create a contact
             response = self.create_contact(name)
             return response["data"]["create_item"]
-    #💰
+
+    # 💰
     def find_or_create_item_in_monday(self, item, column_values):
         response = self.fetch_item_by_po_and_project(item["project_id"], item["PO"])
         response_item = response["data"]["items_page_by_column_values"]["items"]
         if len(response_item) == 1:  # item exists
             response_item = response_item[0]
             item["item_pulse_id"] = response_item["id"]
-            if not response_item["name"] == item["name"] and not item["po_type"] == "CC" and not item["po_type"] == "PC" : #if the names don't match for a vendor
+            if not response_item["name"] == item["name"] and not item["po_type"] == "CC" and not item["po_type"] == "PC":
                 # update name in Monday
                 column_values = self.monday_util.po_column_values_formatter(name=item["name"], contact_pulse_id=item["contact_pulse_id"])
                 self.update_item(response_item["id"], column_values)
@@ -570,13 +651,14 @@ class MondayAPI(metaclass=SingletonMeta):
             try:
                 item["item_pulse_id"] = response["data"]['create_item']["id"]
             except Exception as e:
-                self.logger.error(f"Response Error:    {response}")
+                self.logger.error(f"Response Error: {response}")
                 raise e
             return item
-    #👻
+
+    # 👻
     def find_or_create_sub_item_in_monday(self, sub_item, parent_item):
         try:
-            # Search for existing sub-items in Monday based on project, PO, Detail Item Number, and parent pulse ID
+            # Search for existing sub-items in Monday
             result = self.fetch_subitem_by_project_PO_receipt(
                 parent_item["project_id"],
                 sub_item["PO"],
@@ -593,30 +675,23 @@ class MondayAPI(metaclass=SingletonMeta):
 
             if subitems:
                 self.logger.info(f"Found {len(subitems)} subitems for PO {sub_item['PO']}.")
-                match_found = False  # Flag to track if a matching sub-item is found
+                match_found = False
 
                 for existing_subitem in subitems:
                     existing_subitem["column_values"] = list_to_dict(existing_subitem["column_values"])
-
-                    # Debug log to inspect subitem details
                     self.logger.debug(f"Inspecting subitem: {existing_subitem}")
 
-                    # Check if the Detail Item Number matches
                     if existing_subitem["column_values"][self.monday_util.SUBITEM_ID_COLUMN_ID]["text"] == sub_item["item_id"]:
-                        self.logger.info(
-                            f"Matching subitem found for Detail Item Number {sub_item['item_id']}.")
+                        self.logger.info(f"Matching subitem found for Detail Item Number {sub_item['item_id']}.")
                         sub_item["pulse_id"] = existing_subitem["id"]
 
                         if not sub_item["pulse_id"]:
                             self.logger.exception("subitem['id'] is missing.")
-                            continue  # Skip updating if 'id' is not present
+                            continue
 
-                        # Check and update status if necessary
                         status_text = existing_subitem["column_values"][self.monday_util.SUBITEM_STATUS_COLUMN_ID]["text"].strip().lower()
                         if status_text not in ["paid", "reconciled", "rtp"]:
                             status = "RTP" if parent_item.get("status") == "RTP" else "PENDING"
-
-                            # Format column values for the update
                             column_values = self.monday_util.subitem_column_values_formatter(
                                 date=sub_item["date"],
                                 due_date=sub_item["due date"],
@@ -630,20 +705,16 @@ class MondayAPI(metaclass=SingletonMeta):
                                 item_number=sub_item["item_id"]
                             )
 
-                            # Update the sub-item in Monday
                             update_result = self.update_item(sub_item["pulse_id"], column_values, type="subitem")
                             self.logger.info(f"Updated subitem {sub_item['pulse_id']} with new column values.")
 
                         match_found = True
-                        break  # Exit the loop after finding the first matching sub-item
+                        break
 
                 if not match_found:
-                    self.logger.warning(
-                        f"No matching subitem found for Detail Item Number {sub_item['item_id']}. Creating a new subitem.")
-                    # Proceed to create a new subitem since no match was found
+                    self.logger.warning(f"No matching subitem found for Detail Item Number {sub_item['item_id']}. Creating a new subitem.")
                     status = "RTP" if parent_item.get("St/Type") == "RTP" else "PENDING"
 
-                    # Format column values for the new sub-item
                     column_values = self.monday_util.subitem_column_values_formatter(
                         date=sub_item.get("date"),
                         due_date=sub_item["due date"],
@@ -656,12 +727,7 @@ class MondayAPI(metaclass=SingletonMeta):
                         status=status,
                         item_number=sub_item.get("item_id")
                     )
-
-                    # Create the sub-item in Monday
-                    create_result = self.create_subitem(parent_item["item_pulse_id"], sub_item["vendor"],
-                                                        column_values)
-
-                    # Validate the creation result
+                    create_result = self.create_subitem(parent_item["item_pulse_id"], sub_item["vendor"], column_values)
                     new_pulse_id = create_result.get('data', {}).get('create_subitem', {}).get('id')
                     if new_pulse_id:
                         sub_item["pulse_id"] = new_pulse_id
@@ -671,27 +737,21 @@ class MondayAPI(metaclass=SingletonMeta):
 
             else:
                 self.logger.info("No existing subitems found. Creating a new subitem.")
-                # No subitems exist; create a new one
                 status = "RTP" if parent_item.get("status") == "RTP" else "PENDING"
-
-                # Format column values for the new sub-item
                 column_values = self.monday_util.subitem_column_values_formatter(
                     date=sub_item.get("date"),
                     due_date=sub_item["due date"],
                     account_number=sub_item.get("account"),
                     description=sub_item.get("description"),
                     rate=sub_item["rate"],
-                    OT= sub_item["OT"],
-                    fringes = sub_item["fringes"],
+                    OT=sub_item["OT"],
+                    fringes=sub_item["fringes"],
                     quantity=sub_item["quantity"],
                     status=status,
                     item_number=sub_item.get("item_id")
                 )
 
-                # Create the sub-item in Monday
                 create_result = self.create_subitem(parent_item["item_pulse_id"], parent_item["name"], column_values)
-
-                # Validate the creation result
                 new_pulse_id = create_result['data']['create_subitem']['id']
                 if new_pulse_id:
                     sub_item["pulse_id"] = new_pulse_id
@@ -701,11 +761,24 @@ class MondayAPI(metaclass=SingletonMeta):
 
         except Exception as e:
             self.logger.exception(f"Exception occurred in find_or_create_sub_item_in_monday: {e}")
-            # Depending on your application's needs, you might want to re-raise the exception or handle it accordingly
 
         return sub_item
+    #endregion
 
+    def update_detail_items_with_invoice_link(self, detail_item_ids: list, file_link: str):
+        # Pseudocode: update Monday detail items
+        for detail_id in detail_item_ids:
+            # Update Monday. For example:
+            # column_values = {"files_column": [{"url": file_link, "name": "Invoice"}]}
+            # result = self.update_item(detail_id, column_values)
+            # if not successful:
+            #    self.logger.warning(f"Failed to update item {detail_id} on Monday.")
+            pass
+
+    def update_item(self, detail_id, column_values):
+        # Placeholder implementation to interact with Monday's API
+        # Return True if update is successful, else False
+        return True
 
 
 monday_api = MondayAPI()
-

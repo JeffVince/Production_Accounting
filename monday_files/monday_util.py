@@ -527,16 +527,16 @@ class MondayUtil(metaclass=SingletonMeta):
         # DUE DATE 📆
         if due_date:
             try:
-                # Check if `date` is a valid non-empty string
-                if isinstance(date, str) and date.strip():
-                    # Parse and format the `date` to ensure it's in 'YYYY-MM-DD'
-                    parsed_date = parser.parse(date.strip())
-                    formatted_due_date = parsed_date.strftime('%Y-%m-%d')
+                # Check if `due_date` is a valid non-empty string
+                if isinstance(due_date, str) and due_date.strip():
+                    # Parse and format the `due_date` to ensure it's in 'YYYY-MM-DD'
+                    parsed_due_date = parser.parse(due_date.strip())
+                    formatted_due_date = parsed_due_date.strftime('%Y-%m-%d')
                     column_values[self.SUBITEM_DUE_DATE_COLUMN_ID] = {'date': formatted_due_date}
                 else:
-                    raise ValueError(f"Invalid date value: {date}")
+                    raise ValueError(f"Invalid due_date value: {due_date}")
             except Exception as e:
-                self.logger.error(f"Error parsing and formatting date '{date}': {e}")
+                self.logger.error(f"Error parsing and formatting due_date '{due_date}': {e}")
 
         # ACCOUNT NUMBER 🧾
         if account_number:

@@ -79,23 +79,10 @@ class POLogProcessor(metaclass=SingletonMeta):
             return 0.0
 
     def _parse_factors(self, factors: str, subtotal: float):
-        """
-        Parse the 'Factors' column to extract quantity, rate, and OT.
+        # Normalize multiple spaces to single space
+        clean_factors = re.sub(r'\s+', ' ', factors.replace(',', ''))
 
-        Expected patterns:
-        - "1 x 2400"
-        - "4 days x 850"
-        - "2 x 300 + $32.14 OT"
-        - "1 days x 300 + $0.01 Misc"
-
-        We'll extract the first 'quantity x rate' pattern. If extra costs are present after a '+',
-        we consider them OT costs (or any additional cost) and store them in OT.
-
-        If no pattern found, fallback to quantity=1, rate=subtotal.
-        """
-        clean_factors = factors.replace(',', '')
-
-        # Regex to match "4 days x 850" or "2 x 300"
+        # Enhanced regex to match variations like "1 x 473", "1x473", "1 days x 473", etc.
         main_pattern = r'(\d+(?:\.\d+)?)\s*(?:days?)?\s*x\s*(\d+(?:\.\d+)?)'
         match = re.search(main_pattern, clean_factors, flags=re.IGNORECASE)
 
@@ -111,11 +98,9 @@ class POLogProcessor(metaclass=SingletonMeta):
                 self.logger.warning(f"Error parsing factors '{factors}': {e}")
                 # fallback: quantity=1, rate=subtotal
 
-        # Check for OT or extra costs
-        # Pattern like: "+ $32.14 OT" or "+ 0.01 Misc"
-        # We'll capture any amount after a plus sign
-        plus_pattern = r'\+\s*\$?(\d+(?:\.\d+)?)(?:\s*\w+)?'
-        plus_match = re.search(plus_pattern, clean_factors)
+        # Enhanced regex to capture OT or extra costs, accounting for various formats
+        plus_pattern = r'\+\s*\$?(\d+(?:\.\d+)?)\s*(?:OT|Misc)?'
+        plus_match = re.search(plus_pattern, clean_factors, flags=re.IGNORECASE)
         if plus_match:
             try:
                 ot = float(plus_match.group(1))
@@ -125,60 +110,29 @@ class POLogProcessor(metaclass=SingletonMeta):
 
         return quantity, rate, ot
 
-    # endregion
-
-    # region MAIN PARSER METHOD
-    def parse_showbiz_po_log(self, file_path: str):
-        """
-        Parse the custom PO log from the given file.
-
-        Returns:
-            main_items (list of dict)
-            detail_items (list of dict)
-            contacts (list of dict)
-        """
-
-        # region INITIALIZATION
-        project_id = self._extract_project_id(file_path)
+    def _read_and_store_entries(self, file_path: str, project_id: str):
         main_items = []
-        detail_items = []
         contacts = []
-
-        # Track which POs we've encountered
-        po_map = {}  # key: (project_id, PO) => index in main_items
-        # Track if main item description is empty, so we can fill it from detail item if needed
+        raw_entries = []
+        manual_ids_by_po = defaultdict(set)
+        po_map = {}
         main_item_has_description = {}
 
-        # Track auto-increment detail item IDs for items lacking an ID per PO
-        auto_increment_counter = defaultdict(int)  # Starts at 0 for each new PO
-
-        # Track assigned item_ids per PO to prevent auto-assigned IDs from clashing with manual IDs
-        assigned_item_ids = defaultdict(set)
-
-        # endregion
-
-        # region FILE READ
         with open(file_path, 'r', newline='', encoding='utf-8') as txtfile:
             reader = csv.reader(txtfile, delimiter='\t')
-
-            # Attempt to read a header row
-            # The next line after that might be data or another header line. We'll detect headers.
             headers = next(reader, None)
-            # If headers doesn't match expected, we just proceed because data might be multiple partial headers
 
-            # The data structure is known:
-            # Date(0) | Type(1) | Pay ID(2) | Account(3) | ID(4) | Vendor(5) | Description(6) | PO(7) | Factors(8) | Sub-Total $(9) | Fringes $(10)
-
-            #region PROCESS LINES
-            for row in reader:
+            for row_number, row in enumerate(reader, start=2):  # Start at 2 considering header
                 if not any(row):
                     continue  # skip empty lines
-
-                # Skip if this line looks like a header (starts with "Date")
                 if row[0].strip().upper() == "DATE":
                     continue
 
-                # Safely extract columns
+                # Pad the row with empty strings if it's shorter than expected
+                expected_columns = 11  # Adjust based on your data structure
+                if len(row) < expected_columns:
+                    row += [''] * (expected_columns - len(row))
+
                 try:
                     transaction_date_str = row[0].strip()
                     raw_type = row[1].strip()
@@ -190,21 +144,25 @@ class POLogProcessor(metaclass=SingletonMeta):
                     po_number = row[7].strip()
                     factors = row[8].strip()
                     subtotal_str = row[9].strip()
-                    fringes_str = row[10].strip() if len(row) > 10 else ''
+                    fringes_str = row[10].strip()
                 except IndexError as e:
-                    self.logger.warning(f"Malformed line skipped: {row}, error: {e}")
+                    self.logger.warning(f"Malformed line skipped at row {row_number}: {row}, error: {e}")
                     continue
 
-                # If there's no PO, this is unexpected. Log and skip.
+                if not transaction_date_str:
+                    self.logger.warning(f"Missing transaction date at row {row_number}: {row}")
+                    continue
+
+                if not raw_type:
+                    self.logger.warning(f"Missing raw type at row {row_number}: {row}")
+                    continue
+
                 if not po_number and raw_type != 'PC':
-                    self.logger.warning(f"No PO number found in line: {row}")
+                    self.logger.warning(f"No PO number found in line at row {row_number}: {row}")
                     continue
 
-                # Clean and convert numerical fields
                 subtotal = self._clean_numeric(subtotal_str)
-                fringes = self._clean_numeric(fringes_str)
-
-                # Determine payment type
+                fringes = self._clean_numeric(fringes_str) if fringes_str else 0.0
                 payment_type = self._map_payment_type(raw_type)
 
                 # If PC, force PO number to "1"
@@ -213,11 +171,9 @@ class POLogProcessor(metaclass=SingletonMeta):
                 else:
                     po_number = po_number.lstrip("0")
 
-                # Determine status
                 status = self._determine_status(pay_id)
 
-                # Contact parsing
-                # For PC: contact = "PETTY CASH"
+                # Contact
                 if payment_type == "PC":
                     contact_name = "PETTY CASH"
                 elif payment_type == "CC":
@@ -225,17 +181,15 @@ class POLogProcessor(metaclass=SingletonMeta):
                 else:
                     contact_name = vendor if vendor else "UNKNOWN CONTACT"
 
-                #region MAIN ITEM LOGIC
                 po_key = (project_id, po_number)
                 if po_key not in po_map:
-                    # If main item description is empty, it might be filled by detail items later.
                     main_item_desc = description if description else ''
                     main_item = {
                         'project_id': project_id,
                         'name': contact_name,
                         'PO': po_number,
                         'status': status,
-                        'po_type': payment_type,  # INV, CC, or PC
+                        'po_type': payment_type,
                         'description': main_item_desc,
                         'amount': 0.0
                     }
@@ -243,168 +197,187 @@ class POLogProcessor(metaclass=SingletonMeta):
                     main_items.append(main_item)
                     main_item_has_description[po_key] = bool(main_item_desc)
 
-                    # Create a contact entry for this PO
                     contacts.append({
                         "name": contact_name,
                         "project_id": project_id,
                         "PO": po_number
                     })
 
-                #endregion
+                try:
+                    transaction_date = self._parse_date(transaction_date_str)
+                except Exception as e:
+                    self.logger.warning(f"Invalid date format at row {row_number}: {transaction_date_str}, error: {e}")
+                    transaction_date = datetime.today()
 
-                #region DETAIL ITEM PARSING
-
-
-                transaction_date = self._parse_date(transaction_date_str)
-
-                #region Due date logic 🧑‍🍳
-                if payment_type == "INV":
+                if payment_type.lower() not in ["cc", "pc", "crd"]:
                     due_date = transaction_date + timedelta(days=30)
                 else:
                     due_date = transaction_date
-                #endregion
 
-                #region Parse factors for quantity, rate, and OT 🧳
-                quantity, rate, ot = self._parse_factors(factors, subtotal)
-                #endregion
-
-                #region Detail item number processing  🥰
-                if not item_id or not item_id.strip():
-                    # Item has no item_id; assign a unique auto-incremented number
-                    auto_increment_counter[po_number] += 1  # Increment the counter for this PO
-
-                    # Ensure the number doesn't clash with manually assigned IDs
-                    while auto_increment_counter[po_number] in assigned_item_ids[po_number]:
-                        auto_increment_counter[po_number] += 1
-
-                    detail_item_number = str(auto_increment_counter[po_number])
-                else:
-                    # Item has an item_id; strip leading zeros
-                    stripped_id = item_id.lstrip('0') or '1'  # Ensure at least '1' if all zeros
-                    detail_item_number = stripped_id
-                    # Add to the set of assigned item_ids for this PO
-                    try:
-                        numeric_id = int(stripped_id)
-                    except ValueError:
-                        self.logger.warning(f"Non-numeric item_id '{item_id}' encountered. Defaulting to '1'.")
-                        numeric_id = 1
-                    assigned_item_ids[po_number].add(numeric_id)
-                #endregion
-
-                #region Vendor name parsing 🥹
+                # Determine envelope_number for PC
                 if payment_type == "PC":
-                    # pay_id format: PC_2416_04 -> envelope is last part
                     parts = pay_id.split('_')
                     if len(parts) >= 3:
                         envelope_str = parts[-1].strip()
-                        envelope_number = int(envelope_str.lstrip('0') or '0')
+                        try:
+                            envelope_number = int(envelope_str.lstrip('0') or '0')
+                        except ValueError:
+                            self.logger.warning(f"Invalid envelope number '{envelope_str}' at row {row_number}")
+                            envelope_number = 0
                     else:
                         envelope_number = 0
-                    key_for_ids = (po_number, envelope_number)
                 else:
                     envelope_number = 0
-                    key_for_ids = (po_number, envelope_number)
 
-                if payment_type == "PC":
-                    # PC logic
-                    if not item_id or not item_id.strip():
-                        # No item_id given: auto-increment receipt number
-                        auto_increment_counter[key_for_ids] += 1
-                        # Ensure no conflict with assigned_item_ids if needed
-                        # (If duplicates allowed for manual entries only, we must ensure unique auto-assigns)
-                        detail_item_number = f"{envelope_number}.{auto_increment_counter[key_for_ids]}"
-                        while detail_item_number in assigned_item_ids[key_for_ids]:
-                            auto_increment_counter[key_for_ids] += 1
-                            detail_item_number = f"{envelope_number}.{auto_increment_counter[key_for_ids]}"
-
-                        # Add to assigned
-                        assigned_item_ids[key_for_ids].add(detail_item_number)
-                    else:
-                        # item_id given (manual)
-                        # Strip and convert to numeric
-                        stripped_id = item_id.lstrip('0') or '1'
-                        try:
-                            numeric_id = int(stripped_id)
-                        except ValueError:
-                            self.logger.warning(f"Non-numeric item_id '{item_id}' encountered. Defaulting to '1'.")
-                            numeric_id = 1
-                        detail_item_number = f"{envelope_number}.{numeric_id}"
-                        # Manual entries can have duplicates, so no uniqueness check
-                        assigned_item_ids[key_for_ids].add(detail_item_number)
-                else:
-                    # Non-PC logic (unchanged except we use (po_number,0) as keys)
-                    if not item_id or not item_id.strip():
-                        # Auto-increment per PO
-                        auto_increment_counter[key_for_ids] += 1
-                        detail_item_number = str(auto_increment_counter[key_for_ids])
-                        # Ensure uniqueness against assigned_item_ids for auto-assigned
-                        while detail_item_number in assigned_item_ids[key_for_ids]:
-                            auto_increment_counter[key_for_ids] += 1
-                            detail_item_number = str(auto_increment_counter[key_for_ids])
-                        assigned_item_ids[key_for_ids].add(detail_item_number)
-                    else:
-                        # item_id given (manual), duplicates allowed
-                        stripped_id = item_id.lstrip('0') or '1'
-                        try:
-                            numeric_id = int(stripped_id)
-                            detail_item_number = str(numeric_id)
-                        except ValueError:
-                            self.logger.warning(f"Non-numeric item_id '{item_id}' encountered. Defaulting to '1'.")
-                            detail_item_number = '1'
-                        assigned_item_ids[key_for_ids].add(detail_item_number)
-                #endregion
-
-                detail_item = {
+                # Store raw entry
+                raw_entries.append({
                     'project_id': project_id,
                     'PO': po_number,
                     'vendor': vendor,
-                    'date': transaction_date.strftime('%Y-%m-%d'),
-                    'due date': due_date.strftime('%Y-%m-%d'),
-                    'quantity': quantity,
-                    'rate': rate,
+                    'date': transaction_date,
+                    'due_date': due_date,
+                    'factors': factors,
+                    'subtotal': subtotal,
                     'description': description,
-                    'state': status,
+                    'status': status,
                     'account': account,
-                    'item_id': detail_item_number,
                     'payment_type': payment_type,
-                    'total': subtotal,
-                    'OT': ot,
-                    'fringes': fringes
-                }
-                detail_items.append(detail_item)
+                    'fringes': fringes,
+                    'item_id_raw': item_id,
+                    'envelope_number': envelope_number,
+                    'pay_id': pay_id
+                })
 
-                # If main item description was empty and this detail has a description,
-                # fill in the main item description from the first encountered detail description.
+                # Track manual IDs if present
+                if item_id and item_id.strip():
+                    stripped_id = item_id.lstrip('0') or '1'
+                    if payment_type == "PC":
+                        try:
+                            numeric_id = int(stripped_id)
+                        except ValueError:
+                            numeric_id = 1
+                        detail_item_id_key = f"{envelope_number}.{numeric_id}"
+                    else:
+                        try:
+                            numeric_id = int(stripped_id)
+                        except ValueError:
+                            numeric_id = 1
+                        detail_item_id_key = str(numeric_id)
+                    manual_ids_by_po[(po_number, envelope_number)].add(detail_item_id_key)
+
+                # If main item description was empty and this detail has a description
                 if not main_item_has_description[po_key] and description:
                     mi_index = po_map[po_key]
                     main_items[mi_index]['description'] = description
                     main_item_has_description[po_key] = True
-                # endregion
 
-            # endregion
-        # endregion
+        return main_items, contacts, raw_entries, manual_ids_by_po
 
-        # region SUM AMOUNTS FOR MAIN ITEMS
-        # For each main item, sum up detail items
+    def _assign_item_ids(self, raw_entries, manual_ids_by_po):
+        assigned_item_ids = defaultdict(set)
+        # First, record all manual IDs
+        for key_for_ids, manual_ids in manual_ids_by_po.items():
+            for mid in manual_ids:
+                assigned_item_ids[key_for_ids].add(mid)
+
+        auto_increment_counters = defaultdict(int)
+
+        for entry in raw_entries:
+            key_for_ids = (entry['PO'], entry['envelope_number'])
+            item_id_raw = entry['item_id_raw']
+
+            if not item_id_raw or not item_id_raw.strip():
+                # Need to assign an auto ID
+                if entry['payment_type'] == "PC":
+                    # PC logic
+                    auto_increment_counters[key_for_ids] += 1
+                    detail_item_number = f"{entry['envelope_number']}.{auto_increment_counters[key_for_ids]}"
+                    while detail_item_number in assigned_item_ids[key_for_ids]:
+                        auto_increment_counters[key_for_ids] += 1
+                        detail_item_number = f"{entry['envelope_number']}.{auto_increment_counters[key_for_ids]}"
+                else:
+                    # Non-PC
+                    auto_increment_counters[key_for_ids] += 1
+                    detail_item_number = str(auto_increment_counters[key_for_ids])
+                    while detail_item_number in assigned_item_ids[key_for_ids]:
+                        auto_increment_counters[key_for_ids] += 1
+                        detail_item_number = str(auto_increment_counters[key_for_ids])
+
+                assigned_item_ids[key_for_ids].add(detail_item_number)
+                entry['detail_item_number'] = detail_item_number
+            else:
+                # Manual ID - reconstruct detail_item_number
+                stripped_id = item_id_raw.lstrip('0') or '1'
+                if entry['payment_type'] == 'PC':
+                    try:
+                        numeric_id = int(stripped_id)
+                    except ValueError:
+                        self.logger.warning(f"Invalid item_id_raw '{item_id_raw}' at PO {entry['PO']}")
+                        numeric_id = 1
+                    detail_item_number = f"{entry['envelope_number']}.{numeric_id}"
+                else:
+                    try:
+                        numeric_id = int(stripped_id)
+                    except ValueError:
+                        self.logger.warning(f"Invalid item_id_raw '{item_id_raw}' at PO {entry['PO']}")
+                        numeric_id = 1
+                    detail_item_number = str(numeric_id)
+                entry['detail_item_number'] = detail_item_number
+
+    # endregion
+
+    # region MAIN PARSER METHOD
+    def parse_showbiz_po_log(self, file_path: str):
+        project_id = self._extract_project_id(file_path)
+
+        # First, read and store all entries
+        main_items, contacts, raw_entries, manual_ids_by_po = self._read_and_store_entries(file_path, project_id)
+
+        # Assign item IDs in second pass
+        self._assign_item_ids(raw_entries, manual_ids_by_po)
+
+        # Now build detail_items
+        detail_items = []
+        for entry in raw_entries:
+            quantity, rate, ot = self._parse_factors(entry['factors'], entry['subtotal'])
+            detail_item = {
+                'project_id': entry['project_id'],
+                'PO': entry['PO'],
+                'vendor': entry['vendor'],
+                'date': entry['date'].strftime('%Y-%m-%d'),
+                'due date': entry['due_date'].strftime('%Y-%m-%d'),
+                'quantity': quantity,
+                'rate': rate,
+                'description': entry['description'],
+                'state': entry['status'],
+                'account': entry['account'],
+                'item_id': entry['detail_item_number'],
+                'payment_type': entry['payment_type'],
+                'total': entry['subtotal'],
+                'OT': ot,
+                'fringes': entry['fringes']
+            }
+            detail_items.append(detail_item)
+
+        # Sum amounts for main items
         for m in main_items:
             rel_details = [d for d in detail_items if d['PO'] == m['PO'] and d['project_id'] == m['project_id']]
             total_amount = sum(d['total'] for d in rel_details)
             m['amount'] = total_amount
-        # endregion
 
-        # region LOGGING RESULTS
         self.logger.info(
             f"Parsed {len(main_items)} main items, {len(detail_items)} detail items, {len(contacts)} contacts for project {project_id}.")
         if self.TEST_MODE:
             self.logger.debug(f"Main Items: {main_items}")
             self.logger.debug(f"Detail Items: {detail_items}")
             self.logger.debug(f"Contacts: {contacts}")
-        # endregion
 
         return main_items, detail_items, contacts
     # endregion
 
-# Example usage:
+
 po_log_processor = POLogProcessor()
-#main_items, detail_items, contacts = po_log_processor.parse_custom_po_log('../temp_2416.txt')
-#pass
+
+# Example usage:
+# main_items, detail_items, contacts = po_log_processor.parse_showbiz_po_log('../temp_2416.txt')
+# pass

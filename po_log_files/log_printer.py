@@ -49,6 +49,8 @@ CHECKBOX_IMAGES = {
 }
 
 BUTTON_IMAGES = {
+
+
     'PREVIEW': os.path.join(SCRIPT_DIR, 'pics', 'preview.png'),
     'RAW_TEXT': os.path.join(SCRIPT_DIR, 'pics', 'raw_text.png'),
     'OKAY': os.path.join(SCRIPT_DIR, 'pics', 'okay.png'),

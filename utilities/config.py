@@ -10,10 +10,10 @@ load_dotenv()
 # Configuration settings
 class Config:
 
-    USE_TEMP = True
+    USE_TEMP = False
     SKIP_MAIN = False
     USE_LOCAL = True
-    APP_DEBUG = True
+    APP_DEBUG = False
 
     # WEBHOOK PORTS
     DROPBOX_WEBHOOK_PORT = 5001

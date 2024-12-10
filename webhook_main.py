@@ -48,6 +48,7 @@ def get_po_data(po_id):
 @app.route('/po_html/<string:project_ID>', methods=['GET'])
 def po_html(project_ID):
     logger.info(project_ID)
-    result = po_log_database_util.fetch_po_by_id(project_ID)  # This returns a Response from jsonify()
+    result = po_log_database_util.fetch_po_by_id(project_ID)  # Now returns PO data with detail items
     json_result = result.get_json()  # Extract the JSON data (as a dict/list)
+
     return render_template('po_template.html', data=json_result)

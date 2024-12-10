@@ -5,8 +5,10 @@ import re
 from pathlib import Path
 from typing import Dict
 
+import dropbox
 from openai import OpenAI
 
+from dropbox_client import dropbox_client
 from utilities.singleton import SingletonMeta
 
 
@@ -289,5 +291,39 @@ class DropboxUtil(metaclass=SingletonMeta):
     def get_last_path_component_generic(self, path):
         return Path(path).parts[-1]
 
+    def get_file_link(self, dropbox_path: str) -> str:
+        dbx = dropbox_client.dbx
+        try:
+            result = dbx.sharing_create_shared_link_with_settings(dropbox_path)
+            link = result.url
+            self.logger.debug(f"Generated file link for {dropbox_path}: {link}")
+            return link
+        except dropbox.exceptions.ApiError as e:
+            # Directly check if this error is shared_link_already_exists
+            if e.error.is_shared_link_already_exists():
+                # A link already exists, so let's retrieve it
+                self.logger.debug("Shared link already exists, retrieving existing link.")
+                return self.retrieve_existing_shared_link(dbx, dropbox_path)
+            else:
+                self.logger.error(f"Failed to get file link for {dropbox_path}: {e}", exc_info=True)
+                return None
+
+    def retrieve_existing_shared_link(self, dbx, dropbox_path: str) -> str:
+        """
+        Retrieve an existing shared link for the specified file.
+        """
+        try:
+            # List all shared links for the user and filter by the path
+            links = dbx.sharing_list_shared_links(path=dropbox_path)
+            for link in links.links:
+                if link.path_lower == dropbox_path.lower():
+                    self.logger.debug(f"Found existing shared link for {dropbox_path}: {link.url}")
+                    return link.url
+            self.logger.warning(
+                f"No existing shared link found for {dropbox_path}, even though Dropbox reported one exists.")
+            return None
+        except Exception as e:
+            self.logger.error(f"Failed to retrieve existing shared link for {dropbox_path}: {e}", exc_info=True)
+            return None
 
 dropbox_util = DropboxUtil()

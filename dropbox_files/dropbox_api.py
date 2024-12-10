@@ -1,16 +1,15 @@
 # integrations/dropbox_api.py
 
-import dropbox_files
-from dropbox_files.exceptions import ApiError
+from dropbox_files.dropbox_client import dropbox_client
+from dropbox.exceptions import ApiError
+
+from singleton import SingletonMeta
 from utilities.config import Config
 
-class DropboxAPI:
+class DropboxAPI(metaclass=SingletonMeta):
     def __init__(self):
-        self.dbx = dropbox_files.Dropbox(
-            oauth2_refresh_token=Config.DROPBOX_REFRESH_TOKEN,
-            app_key=Config.DROPBOX_APP_KEY,
-            app_secret=Config.DROPBOX_APP_SECRET,
-        )
+        dbx_client = dropbox_client
+        dbx = dbx_client.dbx
 
     def upload_file(self, file_path: str, destination_path: str):
         """Uploads a file to Dropbox."""
@@ -72,3 +71,5 @@ class DropboxAPI:
         except ApiError as e:
             print(f"Error deleting file or folder: {e}")
             return False
+
+dropbox_api = DropboxAPI()
