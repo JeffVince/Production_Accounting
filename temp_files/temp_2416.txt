@@ -127,7 +127,7 @@ Date	Type	Pay ID	Account	ID	Vendor	Description	PO	Factors	Sub-Total $	Fringes $
 10/6/24	CRD	1120	102	01	American Express	Airfares - Producers	05	1  x 646.2	646.20		
 10/6/24	CRD	1120	102	02	American Express	Airfares - Producers	05	1  x 142.33	142.33		
 10/11/24	INV		206		Gotham City Drones, Inc	Drone operator and rental deposit	06	1  x 700	700.00		
-10/23/24	INV	PAID	155	01	Be Electric Studios LLC	Studio Package	07	1  x 56,841	56,841.00		
+10/23/24	INV		155	01	Be Electric Studios LLC	Studio Package	07	1  x 56,841	56,841.00
 10/23/24	INV		155	02	Be Electric Studios LLC	Additional Studio Rentals	07	1  x 1,183.31	1,183.31		
 10/23/24	INV		156	04	Be Electric Studios LLC	Studio Overtime	07	4  x 350	1,400.00		
 10/23/24	INV		204	02	Be Electric Studios LLC	Production Supply Adds	07	1  x 550.1	550.10		

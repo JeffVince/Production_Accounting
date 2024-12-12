@@ -9,7 +9,7 @@ from utilities.config import Config
 class DropboxAPI(metaclass=SingletonMeta):
     def __init__(self):
         dbx_client = dropbox_client
-        dbx = dbx_client.dbx
+        self.dbx = dbx_client.dbx
 
     def upload_file(self, file_path: str, destination_path: str):
         """Uploads a file to Dropbox."""

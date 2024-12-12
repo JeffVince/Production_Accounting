@@ -658,106 +658,136 @@ class MondayAPI(metaclass=SingletonMeta):
     # 👻
     def find_or_create_sub_item_in_monday(self, sub_item, parent_item):
         try:
-            # Search for existing sub-items in Monday
-            result = self.fetch_subitem_by_project_PO_receipt(
-                parent_item["project_id"],
-                sub_item["PO"],
-                sub_item["item_id"],
-                parent_item["item_pulse_id"]
+            # Prepare column values for Monday subitem as JSON string
+            status = "RTP" if parent_item.get("status") == "RTP" else "PENDING"
+            incoming_values_json = self.monday_util.subitem_column_values_formatter(
+                date=sub_item.get("date"),
+                due_date=sub_item["due date"],
+                account_number=sub_item.get("account"),
+                description=sub_item.get("description"),
+                rate=sub_item["rate"],
+                OT=sub_item["OT"],
+                fringes=sub_item["fringes"],
+                quantity=sub_item["quantity"],
+                status=status,
+                item_number=sub_item["item_id"]
             )
 
-            # Validate the response structure
-            if not result.get('data', {}).get('items'):
-                self.logger.error("No items found in the result data.")
-                subitems = []
-            else:
-                subitems = result['data']['items'][0].get('subitems', [])
+            # Deserialize incoming_values_json to a dictionary for comparison
+            try:
+                incoming_values = json.loads(incoming_values_json)
+            except json.JSONDecodeError as jde:
+                self.logger.error(f"JSON decode error for incoming_values: {jde}")
+                return sub_item
 
-            if subitems:
-                self.logger.info(f"Found {len(subitems)} subitems for PO {sub_item['PO']}.")
-                match_found = False
+            # If we already have a pulse_id, try updating that specific subitem directly
+            if "pulse_id" in sub_item and sub_item["pulse_id"]:
+                pulse_id = sub_item["pulse_id"]
+                self.logger.info(f"Sub_item already has a pulse_id: {pulse_id}. Checking existing item.")
 
-                for existing_subitem in subitems:
-                    existing_subitem["column_values"] = list_to_dict(existing_subitem["column_values"])
-                    self.logger.debug(f"Inspecting subitem: {existing_subitem}")
-
-                    if existing_subitem["column_values"][self.monday_util.SUBITEM_ID_COLUMN_ID]["text"] == sub_item["item_id"]:
-                        self.logger.info(f"Matching subitem found for Detail Item Number {sub_item['item_id']}.")
-                        sub_item["pulse_id"] = existing_subitem["id"]
-
-                        if not sub_item["pulse_id"]:
-                            self.logger.exception("subitem['id'] is missing.")
-                            continue
-
-                        status_text = existing_subitem["column_values"][self.monday_util.SUBITEM_STATUS_COLUMN_ID]["text"].strip().lower()
-                        if status_text not in ["paid", "reconciled", "rtp"]:
-                            status = "RTP" if parent_item.get("status") == "RTP" else "PENDING"
-                            column_values = self.monday_util.subitem_column_values_formatter(
-                                date=sub_item["date"],
-                                due_date=sub_item["due date"],
-                                account_number=sub_item["account"],
-                                description=sub_item["description"],
-                                rate=sub_item["rate"],
-                                OT=sub_item["OT"],
-                                fringes=sub_item["fringes"],
-                                quantity=sub_item["quantity"],
-                                status=status,
-                                item_number=sub_item["item_id"]
-                            )
-
-                            update_result = self.update_item(sub_item["pulse_id"], column_values, type="subitem")
-                            self.logger.info(f"Updated subitem {sub_item['pulse_id']} with new column values.")
-
-                        match_found = True
-                        break
-
-                if not match_found:
-                    self.logger.warning(f"No matching subitem found for Detail Item Number {sub_item['item_id']}. Creating a new subitem.")
-                    status = "RTP" if parent_item.get("St/Type") == "RTP" else "PENDING"
-
-                    column_values = self.monday_util.subitem_column_values_formatter(
-                        date=sub_item.get("date"),
-                        due_date=sub_item["due date"],
-                        account_number=sub_item.get("account"),
-                        description=sub_item.get("description"),
-                        rate=sub_item["rate"],
-                        OT=sub_item["OT"],
-                        fringes=sub_item["fringes"],
-                        quantity=sub_item["quantity"],
-                        status=status,
-                        item_number=sub_item.get("item_id")
+                existing_item = self.fetch_item_by_ID(pulse_id)
+                if not existing_item:
+                    self.logger.warning(f"Existing pulse_id {pulse_id} not found on Monday. Creating a new subitem.")
+                    # Create a new subitem
+                    create_result = self.create_subitem(
+                        parent_item["item_pulse_id"],
+                        sub_item.get("vendor", parent_item["name"]),
+                        incoming_values_json  # Pass JSON string directly
                     )
-                    create_result = self.create_subitem(parent_item["item_pulse_id"], sub_item["vendor"], column_values)
                     new_pulse_id = create_result.get('data', {}).get('create_subitem', {}).get('id')
+                    if new_pulse_id:
+                        sub_item["pulse_id"] = new_pulse_id
+                        self.logger.info(
+                            f"Created new subitem with pulse_id {sub_item['pulse_id']} for surrogate_id {sub_item.get('detail_item_surrogate_id')}.")
+                    else:
+                        self.logger.exception("Failed to create a new subitem. 'id' not found in the response.")
+                    return sub_item
+                else:
+                    # Deserialize existing_item's column_values for comparison
+                    existing_vals = list_to_dict(existing_item["column_values"])
+                    all_match = True
+                    for col_id, new_val in incoming_values.items():
+                        existing_val = existing_vals.get(col_id, {}).get("text", "")
+                        if str(existing_val) != str(new_val):
+                            all_match = False
+                            break
+
+                    if all_match:
+                        self.logger.info(f"Subitem {pulse_id} is identical to incoming data. Skipping update.")
+                        return sub_item
+                    else:
+                        self.logger.info(f"Updating existing subitem {pulse_id} due to changed values.")
+                        self.update_item(pulse_id, incoming_values_json, type="subitem")  # Pass JSON string directly
+                        return sub_item
+
+            else:
+                # No pulse_id known, search subitems by (project_id, PO, item_id)
+                result = self.fetch_subitem_by_project_PO_receipt(
+                    parent_item["project_id"],
+                    sub_item["PO"],
+                    sub_item["item_id"],
+                    parent_item["item_pulse_id"]
+                )
+
+                if not result.get('data', {}).get('items'):
+                    self.logger.error("No items found in the result data.")
+                    subitems = []
+                else:
+                    subitems = result['data']['items'][0].get('subitems', [])
+
+                if subitems:
+                    self.logger.info(
+                        f"Found {len(subitems)} subitems for PO {sub_item['PO']}. Checking for identical match.")
+                    identical_subitem = None
+                    for existing_subitem in subitems:
+                        # Deserialize existing_subitem's column_values
+                        existing_vals = list_to_dict(existing_subitem["column_values"])
+                        all_match = True
+                        for col_id, new_val in incoming_values.items():
+                            existing_val = existing_vals.get(col_id, {}).get("text", "")
+                            if str(existing_val) != str(new_val):
+                                all_match = False
+                                break
+
+                        if all_match:
+                            identical_subitem = existing_subitem
+                            break
+
+                    if identical_subitem:
+                        # Identical subitem found, use its pulse_id so we don't create duplicates
+                        sub_item["pulse_id"] = identical_subitem["id"]
+                        self.logger.info(
+                            f"Found an identical subitem with pulse_id {sub_item['pulse_id']}. Skipping creation.")
+                        return sub_item
+                    else:
+                        # No identical subitem found, create a new one
+                        self.logger.info("No identical subitem found. Creating a new subitem.")
+                        create_result = self.create_subitem(
+                            parent_item["item_pulse_id"],
+                            sub_item.get("vendor", parent_item["name"]),
+                            incoming_values_json  # Pass JSON string directly
+                        )
+                        new_pulse_id = create_result.get('data', {}).get('create_subitem', {}).get('id')
+                        if new_pulse_id:
+                            sub_item["pulse_id"] = new_pulse_id
+                            self.logger.info(f"Created new subitem with pulse_id {sub_item['pulse_id']}.")
+                        else:
+                            self.logger.exception("Failed to create a new subitem. 'id' not found in the response.")
+
+                else:
+                    # No subitems at all, just create a new one
+                    self.logger.info("No existing subitems found. Creating a new subitem.")
+                    create_result = self.create_subitem(
+                        parent_item["item_pulse_id"],
+                        parent_item["name"],
+                        incoming_values_json  # Pass JSON string directly
+                    )
+                    new_pulse_id = create_result['data']['create_subitem']['id']
                     if new_pulse_id:
                         sub_item["pulse_id"] = new_pulse_id
                         self.logger.info(f"Created new subitem with pulse_id {sub_item['pulse_id']}.")
                     else:
                         self.logger.exception("Failed to create a new subitem. 'id' not found in the response.")
-
-            else:
-                self.logger.info("No existing subitems found. Creating a new subitem.")
-                status = "RTP" if parent_item.get("status") == "RTP" else "PENDING"
-                column_values = self.monday_util.subitem_column_values_formatter(
-                    date=sub_item.get("date"),
-                    due_date=sub_item["due date"],
-                    account_number=sub_item.get("account"),
-                    description=sub_item.get("description"),
-                    rate=sub_item["rate"],
-                    OT=sub_item["OT"],
-                    fringes=sub_item["fringes"],
-                    quantity=sub_item["quantity"],
-                    status=status,
-                    item_number=sub_item.get("item_id")
-                )
-
-                create_result = self.create_subitem(parent_item["item_pulse_id"], parent_item["name"], column_values)
-                new_pulse_id = create_result['data']['create_subitem']['id']
-                if new_pulse_id:
-                    sub_item["pulse_id"] = new_pulse_id
-                    self.logger.info(f"Created new subitem with pulse_id {sub_item['pulse_id']}.")
-                else:
-                    self.logger.exception("Failed to create a new subitem. 'id' not found in the response.")
 
         except Exception as e:
             self.logger.exception(f"Exception occurred in find_or_create_sub_item_in_monday: {e}")
@@ -774,11 +804,6 @@ class MondayAPI(metaclass=SingletonMeta):
             # if not successful:
             #    self.logger.warning(f"Failed to update item {detail_id} on Monday.")
             pass
-
-    def update_item(self, detail_id, column_values):
-        # Placeholder implementation to interact with Monday's API
-        # Return True if update is successful, else False
-        return True
 
 
 monday_api = MondayAPI()

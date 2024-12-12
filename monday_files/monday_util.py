@@ -559,7 +559,7 @@ class MondayUtil(metaclass=SingletonMeta):
         # INVOICE OR RECEIPT NUMBER 📇
         #region
         if item_number:
-            column_values[self.SUBITEM_ID_COLUMN_ID] = item_number
+            column_values[self.SUBITEM_ID_COLUMN_ID] = int(item_number)
         self.logger.debug(f"Formatted subitem column values: {column_values}")
         return json.dumps(column_values)
         #endregion

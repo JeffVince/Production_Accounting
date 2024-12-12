@@ -314,24 +314,18 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
 
     def create_or_update_sub_item_in_db(self, item):
         """
-        🏗 Creates or updates a subitem record in the database.
-
-        Args:
-            item (dict): The prepared database creation item with subitem details.
-
-        Returns:
-            dict or dict with error info: Updated item with `detail_item_surrogate_id` or error info on failure.
+        🏗 Creates or updates a subitem record in the database using a surrogate ID.
+        If `pulse_id` is present, it will be stored in the DB.
+        Ensures that after this call, `item` has `detail_item_surrogate_id`.
         """
         db_item = {}
         db_item["quantity"] = 1
         db_item["payment_type"] = item["payment_type"]
         db_item["description"] = item["description"]
-        # Only set parent_pulse_id if it exists
         if "parent_pulse_id" in item:
             db_item["parent_pulse_id"] = item["parent_pulse_id"]
 
         db_item["detail_item_number"] = item["item_id"]
-        # Only set pulse_id if it exists
         if "pulse_id" in item:
             db_item["pulse_id"] = item["pulse_id"]
 
@@ -339,10 +333,7 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
         db_item["ot"] = item["OT"]
         db_item["fringes"] = item["fringes"]
         db_item["vendor"] = item["vendor"]
-        if item["parent_status"] == "RTP":
-            db_item["state"] = "RTP"
-        else:
-            db_item["state"] = "PENDING"
+        db_item["state"] = "RTP" if item["parent_status"] == "RTP" else "PENDING"
 
         rate = item["rate"]
         # region 🧹 RATE CLEANER
@@ -387,23 +378,29 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
 
         with get_db_session() as session:
             try:
-                detail_item = session.query(DetailItem).filter_by(parent_surrogate_id=item["po_surrogate_id"],
-                                                                  detail_item_number=item["item_id"]).one_or_none()
+                detail_item = session.query(DetailItem).filter_by(
+                    parent_surrogate_id=item["po_surrogate_id"],
+                    detail_item_number=item["item_id"]
+                ).one_or_none()
+
                 if detail_item:
+                    # Update existing record
                     for db_field, value in db_item.items():
                         if value is not None:
                             setattr(detail_item, db_field, value)
                     session.commit()
                     self.logger.debug(f"Updated existing DetailItem: {item['vendor']}")
                 else:
+                    # Create a new record
                     new_detail_item = DetailItem(**db_item)
                     session.add(new_detail_item)
                     session.commit()
+                    detail_item = new_detail_item
                     self.logger.info(
-                        f"Created new DetailItem: {item['vendor']}, surrogate_id: {new_detail_item.detail_item_surrogate_id}")
+                        f"Created new DetailItem: {item['vendor']}, surrogate_id: {detail_item.detail_item_surrogate_id}"
+                    )
 
-                detail_item = session.query(DetailItem).filter_by(parent_surrogate_id=item["po_surrogate_id"],
-                                                                  detail_item_number=item["item_id"]).one_or_none()
+                # Retrieve and store the surrogate_id
                 item["detail_item_surrogate_id"] = detail_item.detail_item_surrogate_id
                 return item
 

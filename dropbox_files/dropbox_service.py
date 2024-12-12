@@ -16,7 +16,7 @@ from pdf2image import convert_from_path
 import os
 from datetime import datetime
 
-import dropbox_api
+from dropbox_files.dropbox_api import dropbox_api
 from config import Config
 from dropbox_database_util import DropboxDatabaseUtil, dropbox_database_util
 from monday_files.monday_api import monday_api
@@ -31,10 +31,10 @@ import logging
 import tempfile
 
 # 🧰 Debug Variable: Decide which PO number to start from
-DEBUG_STARTING_PO_NUMBER = 86
+DEBUG_STARTING_PO_NUMBER = 6
 
 # 🏳️‍🌈 FLAG: Set this to True to skip all Monday.com updates and only update the DB.
-SKIP_MONDAY = True  # If True, no Monday API calls will be made, no pulse_id from Monday, and contacts come from DB.
+SKIP_MONDAY = False  # If True, no Monday API calls will be made, no pulse_id from Monday, and contacts come from DB.
 
 class DropboxService(metaclass=SingletonMeta):
     """
@@ -59,6 +59,7 @@ class DropboxService(metaclass=SingletonMeta):
     INVOICE_REGEX = r"invoice"
     TAX_FORM_REGEX = r"w9|w8-ben|w8-bene|w8-ben-e"
     RECEIPT_REGEX = r"receipt"
+    SHOWBIZ_REGEX = r".mbb"
 
     def __init__(self):
         if not hasattr(self, '_initialized'):
@@ -72,7 +73,6 @@ class DropboxService(metaclass=SingletonMeta):
             self.config = Config()
             self.database_util = dropbox_database_util
             self.dropbox_api = dropbox_api
-
             self.po_log_database_util = po_log_database_util
             self.logger.info("📦 Dropbox Service initialized 🌟")
             self._initialized = True
@@ -103,6 +103,10 @@ class DropboxService(metaclass=SingletonMeta):
             if re.search(self.RECEIPT_REGEX, filename, re.IGNORECASE):
                 self.logger.info(f"🧾 File identified as a receipt: {filename}. 🧾")
                 return self.process_receipt(path)
+
+            if re.search(self.SHOWBIZ_REGEX, filename, re.IGNORECASE):
+                self.logger.info(f"🧾 File identified as a budget: {filename}. 🧾")
+                return self.process_budget(path)
 
             self.logger.debug(f"❌ Invalid or unsupported file type: {filename}. ❌")
             return None
@@ -385,6 +389,132 @@ class DropboxService(metaclass=SingletonMeta):
             self.logger.exception(f"💥 Error processing contacts: {parse_error}", exc_info=True)
             raise
         # endregion
+
+    def process_budget(self, dropbox_path: str):
+        """
+        🎉 process_budget Function 🎉
+        This function takes a dropbox_path for a .mbb budget file, verifies that it's a valid budget file
+        in the correct directory (Working or Actuals), locates the corresponding P.O Logs folder, and then
+        invokes the ShowbizPoLogPrinter to open and print the PO Log associated with that budget.
+        """
+
+        # region 🛠 Initial Setup
+        self.logger.info(f"💼 Processing new budget changes: {dropbox_path}")
+        filename = os.path.basename(dropbox_path)
+        # endregion
+
+        # region 🔒 Validate File Extension
+        try:
+            if not filename.endswith(".mbb") or filename.endswith(".mbb.lck"):
+                self.logger.info("❌ Not a valid .mbb file or it's an .lck file. Ignoring.")
+                return
+        except Exception as e:
+            self.logger.exception(f"💥 Error checking file extension: {e}", exc_info=True)
+            return
+        # endregion
+
+        # region 🔎 Check Folder Structure
+        # Example path structure (Dropbox):
+        # /2024/2416 - Whop Keynote/5. Budget/1.2 Working/mybudget.mbb
+        # or
+        # /2024/2416 - Whop Keynote/5. Budget/1.3 Actuals/mybudget.mbb
+        try:
+            segments = dropbox_path.strip("/").split("/")
+            # segments example: ["2024", "2416 - Whop Keynote", "5. Budget", "1.2 Working", "mybudget.mbb"]
+
+            if len(segments) < 4:
+                self.logger.info("❌ Path does not have enough segments to identify project and phase. Ignoring.")
+                return
+
+            project_folder = segments[0]  # e.g. "2416 - Whop Keynote"
+            budget_folder = segments[1]  # should be "5. Budget"
+            phase_folder = segments[2]  # "1.2 Working" or "1.3 Actuals"
+
+            # Check if we're in the correct budget folder and phase
+            if budget_folder != "5. Budget" or phase_folder not in ["1.2 Working", "1.3 Actuals"]:
+                self.logger.info("❌ Budget file not located in 'Working' or 'Actuals' folder. Ignoring.")
+                return
+
+            # Extract project_id from the project folder name.
+            # Assuming project folder is like "2416 - Whop Keynote" -> project_id = "2416"
+            project_id_match = re.match(r"^\d{4}", project_folder)
+            if not project_id_match:
+                self.logger.info("❌ Could not determine Project ID from folder name. Ignoring.")
+                return
+            project_id = project_id_match.group()
+
+            self.logger.info(f"🔑 Determined Project ID: {project_id}")
+        except Exception as e:
+            self.logger.exception(f"💥 Error parsing path structure: {e}", exc_info=True)
+            return
+        # endregion
+
+        # region 📁 Determine P.O Logs Folder
+        # P.O Logs folder: .../5. Budget/1.5 PO Logs
+        try:
+            # We'll reconstruct the path to the P.O Logs folder based on known structure
+            # segments = [year, projectID - projectName, "5. Budget", "1.2 Working", "mybudget.mbb"]
+            # Remove filename and phase folder
+            # ["2024", "2416 - Whop Keynote", "5. Budget"]
+            budget_root = "/".join(segments[0:3])
+            po_logs_path = f"/{budget_root}/1.5 PO Logs"  # Dropbox path to PO Logs folder
+            self.logger.info(f"🗂 P.O Logs folder path: {po_logs_path}")
+        except Exception as e:
+            self.logger.exception(f"💥 Error determining PO Logs folder: {e}", exc_info=True)
+            return
+        # endregion
+
+        # region 💾 Download Budget File
+        # We'll download the .mbb file locally so we can open it with ShowbizPoLogPrinter.
+        try:
+            local_temp_dir = "./temp_files"
+            if not os.path.exists(local_temp_dir):
+                os.makedirs(local_temp_dir)
+
+            local_file_path = os.path.join(local_temp_dir, filename)
+            self.logger.info(f"⏬ Downloading '{filename}' to '{local_file_path}'...")
+
+            # Assuming dropbox_api has a method `download_file` that returns binary content:
+            file_data = self.dropbox_api.download_file(dropbox_path, local_file_path)
+            if file_data:
+                self.logger.info(f"✅ File downloaded successfully: {filename}")
+            else:
+                raise
+        except Exception as e:
+            self.logger.exception(f"💥 Error downloading budget file: {e}", exc_info=True)
+            return
+        # endregion
+
+        # region 🖨 Invoke ShowbizPoLogPrinter
+        # Now that we have the local .mbb file, let's run the printing script.
+        # This script:
+        # 1. Opens the budget file.
+        # 2. Prints the PO_Log (as per your instructions).
+        try:
+            from po_log_files.showbiz_log_printer import ShowbizPoLogPrinter
+
+            self.logger.info("🖨 Invoking ShowbizPoLogPrinter with the downloaded budget file...")
+            printer = ShowbizPoLogPrinter(project_id=project_id, file_path=local_file_path)
+
+            printer.run()
+            self.logger.info("🎉 PO Log printing completed successfully!")
+        except Exception as e:
+            self.logger.exception(f"💥 Error invoking ShowbizPoLogPrinter: {e}", exc_info=True)
+            return
+        # endregion
+
+        # region 🧹 Cleanup
+        # If desired, remove the local file after printing
+        try:
+            if os.path.exists(local_file_path):
+                os.remove(local_file_path)
+                self.logger.info(f"🧹 Cleaned up temporary file: {local_file_path}")
+        except Exception as e:
+            self.logger.warning(f"⚠️ Failed to remove temporary file '{local_file_path}': {e}")
+        # endregion
+
+        self.logger.info("✅ process_budget completed successfully.")
+
 
     def extract_receipt_info_with_openai_from_file(self, dropbox_path: str):
         # region 🤖 Receipt Info with OpenAI
