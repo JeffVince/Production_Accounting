@@ -83,14 +83,15 @@ class DropboxService(metaclass=SingletonMeta):
         filename = os.path.basename(path)
         try:
             if self.PO_LOG_FOLDER_NAME in path:
-                project_id_match = re.match(r"^\d{4}", filename)
+                # Updated regex to match the new filename format: PO_LOG_<ProjectID>_<Timestamp>.txt
+                project_id_match = re.match(r"^PO_LOG_(\d{4})[-_]\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.txt$", filename)
                 if project_id_match:
-                    project_id = project_id_match.group()
+                    project_id = project_id_match.group(1)
                     self.logger.info(f"🗂 File identified as PO Log with Project ID {project_id}. 🗂")
                     return self.process_po_log(path)
                 else:
-                    self.logger.warning("⚠️ Could not determine Project ID from PO Log filename. ⚠️")
-                    return None
+                    self.logger.warning(f"⚠️ Filename '{filename}' does not match the expected PO Log format.")
+                    return
 
             if re.search(self.INVOICE_REGEX, filename, re.IGNORECASE):
                 self.logger.info(f"💰 File identified as an invoice: {filename}. 💰")
@@ -396,14 +397,13 @@ class DropboxService(metaclass=SingletonMeta):
         This function takes a dropbox_path for a .mbb budget file, verifies that it's a valid budget file
         in the correct directory (Working or Actuals), locates the corresponding P.O Logs folder, and then
         invokes the ShowbizPoLogPrinter to open and print the PO Log associated with that budget.
+        Finally, it uploads the resulting PO Log file to the project's 1.5 PO Logs folder on Dropbox
+        and returns the local file link.
         """
-
-        # region 🛠 Initial Setup
         self.logger.info(f"💼 Processing new budget changes: {dropbox_path}")
         filename = os.path.basename(dropbox_path)
-        # endregion
 
-        # region 🔒 Validate File Extension
+        # Validate File Extension
         try:
             if not filename.endswith(".mbb") or filename.endswith(".mbb.lck"):
                 self.logger.info("❌ Not a valid .mbb file or it's an .lck file. Ignoring.")
@@ -411,13 +411,8 @@ class DropboxService(metaclass=SingletonMeta):
         except Exception as e:
             self.logger.exception(f"💥 Error checking file extension: {e}", exc_info=True)
             return
-        # endregion
 
-        # region 🔎 Check Folder Structure
-        # Example path structure (Dropbox):
-        # /2024/2416 - Whop Keynote/5. Budget/1.2 Working/mybudget.mbb
-        # or
-        # /2024/2416 - Whop Keynote/5. Budget/1.3 Actuals/mybudget.mbb
+        # Parse Path Structure
         try:
             segments = dropbox_path.strip("/").split("/")
             # segments example: ["2024", "2416 - Whop Keynote", "5. Budget", "1.2 Working", "mybudget.mbb"]
@@ -430,7 +425,6 @@ class DropboxService(metaclass=SingletonMeta):
             budget_folder = segments[1]  # should be "5. Budget"
             phase_folder = segments[2]  # "1.2 Working" or "1.3 Actuals"
 
-            # Check if we're in the correct budget folder and phase
             if budget_folder != "5. Budget" or phase_folder not in ["1.2 Working", "1.3 Actuals"]:
                 self.logger.info("❌ Budget file not located in 'Working' or 'Actuals' folder. Ignoring.")
                 return
@@ -447,25 +441,19 @@ class DropboxService(metaclass=SingletonMeta):
         except Exception as e:
             self.logger.exception(f"💥 Error parsing path structure: {e}", exc_info=True)
             return
-        # endregion
 
-        # region 📁 Determine P.O Logs Folder
-        # P.O Logs folder: .../5. Budget/1.5 PO Logs
+        # Determine P.O Logs Folder
         try:
-            # We'll reconstruct the path to the P.O Logs folder based on known structure
-            # segments = [year, projectID - projectName, "5. Budget", "1.2 Working", "mybudget.mbb"]
-            # Remove filename and phase folder
-            # ["2024", "2416 - Whop Keynote", "5. Budget"]
-            budget_root = "/".join(segments[0:3])
-            po_logs_path = f"/{budget_root}/1.5 PO Logs"  # Dropbox path to PO Logs folder
+            # segments = [year, "2416 - Whop Keynote", "5. Budget", "1.2 Working", "mybudget.mbb"]
+            # We want up to the "5. Budget" segment
+            budget_root = "/".join(segments[0:3])  # e.g. "2024/2416 - Whop Keynote/5. Budget"
+            po_logs_path = f"/{budget_root}/1.5 PO Logs"
             self.logger.info(f"🗂 P.O Logs folder path: {po_logs_path}")
         except Exception as e:
             self.logger.exception(f"💥 Error determining PO Logs folder: {e}", exc_info=True)
             return
-        # endregion
 
-        # region 💾 Download Budget File
-        # We'll download the .mbb file locally so we can open it with ShowbizPoLogPrinter.
+        # Download Budget File Locally
         try:
             local_temp_dir = "./temp_files"
             if not os.path.exists(local_temp_dir):
@@ -474,47 +462,64 @@ class DropboxService(metaclass=SingletonMeta):
             local_file_path = os.path.join(local_temp_dir, filename)
             self.logger.info(f"⏬ Downloading '{filename}' to '{local_file_path}'...")
 
-            # Assuming dropbox_api has a method `download_file` that returns binary content:
+            # Assuming dropbox_api has a method `download_file` that downloads to local_file_path:
             file_data = self.dropbox_api.download_file(dropbox_path, local_file_path)
             if file_data:
                 self.logger.info(f"✅ File downloaded successfully: {filename}")
             else:
-                raise
+                raise ValueError("File data is empty, download might have failed.")
         except Exception as e:
             self.logger.exception(f"💥 Error downloading budget file: {e}", exc_info=True)
             return
-        # endregion
 
-        # region 🖨 Invoke ShowbizPoLogPrinter
-        # Now that we have the local .mbb file, let's run the printing script.
-        # This script:
-        # 1. Opens the budget file.
-        # 2. Prints the PO_Log (as per your instructions).
+        # Invoke ShowbizPoLogPrinter
         try:
             from po_log_files.showbiz_log_printer import ShowbizPoLogPrinter
 
             self.logger.info("🖨 Invoking ShowbizPoLogPrinter with the downloaded budget file...")
             printer = ShowbizPoLogPrinter(project_id=project_id, file_path=local_file_path)
 
-            printer.run()
+            file_link = printer.run()  # This should return a file:// link to the PO_LOG file on desktop
             self.logger.info("🎉 PO Log printing completed successfully!")
         except Exception as e:
             self.logger.exception(f"💥 Error invoking ShowbizPoLogPrinter: {e}", exc_info=True)
             return
-        # endregion
+        finally:
+            # Cleanup local .mbb file after printing
+            try:
+                if os.path.exists(local_file_path):
+                    os.remove(local_file_path)
+                    self.logger.info(f"🧹 Cleaned up temporary budget file: {local_file_path}")
+            except Exception as e:
+                self.logger.warning(f"⚠️ Failed to remove temporary file '{local_file_path}': {e}")
 
-        # region 🧹 Cleanup
-        # If desired, remove the local file after printing
+        # Upload the PO LOG to Dropbox
         try:
-            if os.path.exists(local_file_path):
-                os.remove(local_file_path)
-                self.logger.info(f"🧹 Cleaned up temporary file: {local_file_path}")
+            # The printer returns a file:// URI. Convert that to a local file path.
+            # file_link e.g.: "file:///Users/yourusername/Desktop/PO_LOGS/PO_LOG_2416_2024-12-12_14-30-45.txt"
+            from urllib.parse import urlparse
+            parsed = urlparse(file_link)
+            po_log_local_path = parsed.path  # Should give the full local path without 'file://'
+
+            # On macOS, parsed.path may start with '/Users/...', so it's a valid absolute path.
+            # We'll ensure it exists before uploading.
+            if not os.path.exists(po_log_local_path):
+                self.logger.error(f"❌ PO log file not found at '{po_log_local_path}'. Cannot upload.")
+                return
+
+            # Upload to Dropbox. Construct a destination path within the PO Logs folder.
+            po_log_filename = os.path.basename(po_log_local_path)
+            dropbox_destination = f"{po_logs_path}/{po_log_filename}"
+
+            self.logger.info(f"⏫ Uploading PO log to Dropbox at: {dropbox_destination}")
+            self.dropbox_api.upload_file(po_log_local_path, dropbox_destination)
+            self.logger.info("✅ PO Log uploaded to Dropbox successfully.")
         except Exception as e:
-            self.logger.warning(f"⚠️ Failed to remove temporary file '{local_file_path}': {e}")
-        # endregion
+            self.logger.exception(f"💥 Error uploading PO log to Dropbox: {e}", exc_info=True)
+            return
 
         self.logger.info("✅ process_budget completed successfully.")
-
+        return
 
     def extract_receipt_info_with_openai_from_file(self, dropbox_path: str):
         # region 🤖 Receipt Info with OpenAI

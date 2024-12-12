@@ -1,5 +1,6 @@
 import csv
 import logging
+import os
 import re
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -24,13 +25,30 @@ class POLogProcessor(metaclass=SingletonMeta):
     def _extract_project_id(self, file_path: str) -> str:
         """
         Extracts the project ID from the filename.
-        Example: 'temp_2416.txt' => '2416'
+        Example: 'PO_LOG_2416-2024-12-12_01-30-30.txt' => '2416'
+
+        :param file_path: Full path to the file.
+        :return: Extracted Project ID as a string. Returns '0000' if not found.
         """
-        match = re.search(r'(\d+)', file_path)
+        # Extract the filename from the full file path
+        filename = os.path.basename(file_path)
+        self.logger.debug(f"Extracting Project ID from filename: {filename}")
+
+        # Define a regex pattern to match the filename format:
+        # PO_LOG_<ProjectID>-<Timestamp>.txt or PO_LOG_<ProjectID>_<Timestamp>.txt
+        pattern = r"^PO_LOG_(\d{4})[-_]\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.txt$"
+
+        # Attempt to match the pattern
+        match = re.match(pattern, filename)
+
         if match:
-            return match.group(1)
-        self.logger.warning("No project ID found in filename, defaulting to '0000'")
-        return '0000'
+            project_id = match.group(1)
+            self.logger.info(f"✅ Project ID '{project_id}' extracted from filename '{filename}'.")
+            return project_id
+        else:
+            # If not matched, log a warning and return a default value
+            self.logger.warning(f"⚠️ No Project ID found in filename '{filename}'. Defaulting to '0000'.")
+            return '0000'
 
     def _map_payment_type(self, raw_type: str) -> str:
         """
