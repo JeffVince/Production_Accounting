@@ -1,11 +1,21 @@
 # po_log_database_util.py
 # 📚✨ PO Log Database Utility: Provides database operations for PO logs, contacts, items, etc. ✨📚
-# Jeff, here's your po_log_database_util file with:
 # - The get_contact_by_name function
 # - Regions, emojis, comments, docstrings, try/catch blocks
 # - Ensured class is initialized the same way and all existing functionality remains intact
 # - Conditional pulse_id setting logic in main and sub items
 # - Default 'PENDING' state if contact_status is None, preventing IntegrityError for NULL state
+#
+# ✨ Additional Implementations ✨
+# 🏗 Implemented the following functions as requested:
+# - get_po_with_details(po_surrogate_id)
+# - update_po_folder_link(po_surrogate_id, folder_link)
+# - update_po_tax_form_link(po_surrogate_id, tax_form_link)
+# - update_detail_item_file_link(detail_item_surrogate_id, file_link)
+# - get_project_folder_name(project_id)
+#
+# 📚 All functions include extensive logging, comments, try/except blocks, and tons of emojis for easy scanning!
+# 🔍 Carefully check each region for the implemented logic and error handling.
 
 import logging
 import re
@@ -13,17 +23,16 @@ from decimal import Decimal, InvalidOperation
 
 from dateutil.parser import parser
 from sqlalchemy.exc import IntegrityError
-
 from database.db_util import get_db_session
 from database.models import (
     Contact,
     PurchaseOrder,
-    DetailItem
+    DetailItem,
+    Project
 )
 from utilities.singleton import SingletonMeta
 from dateutil import parser
 from datetime import datetime, timedelta
-
 
 # region 🏢 Class Definition
 class PoLogDatabaseUtil(metaclass=SingletonMeta):
@@ -31,6 +40,12 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
     📚 This utility class provides various database operations for handling PO logs,
     contacts, items, and other related entities. It uses a SingletonMeta to ensure
     only one instance is active, and interacts with the database via SQLAlchemy sessions.
+
+    ✨ Features:
+    - Lots of emojis for quick scanning!
+    - Detailed docstrings and exceptions
+    - Safe DB operations with try/catch
+    - Preprocessing methods, Create/Update methods, and retrieval methods
     """
 
     def __init__(self):
@@ -64,11 +79,11 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
                             "PO": contact.get("PO"),
                             "contact_surrogate_id": db_contact.contact_surrogate_id
                         })
-                        self.logger.debug(f"Found in database: {contact.get('name')}")
+                        self.logger.debug(f"🤝 Found in database: {contact.get('name')}")
                     else:
-                        self.logger.debug(f"Not in database: {contact.get('name')}")
+                        self.logger.debug(f"🙅 Not in database: {contact.get('name')}")
             except Exception as e:
-                self.logger.error(f"Error processing contact '{contact.get('name', 'Unknown')}': {e}")
+                self.logger.error(f"💥 Error processing contact '{contact.get('name', 'Unknown')}': {e}", exc_info=True)
 
         return new_contact_list
 
@@ -90,21 +105,21 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
 
                     if not po_records:
                         self.logger.warning(
-                            f"No PO records found for Project ID '{project_id}' and PO '{contact['PO']}'")
+                            f"⚠️ No PO records found for Project ID '{project_id}' and PO '{contact['PO']}'")
                         continue
 
                     for po in po_records:
                         original_contact_id = po.contact_id
                         po.contact_id = contact["contact_surrogate_id"]
                         self.logger.info(
-                            f"Updated PO ID {contact.get('name')}: contact_id {original_contact_id} -> {po.contact_id}"
+                            f"🔄 Updated PO ID {contact.get('name')}: contact_id {original_contact_id} -> {po.contact_id}"
                         )
 
                 session.commit()
-                self.logger.info("Successfully updated PO records with contact surrogate IDs.")
+                self.logger.info("✅ Successfully updated PO records with contact surrogate IDs.")
 
         except Exception as e:
-            self.logger.error(f"Error updating PO records: {e}")
+            self.logger.error(f"💥 Error updating PO records: {e}", exc_info=True)
             with get_db_session() as session:
                 session.rollback()
             raise
@@ -124,12 +139,12 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
                 db_contact = session.query(Contact).filter_by(contact_surrogate_id=contact_surrogate_id).one_or_none()
                 if db_contact:
                     pulse_id = db_contact.pulse_id
-                    self.logger.info(f"Contact Pulse ID found in database: {db_contact.name}")
+                    self.logger.info(f"🔎 Contact Pulse ID found in database: {db_contact.name} (pulse_id={pulse_id})")
                     return pulse_id
                 else:
-                    self.logger.warning("Contact Pulse ID not found in database.")
+                    self.logger.warning("⚠️ Contact Pulse ID not found in database.")
         except Exception as e:
-            self.logger.error(f"Error retrieving contact pulse ID: {e}")
+            self.logger.error(f"💥 Error retrieving contact pulse ID: {e}", exc_info=True)
         return None
 
     def get_pos_by_project_id(self, project_id):
@@ -154,7 +169,7 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
                         "'contact_surrogate_id": db.contact_id
                     })
         except Exception as e:
-            self.logger.error(f"Error querying POs: {e}")
+            self.logger.error(f"💥 Error querying POs: {e}", exc_info=True)
         return po_items
 
     def prep_po_log_item_for_db(self, main_item, project_id):
@@ -173,12 +188,12 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
             if key == 'PO':
                 creation_item["po_number"] = value
         creation_item['project_id'] = project_id
-        self.logger.debug(f'Prepared creation item: {creation_item}')
+        self.logger.debug(f'🛠 Prepared creation item: {creation_item}')
         return creation_item
 
     def prep_po_log_detail_for_db(self, detail_item):
         """
-        🏗 Prepares a PO log detail item for the database.
+        🏗 Prepares a PO log detail item for the database. (Currently just a placeholder)
         """
         print("test")
 
@@ -201,16 +216,17 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
                 ).one_or_none()
 
                 if not main_item_record:
-                    self.logger.warning(f"Main item not found: {main_item}")
+                    self.logger.warning(f"⚠️ Main item not found: {main_item}")
                     return False
 
                 detail_item_record = session.query(DetailItem).filter_by(
                     parent_surrogate_id=main_item_record.po_surrogate_id,
-                    detail_item_number=detail_item["item_id"]
+                    detail_item_number=detail_item["detail_item_id"],
+                    line_id=detail_item["line_id"]
                 ).one_or_none()
 
                 if not detail_item_record:
-                    self.logger.warning(f"Detail item not found: {detail_item}")
+                    self.logger.warning(f"⚠️ Detail item not found: {detail_item}")
                     return False
 
                 key_mapping = {
@@ -242,12 +258,12 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
                         db_value = db_value.strip().lower()
 
                     if provided_value != db_value:
-                        self.logger.debug(f"Field '{key}' differs: {db_value} != {provided_value}")
+                        self.logger.debug(f"✏️ Field '{key}' differs: {db_value} != {provided_value}")
                         return False
-                self.logger.info("No Changes DETECTED")
+                self.logger.debug("✅ No Changes DETECTED")
                 return True
             except Exception as e:
-                self.logger.exception(f"Error checking for unchanged detail item: {e}")
+                self.logger.exception(f"💥 Error checking for unchanged detail item: {e}", exc_info=True)
                 return False
     # endregion
 
@@ -267,6 +283,7 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
         db_item["project_id"] = item['project_id']
         db_item["po_number"] = item['PO']
         db_item["contact_id"] = item['contact_surrogate_id']
+        db_item["contact_name"] = item["contact_name"]
         db_item["description"] = item["description"]
         db_item["po_type"] = item["po_type"]
         # Only set pulse_id if it exists in item
@@ -286,7 +303,7 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
                 po_item = session.query(PurchaseOrder).filter_by(po_number=db_item["po_number"],
                                                                  project_id=db_item["project_id"]).one_or_none()
                 if po_item:
-                    self.logger.info(f"Purchase Order Exists: {db_item['project_id']}_{db_item['po_number']}")
+                    self.logger.info(f"📝 Purchase Order Exists: {db_item['project_id']}_{db_item['po_number']}")
                     po_item.contact_id = db_item["contact_id"]
                     po_item.state = db_item["state"]
                     po_item.contact_id = item['contact_surrogate_id']
@@ -302,14 +319,14 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
                     new_item = PurchaseOrder(**db_item)
                     session.add(new_item)
                     session.commit()
-                    self.logger.info(f"Created new Purchase Order: {db_item['project_id']}_{db_item['po_number']}")
+                    self.logger.info(f"🎉 Created new Purchase Order: {db_item['project_id']}_{db_item['po_number']}")
                     po_item = session.query(PurchaseOrder).filter_by(po_number=db_item['po_number'],
                                                                      project_id=db_item['project_id']).one_or_none()
                     item["po_surrogate_id"] = po_item.po_surrogate_id
                     return item
             except Exception as e:
                 session.rollback()
-                self.logger.error(f"Error processing PurchaseOrder in DB: {e}", exc_info=True)
+                self.logger.error(f"💥 Error processing PurchaseOrder in DB: {e}", exc_info=True)
                 return None
 
     def create_or_update_sub_item_in_db(self, item):
@@ -319,13 +336,15 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
         Ensures that after this call, `item` has `detail_item_surrogate_id`.
         """
         db_item = {}
-        db_item["quantity"] = 1
+        db_item["quantity"] = item["quantity"]
         db_item["payment_type"] = item["payment_type"]
         db_item["description"] = item["description"]
         if "parent_pulse_id" in item:
             db_item["parent_pulse_id"] = item["parent_pulse_id"]
 
-        db_item["detail_item_number"] = item["item_id"]
+        db_item["detail_item_number"] = item["detail_item_id"]
+        db_item["line_id"] = item["line_id"]  # <-- Added the new line_id field
+
         if "pulse_id" in item:
             db_item["pulse_id"] = item["pulse_id"]
 
@@ -334,6 +353,8 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
         db_item["fringes"] = item["fringes"]
         db_item["vendor"] = item["vendor"]
         db_item["state"] = "RTP" if item["parent_status"] == "RTP" else "PENDING"
+        db_item["po_number"] = item["po_number"]
+        db_item["project_id"] = item["project_id"]
 
         rate = item["rate"]
         # region 🧹 RATE CLEANER
@@ -341,7 +362,7 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
             cleaned_rate = Decimal(str(rate).replace(',', '').strip())
             db_item["rate"] = float(cleaned_rate)
         except (ValueError, InvalidOperation) as e:
-            self.logger.error(f"Invalid rate value '{rate}': {e}")
+            self.logger.error(f"💥 Invalid rate value '{rate}': {e}", exc_info=True)
             db_item["rate"] = None
         # endregion
 
@@ -360,7 +381,7 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
             else:
                 raise ValueError(f"Invalid date value: {date}")
         except Exception as e:
-            self.logger.error(f"Error parsing and formatting date '{date}': {e}")
+            self.logger.error(f"💥 Error parsing and formatting date '{date}': {e}", exc_info=True)
         # endregion
 
         account_number = item["account"]
@@ -372,15 +393,16 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
             else:
                 raise ValueError(f"Account number '{account_number}' resulted in an empty value.")
         except (ValueError, TypeError) as e:
-            self.logger.error(f"Invalid account number value '{account_number}': {e}")
+            self.logger.error(f"💥 Invalid account number value '{account_number}': {e}", exc_info=True)
             db_item["account_number"] = None
         # endregion
 
         with get_db_session() as session:
             try:
                 detail_item = session.query(DetailItem).filter_by(
-                    parent_surrogate_id=item["po_surrogate_id"],
-                    detail_item_number=item["item_id"]
+                    po_number=item["po_number"],
+                    detail_item_number=item["detail_item_id"],
+                    line_id=item["line_id"]
                 ).one_or_none()
 
                 if detail_item:
@@ -389,7 +411,7 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
                         if value is not None:
                             setattr(detail_item, db_field, value)
                     session.commit()
-                    self.logger.debug(f"Updated existing DetailItem: {item['vendor']}")
+                    self.logger.debug(f"🔄 Updated existing DetailItem: {item['vendor']} (line_id: {item['line_id']})")
                 else:
                     # Create a new record
                     new_detail_item = DetailItem(**db_item)
@@ -397,7 +419,7 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
                     session.commit()
                     detail_item = new_detail_item
                     self.logger.info(
-                        f"Created new DetailItem: {item['vendor']}, surrogate_id: {detail_item.detail_item_surrogate_id}"
+                        f"🎉 Created new DetailItem: {item['vendor']}, line_id: {item['line_id']}, surrogate_id: {detail_item.detail_item_surrogate_id}"
                     )
 
                 # Retrieve and store the surrogate_id
@@ -406,14 +428,14 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
 
             except IntegrityError as ie:
                 session.rollback()
-                self.logger.exception(f"IntegrityError processing DetailItem in DB: {ie}")
+                self.logger.exception(f"💥 IntegrityError processing DetailItem in DB: {ie}", exc_info=True)
                 return {
                     "status": "Fail",
                     "error": str(ie)
                 }
             except Exception as e:
                 session.rollback()
-                self.logger.exception(f"Error processing DetailItem in DB: {e}")
+                self.logger.exception(f"💥 Error processing DetailItem in DB: {e}", exc_info=True)
                 return {
                     "status": "Fail",
                     "error": str(e)
@@ -425,7 +447,7 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
         Assumes 'tax_id' or 'pulse_id' can identify an existing contact uniquely.
         """
         db_item = {
-            "name": item.get("name"),
+            "name": item.get("contact_name"),
             "vendor_type": item.get("po_type"),
             "payment_details": item.get("contact_payment_details") or "PENDING",
             "pulse_id": item.get("contact_pulse_id"),
@@ -454,12 +476,13 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
 
                 # If found, update; else create new
                 if contact_query:
-                    self.logger.info(f"Existing Contact found in DB: {db_item['name']}")
+                    self.logger.info(f"👥 Existing Contact found in DB: {db_item['name']}")
                     for key, value in db_item.items():
                         if value is not None:
                             setattr(contact_query, key, value)
                     session.commit()
                     item["contact_surrogate_id"] = contact_query.contact_surrogate_id
+                    item["contact_pulse_id"] = contact_query.pulse_id
                     return item
                 else:
                     new_contact = Contact(**db_item)
@@ -468,16 +491,17 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
 
                     created_contact = session.query(Contact).filter_by(name=db_item['name']).one_or_none()
                     if created_contact:
-                        self.logger.info(f"Created new Contact: {db_item['name']}")
+                        self.logger.info(f"🎉 Created new Contact: {db_item['name']}")
                         item["contact_surrogate_id"] = created_contact.contact_surrogate_id
+                        item["contact_pulse_id"] = created_contact.pulse_id
                         return item
                     else:
-                        self.logger.error("Contact creation failed unexpectedly.")
+                        self.logger.error("💥 Contact creation failed unexpectedly.")
                         return "Fail"
 
             except Exception as e:
                 session.rollback()
-                self.logger.error(f"Error processing Contact in DB: {e}", exc_info=True)
+                self.logger.error(f"💥 Error processing Contact in DB: {e}", exc_info=True)
                 return "Fail"
     # endregion
 
@@ -497,7 +521,7 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
                 self.logger.debug(f"🔍 Searching for contact by name: {name}")
                 contact = session.query(Contact).filter_by(name=name).one_or_none()
                 if contact:
-                    self.logger.info(f"Found contact: {contact.name}")
+                    self.logger.info(f"🔎 Found contact: {contact.name}")
                     contact_dict = {
                         'payment_details': contact.payment_details,
                         'email': contact.email,
@@ -513,12 +537,85 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
                     }
                     return contact_dict
                 else:
-                    self.logger.info(f"No contact found with name: {name}")
+                    self.logger.info(f"⚠️ No contact found with name: {name}")
                     return None
         except Exception as e:
             self.logger.error(f"💥 Database error in get_contact_by_name: {e}", exc_info=True)
             return None
     # endregion
+
+    def get_subitems(self, project_id, po_number=None, detail_item_number=None, line_id=None):
+        """
+        📚 Retrieve subitems (DetailItems) from the database based on various filters.
+
+        Parameters:
+            project_id (str): The project ID to filter detail items.
+            po_number (str, optional): The PO number to filter. If not provided, returns all subitems in the project.
+            detail_item_number (int or str, optional): The detail item number to filter. If not provided, returns all matching subitems.
+            line_id (int or str, optional): The line_id to filter. If provided along with all other parameters,
+                                            returns only that specific subitem.
+
+        Returns:
+            list or dict:
+                - If only project_id is provided: Returns a list of all subitems in that project.
+                - If project_id and po_number are provided: Returns subitems filtered by that PO.
+                - If project_id, po_number, and detail_item_number are provided: Returns subitems filtered to that detail_item_number.
+                - If project_id, po_number, detail_item_number, and line_id are provided: Returns a single subitem dict or None if not found.
+        """
+        from sqlalchemy import and_
+        try:
+            with get_db_session() as session:
+                # Base query: Join DetailItem with PurchaseOrder since we need project_id and po_number from PurchaseOrder
+                query = session.query(DetailItem, PurchaseOrder).join(
+                    PurchaseOrder, DetailItem.parent_surrogate_id == PurchaseOrder.po_surrogate_id
+                ).filter(PurchaseOrder.project_id == project_id)
+
+                if po_number:
+                    query = query.filter(PurchaseOrder.po_number == po_number)
+                if detail_item_number is not None:
+                    # Ensure detail_item_number is compared as the correct type
+                    # detail_item_number on model is likely an int or Decimal; adjust as needed
+                    query = query.filter(DetailItem.detail_item_number == detail_item_number)
+                if line_id is not None:
+                    query = query.filter(DetailItem.line_id == line_id)
+
+                results = query.all()
+
+                # Convert results to a list of dicts
+                subitems_list = []
+                for detail_item, po in results:
+                    subitems_list.append({
+                        "detail_item_surrogate_id": detail_item.detail_item_surrogate_id,
+                        "project_id": po.project_id,
+                        "po_number": po.po_number,
+                        "detail_item_number": detail_item.detail_item_number,
+                        "line_id": detail_item.line_id,
+                        "transaction_date": detail_item.transaction_date.strftime(
+                            "%Y-%m-%d") if detail_item.transaction_date else None,
+                        "due_date": detail_item.due_date.strftime("%Y-%m-%d") if detail_item.due_date else None,
+                        "pulse_id": detail_item.pulse_id,
+                        "rate": float(detail_item.rate) if detail_item.rate is not None else None,
+                        "quantity": float(detail_item.quantity) if detail_item.quantity is not None else None,
+                        "sub_total": float(detail_item.sub_total) if detail_item.sub_total is not None else None,
+                        "payment_type": detail_item.payment_type,
+                        "ot": float(detail_item.ot) if detail_item.ot is not None else None,
+                        "fringes": float(detail_item.fringes) if detail_item.fringes is not None else None,
+                        "vendor": detail_item.vendor,
+                        "description": detail_item.description,
+                        "file_link": detail_item.file_link,
+                        "state": detail_item.state,
+                        "account_number": detail_item.account_number
+                    })
+
+                # If we have all four parameters and expect one subitem, return a single dict or None
+                if po_number and detail_item_number is not None and line_id is not None:
+                    return subitems_list[0] if len(subitems_list) == 1 else None
+
+                return subitems_list
+
+        except Exception as e:
+            self.logger.error(f"💥 Error retrieving subitems: {e}", exc_info=True)
+            return None
 
     def fetch_po_by_id(self, project_id):
         """
@@ -558,10 +655,6 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
                     po_number = po_dict.get('PO #')
 
                     # Fetch detail items associated with this PO
-                    # Adjust the join and column names based on your actual schema.
-                    # This assumes:
-                    #   - detail_items.po_surrogate_id references purchase_orders.po_surrogate_id
-                    #   - purchase_orders.po_number = :po_number
                     detail_result = session.execute(text("""
                         SELECT 
                             detail_items.detail_item_surrogate_id,
@@ -591,14 +684,13 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
                         d_dict = dict(d_row._mapping)
                         detail_items.append(d_dict)
 
-                    # Add detail items to the PO dictionary
                     po_dict['detail_items'] = detail_items
                     objects_as_dict.append(po_dict)
 
                 return jsonify(objects_as_dict)
 
             except Exception as e:
-                self.logger.error(f"Error retrieving objects from view for project_id {project_id}: {e}")
+                self.logger.error(f"💥 Error retrieving objects from view for project_id {project_id}: {e}", exc_info=True)
                 resp = jsonify({"error": "Could not retrieve objects"})
                 resp.status_code = 500
                 return resp
@@ -611,6 +703,145 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
         print("test")
     # endregion
 
+    # region ✨ LINK FUNCTIONS  ✨
+
+    def get_po_with_details(self, po_surrogate_id):
+        """
+        🕵️‍♂️ get_po_with_details:
+        Returns a dictionary with PO and detail item info:
+        {
+            "project_id": ...,
+            "po_number": ...,
+            "pulse_id": ...,
+            "vendor_name": ...,
+            "detail_items": [
+                {
+                    "detail_item_surrogate_id": ...,
+                    "pulse_id": ...,
+                    "detail_item_number": ...,
+                },
+                ...
+            ]
+        }
+        """
+        with get_db_session() as session:
+            try:
+                po = session.query(PurchaseOrder).filter_by(po_surrogate_id=po_surrogate_id).one_or_none()
+                if not po:
+                    self.logger.warning(f"⚠️ No purchase order found for po_surrogate_id={po_surrogate_id}")
+                    return None
+
+                # Retrieve vendor name from associated contact if available
+                vendor_name = "Unknown Vendor"
+                if po.contact_id:
+                    contact = session.query(Contact).filter_by(contact_surrogate_id=po.contact_id).one_or_none()
+                    if contact and contact.name:
+                        vendor_name = contact.name
+
+                # Build detail items list
+                detail_items_list = []
+                detail_items_from_db=session.query(DetailItem).filter_by(parent_surrogate_id=po.po_surrogate_id).all()
+                for d in detail_items_from_db:
+                    detail_items_list.append({
+                        "detail_item_surrogate_id": d.detail_item_surrogate_id,
+                        "pulse_id": d.pulse_id,
+                        "detail_item_number": float(d.detail_item_number) if d.detail_item_number else None
+                    })
+
+                result = {
+                    "project_id": po.project_id,
+                    "po_number": po.po_number,
+                    "pulse_id": po.pulse_id,
+                    "vendor_name": vendor_name,
+                    "detail_items": detail_items_list
+                }
+
+                self.logger.info(f"✅ Retrieved PO with details for po_surrogate_id={po_surrogate_id}")
+                return result
+
+            except Exception as e:
+                self.logger.error(f"💥 Error in get_po_with_details: {e}", exc_info=True)
+                return None
+
+    def update_po_folder_link(self, po_surrogate_id, folder_link):
+        """
+        🗄 Update the folder_link for the PO with the given po_surrogate_id.
+        """
+        with get_db_session() as session:
+            try:
+                po = session.query(PurchaseOrder).filter_by(po_surrogate_id=po_surrogate_id).one_or_none()
+                if not po:
+                    self.logger.warning(f"⚠️ No PO found for po_surrogate_id={po_surrogate_id}, cannot update folder_link.")
+                    return False
+
+                po.folder_link = folder_link
+                session.commit()
+                self.logger.info(f"🔗 Updated folder_link for PO {po_surrogate_id} to {folder_link}")
+                return True
+            except Exception as e:
+                session.rollback()
+                self.logger.error(f"💥 Error updating PO folder_link: {e}", exc_info=True)
+                return False
+
+    def update_po_tax_form_link(self, po_surrogate_id, tax_form_link):
+        """
+        🗃 Update the tax_form_link for the PO with the given po_surrogate_id.
+        """
+        with get_db_session() as session:
+            try:
+                po = session.query(PurchaseOrder).filter_by(po_surrogate_id=po_surrogate_id).one_or_none()
+                if not po:
+                    self.logger.warning(f"⚠️ No PO found for po_surrogate_id={po_surrogate_id}, cannot update tax_form_link.")
+                    return False
+
+                po.tax_form_link = tax_form_link
+                session.commit()
+                self.logger.info(f"🔗 Updated tax_form_link for PO {po_surrogate_id} to {tax_form_link}")
+                return True
+            except Exception as e:
+                session.rollback()
+                self.logger.error(f"💥 Error updating PO tax_form_link: {e}", exc_info=True)
+                return False
+
+    def update_detail_item_file_link(self, detail_item_surrogate_id, file_link):
+        """
+        🗂 Update the file_link for the detail item identified by detail_item_surrogate_id.
+        """
+        with get_db_session() as session:
+            try:
+                detail_item = session.query(DetailItem).filter_by(detail_item_surrogate_id=detail_item_surrogate_id).one_or_none()
+                if not detail_item:
+                    self.logger.warning(f"⚠️ No DetailItem found for detail_item_surrogate_id={detail_item_surrogate_id}")
+                    return False
+
+                detail_item.file_link = file_link
+                session.commit()
+                self.logger.info(f"🔗 Updated file_link for DetailItem {detail_item_surrogate_id} to {file_link}")
+                return True
+            except Exception as e:
+                session.rollback()
+                self.logger.error(f"💥 Error updating DetailItem file_link: {e}", exc_info=True)
+                return False
+
+    def get_project_folder_name(self, project_id):
+        """
+        🌐 Given a project_id, return the project folder name, e.g. "2416 - Whop Keynote"
+        """
+        with get_db_session() as session:
+            try:
+                project = session.query(Project).filter_by(project_id=project_id).one_or_none()
+                if project:
+                    folder_name = f"{project_id} - {project.name}"
+                    self.logger.info(f"✅ Retrieved project folder name for project_id={project_id}: {folder_name}")
+                    return folder_name
+                else:
+                    self.logger.warning(f"⚠️ No Project found for project_id={project_id}")
+                    return None
+            except Exception as e:
+                self.logger.error(f"💥 Error fetching project folder name for project_id={project_id}: {e}", exc_info=True)
+                return None
+
+    # endregion
 
 # endregion
 

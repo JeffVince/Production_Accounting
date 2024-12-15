@@ -20,6 +20,8 @@ load_dotenv()
 
 MAX_RETRIES = 3  # 🔄 Number of retries for transient errors
 RETRY_BACKOFF_FACTOR = 2  # 🔄 Exponential backoff factor for retries
+
+
 # endregion
 
 class MondayAPI(metaclass=SingletonMeta):
@@ -34,7 +36,7 @@ class MondayAPI(metaclass=SingletonMeta):
             self.api_url = 'https://api.monday.com/v2/'
             self.client = MondayClient(self.api_token)
             self.monday_util = monday_util
-            self.po_board_id = self.monday_util.PO_BOARD_ID
+            self.PO_BOARD_ID = self.monday_util.PO_BOARD_ID
             self.SUBITEM_BOARD_ID = self.monday_util.SUBITEM_BOARD_ID
             self.project_id_column = self.monday_util.PO_PROJECT_ID_COLUMN
             self.po_number_column = self.monday_util.PO_NUMBER_COLUMN
@@ -69,7 +71,7 @@ class MondayAPI(metaclass=SingletonMeta):
                     self.api_url,
                     json={'query': query, 'variables': variables},
                     headers=headers,
-                    timeout=10
+                    timeout=200
                 )
                 response.raise_for_status()
                 data = response.json()
@@ -134,12 +136,19 @@ class MondayAPI(metaclass=SingletonMeta):
             query_complexity = complexity.get("query")
             before = complexity.get("before")
             after = complexity.get("after")
-            self.logger.info(f"🔎 Complexity: query={query_complexity}, before={before}, after={after}")
+            self.logger.debug(f"🔎 Complexity: query={query_complexity}, before={before}, after={after}")
     # endregion
 
     # region ✨ CRUD Operations and Fetch Methods
     # =========================================================
     # All methods below return the same structure as before.
+
+    def _safe_get_text(self, vals_dict, col_id):
+        """
+        Helper function to safely extract text value from column_values dict.
+        Replace `col_id` strings with the actual column IDs for PO, item number, and line_id from your Monday board.
+        """
+        return vals_dict.get(col_id, {}).get("text", "")
 
     def create_item(self, board_id: int, group_id: str, name: str, column_values: dict):
         """Creates a new item on a board."""
@@ -201,7 +210,7 @@ class MondayAPI(metaclass=SingletonMeta):
         '''
 
         if type == "main":
-            board_id = self.po_board_id
+            board_id = self.PO_BOARD_ID
         elif type == "subitem":
             board_id = self.SUBITEM_BOARD_ID
         else:
@@ -505,7 +514,7 @@ class MondayAPI(metaclass=SingletonMeta):
         query = f'''
         query {{
             complexity {{ query before after }}
-            boards (ids: {self.po_board_id}) {{
+            boards (ids: {self.PO_BOARD_ID}) {{
                 groups {{
                   title
                   id
@@ -518,6 +527,46 @@ class MondayAPI(metaclass=SingletonMeta):
         for group in groups:
             if group["title"].__contains__(project_id):
                 return group["id"]
+        return None
+
+    def fetch_subitem_by_receipt_and_line(self, receipt_number, line_id):
+        # Replace these with actual column IDs from your subitem board
+        receipt_number_column_id = "numeric__1"
+        line_number_column_id = "numbers_Mjj5uYts"
+
+        query = '''
+        query ($board_id: ID!, $receipt_number: String!, $line_id: String!) {
+            complexity { query before after }
+            items_page_by_column_values(
+                board_id: $board_id, 
+                columns: [
+                  {column_id: "%s", column_values: [$receipt_number]}, 
+                  {column_id: "%s", column_values: [$line_id]}
+                ], 
+                limit: 1
+            ) {
+                items {
+                    id
+                    column_values {
+                        id
+                        text
+                        value
+                    }
+                }
+            }
+        }
+        ''' % (receipt_number_column_id, line_number_column_id)
+
+        variables = {
+            'board_id': int(self.SUBITEM_BOARD_ID),
+            'receipt_number': str(receipt_number),
+            'line_id': str(line_id)
+        }
+
+        response = self._make_request(query, variables)
+        items = response.get("data", {}).get("items_page_by_column_values", {}).get("items", [])
+        if items:
+            return items[0]  # Return the matched subitem
         return None
 
     def fetch_item_by_po_and_project(self, project_id, po_number):
@@ -536,7 +585,7 @@ class MondayAPI(metaclass=SingletonMeta):
             }
         }'''
         variables = {
-            'board_id': int(self.po_board_id),
+            'board_id': int(self.PO_BOARD_ID),
             'po_number': str(po_number),
             'project_id': str(project_id),
             'po_column': str(self.po_number_column),
@@ -544,25 +593,46 @@ class MondayAPI(metaclass=SingletonMeta):
         }
         return self._make_request(query, variables)
 
-    def fetch_subitem_by_project_PO_receipt(self, project_id, po_number, receipt_number, parent_pulse_id):
-        query = '''
-        query ($ID: ID!) {
-            complexity { query before after }
-            items (ids: [$ID]) {
-                subitems {
+    def fetch_subitem_by_po_receipt_line(self, po_number, receipt_number, line_id):
+        # Replace these with the actual column IDs from your subitem board
+        po_number_column_id = self.monday_util.SUBITEM_PO_COLUMN_ID
+        receipt_number_column_id = self.monday_util.SUBITEM_ID_COLUMN_ID
+        line_number_column_id = self.monday_util.SUBITEM_LINE_NUMBER_COLUMN_ID
+
+        query = f'''
+        query ($board_id: ID!, $po_number: String!, $receipt_number: String!, $line_id: String!) {{
+            complexity {{ query before after }}
+            items_page_by_column_values(
+                board_id: $board_id, 
+                columns: [
+                    {{column_id: "{po_number_column_id}", column_values: [$po_number]}},
+                    {{column_id: "{receipt_number_column_id}", column_values: [$receipt_number]}},
+                    {{column_id: "{line_number_column_id}", column_values: [$line_id]}}
+                ], 
+                limit: 1
+            ) {{
+                items {{
                     id
-                    column_values {
+                    column_values {{
                         id
-                        value
                         text
-                    }
-                }
-            }
-        }'''
+                        value
+                    }}
+                }}
+            }}
+        }}
+        '''
+
         variables = {
-            'ID': parent_pulse_id
+            'board_id': int(self.SUBITEM_BOARD_ID),
+            'po_number': str(po_number),
+            'receipt_number': str(receipt_number),
+            'line_id': str(line_id)
         }
-        return self._make_request(query, variables)
+
+        response = self._make_request(query, variables)
+        items = response.get("data", {}).get("items_page_by_column_values", {}).get("items", [])
+        return items[0] if items else None
 
     def fetch_contact_by_name(self, name):
         query = '''
@@ -607,7 +677,7 @@ class MondayAPI(metaclass=SingletonMeta):
         }'''
 
         if board == "PO":
-            board_id = self.po_board_id
+            board_id = self.PO_BOARD_ID
         elif board == "Contacts":
             board_id = self.CONTACT_BOARD_ID
         else:
@@ -647,7 +717,7 @@ class MondayAPI(metaclass=SingletonMeta):
             else:
                 return item
         else:  # create item
-            response = self.create_item(self.po_board_id, item["group_id"], item["name"], column_values)
+            response = self.create_item(self.PO_BOARD_ID, item["group_id"], item["name"], column_values)
             try:
                 item["item_pulse_id"] = response["data"]['create_item']["id"]
             except Exception as e:
@@ -658,7 +728,6 @@ class MondayAPI(metaclass=SingletonMeta):
     # 👻
     def find_or_create_sub_item_in_monday(self, sub_item, parent_item):
         try:
-            # Prepare column values for Monday subitem as JSON string
             status = "RTP" if parent_item.get("status") == "RTP" else "PENDING"
             incoming_values_json = self.monday_util.subitem_column_values_formatter(
                 date=sub_item.get("date"),
@@ -670,29 +739,30 @@ class MondayAPI(metaclass=SingletonMeta):
                 fringes=sub_item["fringes"],
                 quantity=sub_item["quantity"],
                 status=status,
-                item_number=sub_item["item_id"]
+                item_number=sub_item["detail_item_id"],
+                line_number=sub_item["line_id"],
+                PO=sub_item["po_number"]
             )
 
-            # Deserialize incoming_values_json to a dictionary for comparison
+            # Parse incoming values
             try:
                 incoming_values = json.loads(incoming_values_json)
             except json.JSONDecodeError as jde:
                 self.logger.error(f"JSON decode error for incoming_values: {jde}")
                 return sub_item
 
-            # If we already have a pulse_id, try updating that specific subitem directly
+            # If subitem already has a pulse_id, handle update logic (unchanged)
             if "pulse_id" in sub_item and sub_item["pulse_id"]:
                 pulse_id = sub_item["pulse_id"]
-                self.logger.info(f"Sub_item already has a pulse_id: {pulse_id}. Checking existing item.")
+                self.logger.info(f"Sub_item already has a pulse_id: {pulse_id}. Checking if it exists on Monday.")
 
                 existing_item = self.fetch_item_by_ID(pulse_id)
                 if not existing_item:
                     self.logger.warning(f"Existing pulse_id {pulse_id} not found on Monday. Creating a new subitem.")
-                    # Create a new subitem
                     create_result = self.create_subitem(
                         parent_item["item_pulse_id"],
                         sub_item.get("vendor", parent_item["name"]),
-                        incoming_values_json  # Pass JSON string directly
+                        incoming_values_json
                     )
                     new_pulse_id = create_result.get('data', {}).get('create_subitem', {}).get('id')
                     if new_pulse_id:
@@ -703,7 +773,7 @@ class MondayAPI(metaclass=SingletonMeta):
                         self.logger.exception("Failed to create a new subitem. 'id' not found in the response.")
                     return sub_item
                 else:
-                    # Deserialize existing_item's column_values for comparison
+                    # Compare existing item’s values with incoming_values
                     existing_vals = list_to_dict(existing_item["column_values"])
                     all_match = True
                     for col_id, new_val in incoming_values.items():
@@ -713,87 +783,48 @@ class MondayAPI(metaclass=SingletonMeta):
                             break
 
                     if all_match:
-                        self.logger.info(f"Subitem {pulse_id} is identical to incoming data. Skipping update.")
+                        self.logger.info(f"Subitem {pulse_id} is identical to incoming data. No update needed.")
                         return sub_item
                     else:
                         self.logger.info(f"Updating existing subitem {pulse_id} due to changed values.")
-                        self.update_item(pulse_id, incoming_values_json, type="subitem")  # Pass JSON string directly
+                        self.update_item(pulse_id, incoming_values_json, type="subitem")
                         return sub_item
-
             else:
-                # No pulse_id known, search subitems by (project_id, PO, item_id)
-                result = self.fetch_subitem_by_project_PO_receipt(
-                    parent_item["project_id"],
-                    sub_item["PO"],
-                    sub_item["item_id"],
-                    parent_item["item_pulse_id"]
+                # No known pulse_id. Search for an existing subitem by PO, receipt_number, and line_id
+                existing_subitem = self.fetch_subitem_by_po_receipt_line(
+                    po_number=sub_item["po_number"],
+                    receipt_number=sub_item["detail_item_id"],
+                    # Use the correct field if "item_id" is actually "receipt_number"
+                    line_id=sub_item["line_id"]
                 )
 
-                if not result.get('data', {}).get('items'):
-                    self.logger.error("No items found in the result data.")
-                    subitems = []
-                else:
-                    subitems = result['data']['items'][0].get('subitems', [])
-
-                if subitems:
+                if existing_subitem:
+                    # Found a match, so no need to create a duplicate
+                    sub_item["pulse_id"] = existing_subitem["id"]
                     self.logger.info(
-                        f"Found {len(subitems)} subitems for PO {sub_item['PO']}. Checking for identical match.")
-                    identical_subitem = None
-                    for existing_subitem in subitems:
-                        # Deserialize existing_subitem's column_values
-                        existing_vals = list_to_dict(existing_subitem["column_values"])
-                        all_match = True
-                        for col_id, new_val in incoming_values.items():
-                            existing_val = existing_vals.get(col_id, {}).get("text", "")
-                            if str(existing_val) != str(new_val):
-                                all_match = False
-                                break
-
-                        if all_match:
-                            identical_subitem = existing_subitem
-                            break
-
-                    if identical_subitem:
-                        # Identical subitem found, use its pulse_id so we don't create duplicates
-                        sub_item["pulse_id"] = identical_subitem["id"]
-                        self.logger.info(
-                            f"Found an identical subitem with pulse_id {sub_item['pulse_id']}. Skipping creation.")
-                        return sub_item
-                    else:
-                        # No identical subitem found, create a new one
-                        self.logger.info("No identical subitem found. Creating a new subitem.")
-                        create_result = self.create_subitem(
-                            parent_item["item_pulse_id"],
-                            sub_item.get("vendor", parent_item["name"]),
-                            incoming_values_json  # Pass JSON string directly
-                        )
-                        new_pulse_id = create_result.get('data', {}).get('create_subitem', {}).get('id')
-                        if new_pulse_id:
-                            sub_item["pulse_id"] = new_pulse_id
-                            self.logger.info(f"Created new subitem with pulse_id {sub_item['pulse_id']}.")
-                        else:
-                            self.logger.exception("Failed to create a new subitem. 'id' not found in the response.")
-
+                        f"Found existing subitem with PO {sub_item['po_number']}, item_id (receipt) {sub_item['detail_item_id']}, and line_id {sub_item['line_id']}. Not creating duplicate."
+                    )
+                    return sub_item
                 else:
-                    # No subitems at all, just create a new one
-                    self.logger.info("No existing subitems found. Creating a new subitem.")
+                    # No matching subitem found, create a new one
+                    self.logger.info("No matching subitem found. Creating a new subitem.")
                     create_result = self.create_subitem(
                         parent_item["item_pulse_id"],
-                        parent_item["name"],
-                        incoming_values_json  # Pass JSON string directly
+                        sub_item.get("vendor", parent_item["name"]),
+                        incoming_values_json
                     )
-                    new_pulse_id = create_result['data']['create_subitem']['id']
+                    new_pulse_id = create_result.get('data', {}).get('create_subitem', {}).get('id')
                     if new_pulse_id:
                         sub_item["pulse_id"] = new_pulse_id
                         self.logger.info(f"Created new subitem with pulse_id {sub_item['pulse_id']}.")
                     else:
                         self.logger.exception("Failed to create a new subitem. 'id' not found in the response.")
 
+            return sub_item
+
         except Exception as e:
             self.logger.exception(f"Exception occurred in find_or_create_sub_item_in_monday: {e}")
-
-        return sub_item
-    #endregion
+            return sub_item
 
     def update_detail_items_with_invoice_link(self, detail_item_ids: list, file_link: str):
         # Pseudocode: update Monday detail items
@@ -804,6 +835,247 @@ class MondayAPI(metaclass=SingletonMeta):
             # if not successful:
             #    self.logger.warning(f"Failed to update item {detail_id} on Monday.")
             pass
+
+    def get_items_in_project(self, project_id):
+        """
+        Fetch all items from a board filtered by project_id.
+        Returns a list of items: [{"id": ..., "name": ..., "column_values": {...}}, ...]
+        where column_values is a dict of column_id -> text_value
+        """
+        query = '''
+        query ($board_id: ID!, $project_id_column: String!, $project_id_val: String!, $limit: Int, $cursor: String) {
+            items_page_by_column_values(
+                board_id: $board_id,
+                columns: [{column_id: $project_id_column, column_values: [$project_id_val]}],
+                limit: $limit,
+                cursor: $cursor
+            ) {
+                cursor
+                items {
+                    id
+                    name
+                    column_values {
+                        id
+                        text
+                    }
+                }
+            }
+        }'''
+
+        variables = {
+            'board_id': self.PO_BOARD_ID,
+            'project_id_column': self.project_id_column,
+            'project_id_val': str(project_id),
+            'limit': 500,  # Maximum number of items per request
+            'cursor': None  # Start without a cursor
+        }
+
+        all_items = []
+
+        try:
+            while True:
+                response = self._make_request(query, variables)
+                data = response.get("data", {}).get("items_page_by_column_values", {})
+                items_data = data.get("items", [])
+                cursor = data.get("cursor")
+
+                for it in items_data:
+                    cv_dict = {cv["id"]: cv["text"] for cv in it.get("column_values", [])}
+                    all_items.append({
+                        "id": it["id"],
+                        "name": it["name"],
+                        "column_values": cv_dict
+                    })
+
+                if not cursor:
+                    break  # No more items to fetch
+
+                variables['cursor'] = cursor  # Set cursor for the next request
+
+            return all_items
+
+        except Exception as e:
+            self.logger.exception(f"Error fetching items by project_id {project_id}: {e}")
+            raise
+
+    def get_subitems_for_item(self, item_id):
+        """
+        Fetch subitems for a given main item_id.
+        Returns a list of { "id": subitem_id, "name": subitem_name, "column_values": {...} }
+        """
+        # According to Monday's API, we fetch subitems via the parent item query
+        # Example query for subitems:
+        query = '''
+        query ($item_id: [ID!]!) {
+            complexity { query before after }
+            items (ids: $item_id) {
+                id
+                name
+                subitems {
+                    id
+                    name
+                    column_values {
+                        id
+                        text
+                    }
+                }
+            }
+        }
+        '''
+        variables = {
+            'item_id': str(item_id),
+        }
+        try:
+            response = self._make_request(query, variables)
+            items = response.get("data", {}).get("items", [])
+            if not items:
+                return []
+            parent_item = items[0]
+            subitems = parent_item.get("subitems", [])
+            results = []
+            for si in subitems:
+                cv_dict = {cv["id"]: cv["text"] for cv in si.get("column_values", [])}
+                results.append({
+                    "id": si["id"],
+                    "name": si["name"],
+                    "column_values": cv_dict
+                })
+            return results
+        except Exception as e:
+            self.logger.exception(f"Error fetching subitems for item {item_id}: {e}")
+            raise
+
+    def batch_create_or_update_items(self, batch, project_id, create=True):
+        """
+        Batch create or update main PO items on Monday.
+        If create=True, we use the new create_items_batch method to create all items in one request.
+        If create=False, we update each item individually as before.
+        Return the same structure with "monday_item_id" filled where needed.
+        """
+        if create:
+            # Call create_items_batch for all items that need to be created
+            updated_batch = self.create_items_batch(batch, project_id)
+            return updated_batch
+        else:
+            # Update existing items individually
+            updated_batch = []
+            for itm in batch:
+                db_item = itm["db_item"]
+                column_values = itm["column_values"]
+                column_values_json = json.dumps(column_values)
+                item_id = itm["monday_item_id"]
+                if not item_id:
+                    self.logger.warning(f"No monday_item_id provided for update. Skipping item: {db_item}")
+                    continue
+                try:
+                    self.update_item(item_id, column_values_json, type="main")
+                    updated_batch.append(itm)
+                except Exception as e:
+                    self.logger.exception(f"Error updating item {item_id}: {e}")
+                    raise
+            return updated_batch
+
+        return updated_batch
+
+    def batch_create_or_update_subitems(self, subitems_batch, parent_item_id, create=True):
+        """
+        Batch create or update subitems.
+        subitems_batch: [{ "db_sub_item": sdb, "column_values": {..}, "monday_subitem_id": maybe_id, "parent_id": parent_item_id }]
+        If create=True, call create_subitem for each that doesn't have monday_subitem_id.
+        If create=False, call update_item on each that has monday_subitem_id.
+        """
+        updated_batch = []
+        for si in subitems_batch:
+            db_sub_item = si.get("db_sub_item")
+            column_values = si["column_values"]
+            column_values_json = json.dumps(column_values)
+            if create:
+                # Create a new subitem
+                # We use parent_item_id and db_sub_item["name"] or vendor name for the subitem name
+                subitem_name = db_sub_item.get("name", db_sub_item.get("vendor", "Subitem"))
+                try:
+                    create_response = self.create_subitem(parent_item_id, subitem_name, column_values_json)
+                    new_id = create_response["data"]["create_subitem"]["id"]
+                    si["monday_subitem_id"] = new_id
+                    updated_batch.append(si)
+                except Exception as e:
+                    self.logger.exception(f"Error creating subitem for {db_sub_item}: {e}")
+                    raise
+            else:
+                # Update existing subitems
+                sub_id = si["monday_subitem_id"]
+                try:
+                    self.update_item(sub_id, column_values_json, type="subitem")
+                    updated_batch.append(si)
+                except Exception as e:
+                    self.logger.exception(f"Error updating subitem {sub_id}: {e}")
+                    raise
+
+        return updated_batch
+
+    def create_items_batch(self, batch, project_id):
+        """
+        Create multiple items in a single Monday API request.
+        Accepts a batch similar to the one passed to batch_create_or_update_items, where each element has:
+        {
+            'db_item': { ... },
+            'column_values': { ... },
+            'monday_item_id': None  # since these are new items
+        }
+
+        Returns the batch with 'monday_item_id' filled in.
+        """
+        # Build the mutation string dynamically
+        # We'll name each mutation "createX" where X is the index
+        # Each create_item call:
+        # create_item(board_id: Int!, group_id: String, item_name: String!, column_values: JSON)
+
+        mutation_parts = []
+        for i, itm in enumerate(batch):
+            column_values = itm["column_values"]
+            # Convert column_values to JSON string
+            column_values_json = json.dumps(column_values)
+
+            # Extract item_name from column_values or db_item
+            # Assuming 'name' is always present in column_values
+            item_name = column_values.get("name", "Unnamed Item")
+
+            # Inline arguments. Make sure strings are properly escaped. json.dumps handles this for values.
+            # For item_name, we can also wrap in json.dumps to ensure proper escaping.
+            safe_item_name = json.dumps(item_name)
+            safe_column_values = json.dumps(column_values_json)  # This double-JSON encoding is not needed.
+            # column_values_json is already a JSON string.
+            # Just use column_values_json directly.
+
+            # Correct usage: column_values expects a JSON object as a string, so no need to double-encode
+            # safe_column_values = json.dumps(column_values_json) would produce a string containing JSON with escape chars
+            # Instead, we can directly inline column_values_json since it's already a JSON string:
+            # But we must ensure quotes are escaped. We'll do that by embedding it directly:
+
+            mutation_parts.append(
+                f'create{i}: create_item('
+                f'board_id: {self.PO_BOARD_ID}, '
+                f'item_name: {safe_item_name}, '
+                f'column_values: {json.dumps(column_values_json)}) '
+                '{ id }'
+            )
+
+        mutation_body = " ".join(mutation_parts)
+        query = f'mutation {{ {mutation_body} }}'
+
+        # Perform the single request
+        response = self._make_request(query)
+
+        # Parse the response and update batch
+        for i, itm in enumerate(batch):
+            create_key = f"create{i}"
+            created_item = response.get("data", {}).get(create_key)
+            if created_item and "id" in created_item:
+                itm["monday_item_id"] = created_item["id"]
+            else:
+                self.logger.warning(f"No ID returned for item {i} in batch.")
+
+        return batch
 
 
 monday_api = MondayAPI()

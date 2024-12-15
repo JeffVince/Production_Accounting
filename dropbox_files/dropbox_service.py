@@ -1,20 +1,19 @@
 # services/dropbox_service.py
 # 📦✨ DropboxService: Processes files from Dropbox and integrates them with Monday.com! ✨📦
-# - Introduced a single flag `SKIP_MONDAY` to skip all Monday.com updates and only update the DB.
-# - When SKIP_MONDAY is True, we now load contact data directly from the DB instead of Monday.
-# - Wrapped Monday-related calls in conditionals so that if `SKIP_MONDAY` is True, the code doesn't call Monday API functions.
-# - Adjusted code so that when SKIP_MONDAY is True, we do not overwrite pulse_id fields with None,
-#   we simply avoid setting them entirely.
+# Enhanced with additional logging and refactored to separate DB, Monday, and Dropbox logic.
 
 import json
 import os
 import re
+import threading
+import traceback
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta, datetime
 import PyPDF2
 import pytesseract
 from pdf2image import convert_from_path
-import os
-from datetime import datetime
+import logging
+import tempfile
 
 from dropbox_files.dropbox_api import dropbox_api
 from config import Config
@@ -27,39 +26,24 @@ from monday_files.monday_service import monday_service
 from dropbox_files.dropbox_util import dropbox_util
 from po_log_files.po_log_processor import POLogProcessor
 from utilities.singleton import SingletonMeta
-import logging
-import tempfile
 
-# 🧰 Debug Variable: Decide which PO number to start from
-DEBUG_STARTING_PO_NUMBER = 6
 
-# 🏳️‍🌈 FLAG: Set this to True to skip all Monday.com updates and only update the DB.
-SKIP_MONDAY = False  # If True, no Monday API calls will be made, no pulse_id from Monday, and contacts come from DB.
 
 class DropboxService(metaclass=SingletonMeta):
-    """
-    🎉 DropboxService Singleton Class 🎉
 
-    This class handles the ingestion and processing of various file types (PO Logs, Invoices,
-    Receipts, Tax Forms) from Dropbox, extracting information and synchronizing it with Monday.com.
-
-    Key responsibilities:
-    - Determining file type (PO Log, invoice, tax form, receipt) based on filenames
-    - Processing and parsing content (e.g., extracting text from PDFs or images)
-    - Interacting with Monday.com via Monday API for storing and retrieving data
-    - Managing temporary files for OCR and text extraction
-    - Logging events, warnings, and exceptions
-
-    With SKIP_MONDAY set to True, it will skip all Monday updates and only update the DB.
-    Contacts are also loaded from the DB instead of Monday.
-    """
-
-    # 🔑 CONSTANTS to AVOID MAGIC STRINGS 🔑
     PO_LOG_FOLDER_NAME = "1.5 PO Logs"
+    PO_NUMBER_FORMAT = "{:02}"  # Ensures PO numbers are two digits
     INVOICE_REGEX = r"invoice"
     TAX_FORM_REGEX = r"w9|w8-ben|w8-bene|w8-ben-e"
     RECEIPT_REGEX = r"receipt"
     SHOWBIZ_REGEX = r".mbb"
+    USE_TEMP_FILE = False
+    DEBUG_STARTING_PO_NUMBER = 0
+    SKIP_MONDAY = True
+    SKIP_LINKS = True
+    SKIP_FILE_SCAN = False
+    executor = ThreadPoolExecutor(max_workers=5)
+
 
     def __init__(self):
         if not hasattr(self, '_initialized'):
@@ -78,218 +62,342 @@ class DropboxService(metaclass=SingletonMeta):
             self._initialized = True
 
     def determine_file_type(self, path: str):
-        # region 🔍 Determine File Type
-        self.logger.info(f"🔍 Validating file type and location: {self.dropbox_util.get_last_path_component_generic(path)} 💡")
+        self.logger.info(f"🔍 Checking file type for: {self.dropbox_util.get_last_path_component_generic(path)}")
         filename = os.path.basename(path)
         try:
             if self.PO_LOG_FOLDER_NAME in path:
-                # Updated regex to match the new filename format: PO_LOG_<ProjectID>_<Timestamp>.txt
                 project_id_match = re.match(r"^PO_LOG_(\d{4})[-_]\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.txt$", filename)
                 if project_id_match:
                     project_id = project_id_match.group(1)
-                    self.logger.info(f"🗂 File identified as PO Log with Project ID {project_id}. 🗂")
+                    self.logger.info(f"🗂 Identified as PO Log for Project ID {project_id}")
                     return self.process_po_log(path)
                 else:
-                    self.logger.warning(f"⚠️ Filename '{filename}' does not match the expected PO Log format.")
+                    self.logger.warning(f"⚠️ Filename '{filename}' does not match expected PO Log format.")
                     return
 
             if re.search(self.INVOICE_REGEX, filename, re.IGNORECASE):
-                self.logger.info(f"💰 File identified as an invoice: {filename}. 💰")
+                self.logger.info(f"💰 Identified as invoice: {filename}")
                 return self.process_invoice(path)
 
             if re.search(self.TAX_FORM_REGEX, filename, re.IGNORECASE):
-                self.logger.info(f"💼 File identified as a tax form: {filename}. 💼")
+                self.logger.info(f"💼 Identified as tax form: {filename}")
                 return self.process_tax_form(path)
 
             if re.search(self.RECEIPT_REGEX, filename, re.IGNORECASE):
-                self.logger.info(f"🧾 File identified as a receipt: {filename}. 🧾")
+                self.logger.info(f"🧾 Identified as receipt: {filename}")
                 return self.process_receipt(path)
 
             if re.search(self.SHOWBIZ_REGEX, filename, re.IGNORECASE):
-                self.logger.info(f"🧾 File identified as a budget: {filename}. 🧾")
+                self.logger.info(f"📑 Identified as budget file: {filename}")
                 return self.process_budget(path)
 
-            self.logger.debug(f"❌ Invalid or unsupported file type: {filename}. ❌")
+            self.logger.debug(f"❌ Unsupported file type: {filename}")
             return None
         except Exception as e:
-            self.logger.exception(f"💥 Error determining file type for {filename}: {e} 💥", exc_info=True)
+            self.logger.exception(f"💥 Error determining file type for {filename}: {e}", exc_info=True)
             return None
-        # endregion
 
+    # ========== PO LOG PROCESSING ==========
     def process_po_log(self, path: str):
-        # region 🗂 Setup and File Download
+        self.logger.info(f"📝 Processing PO log: {path}")
         temp_file_path = f"./temp_files/{os.path.basename(path)}"
-        self.logger.debug(f"🗄 Opening temporary file path {temp_file_path} 🗄")
         project_id = self.extract_project_id(temp_file_path)
-        # endregion
 
-        try:
-            # region 💾 Download File if Not Using TEMP
-            if not self.config.USE_TEMP:
-                self.logger.info(
-                    f"📝 Processing PO Log for project {project_id}: {self.dropbox_util.get_last_path_component_generic(path)}")
-                try:
-                    dbx_client = self.dropbox_client
-                    dbx = dbx_client.dbx
-                    metadata, res = dbx.files_download(path)
-                    file_content = res.content
-
-                    with open(temp_file_path, 'wb') as temp_file:
-                        temp_file.write(file_content)
-                        self.logger.info(f"📂 Temporary file created for processing: {temp_file_path}")
-                except Exception as e:
-                    self.logger.exception(f"💥 Failed to download/save file from Dropbox: {e}", exc_info=True)
-                    return
-            # endregion
-
-            # region ✂ Parse PO Log
-            try:
-                main_items, detail_items, contacts = self.po_log_processor.parse_showbiz_po_log(temp_file_path)
-                if not SKIP_MONDAY:
-                    group_id = self.monday_api.fetch_group_ID(project_id)
-                else:
-                    group_id = "group_placeholder"
-            except Exception as e:
-                self.logger.exception(f"💥 Failed to parse PO Log: {e}", exc_info=True)
+        # Download PO Log from Dropbox
+        if not self.USE_TEMP_FILE:
+            if not self.download_file_from_dropbox(path, temp_file_path):
                 return
-            # endregion
 
-            # region 🚀 Process Main Items, Contacts, and Sub-Items
-            if not self.config.SKIP_MAIN:
-                try:
-                    for item in main_items:
-                        if DEBUG_STARTING_PO_NUMBER and int(item["PO"]) < DEBUG_STARTING_PO_NUMBER:
-                            self.logger.info(
-                                f"⏭ Skipping PO '{item['PO']}' due to debug setting. Starting from '{DEBUG_STARTING_PO_NUMBER}'.")
-                            continue
+        # Step 1: Parse data from file (no DB or Monday logic)
+        main_items, detail_items, contacts = self.parse_po_log_file(temp_file_path, project_id)
 
-                        item["group_id"] = group_id
+        # Offload DB processing to a separate thread
+        db_future = self.executor.submit(self.db_process_po_data, main_items, detail_items, contacts, project_id)
 
-                        # region 👥 Populate Contact Details
-                        item = self.populate_contact_details(item)
-                        # endregion
+        # Once DB processing is done, we chain Monday processing to that result in another thread
+        def after_db_done(fut):
+            processed_items = fut.result()
 
-                        # region 💾 DB Contact Creation/Update
-                        item = self.po_log_database_util.find_or_create_contact_item_in_db(item)
-                        # endregion
+            #region SYNC MONDAY TO DB
+            if not self.SKIP_MONDAY:
+                monday_future = self.executor.submit(self.monday_process_po_data, processed_items, detail_items,
+                                                     project_id)
+                monday_future.add_done_callback(self.after_monday_done)
+            #endregion
+            else:
+            #region SYNC DROPBOX LINKS TO DB
+                if not self.SKIP_FILE_SCAN:
+                    self.logger.info("🗂 Scanning PO folders after Monday sync to process new files...")
+                    self.executor.submit(self.scan_and_process_po_folders, processed_items)
 
-                        # region 🔧 Prepare Monday Column Values for PO Item
-                        column_values = self.monday_util.po_column_values_formatter(
-                            project_id=item["project_id"],
-                            po_number=item["PO"],
-                            description=item["description"],
-                            contact_pulse_id=item.get("contact_pulse_id", None),
-                            status=item.get("contact_status", None)
-                        )
-                        # endregion
+            #endregion
 
-                        # region 🌐 Monday.com PO Item Creation/Update
-                        if not SKIP_MONDAY:
-                            item = self.monday_api.find_or_create_item_in_monday(item, column_values)
-                        else:
-                            self.logger.debug("🌐 SKIP_MONDAY: Not calling Monday API for PO items.")
-                            # Do not assign item['item_pulse_id'] at all if SKIP_MONDAY is True
-                        # endregion
+            # Cleanup after the chain of tasks starts
+            if not self.USE_TEMP_FILE:
+                self.cleanup_temp_file(temp_file_path)
 
-                        # region 💾 Update/Create Main Item in DB
-                        self.po_log_database_util.create_or_update_main_item_in_db(item)
-                        # endregion
+        db_future.add_done_callback(after_db_done)
 
-                        # region 🔧 Process Sub-Items
-                        for sub_item in detail_items:
-                            if sub_item and sub_item["PO"] == item["PO"]:
-                                detail_unchanged = self.po_log_database_util.is_unchanged(sub_item, item)
-                                #if detail_unchanged:
-                                    #continue
-                                sub_item["po_surrogate_id"] = item["po_surrogate_id"]
-                                sub_item["parent_status"] = item["status"]
+        # Return immediately. The server is not blocked.
+        # Logging can reflect that processing is now asynchronous.
+        self.logger.info("🔧 DB and Monday processing dispatched to background threads.")
 
-                                if not SKIP_MONDAY:
-                                    sub_item = self.monday_api.find_or_create_sub_item_in_monday(sub_item, item)
-                                    sub_item["parent_pulse_id"] = item["item_pulse_id"]
-                                else:
-                                    self.logger.debug("🌐 SKIP_MONDAY: Not calling Monday API for sub-items.")
-                                    # Do not assign sub_item["parent_pulse_id"] if SKIP_MONDAY is True
+    def after_monday_done(self, fut):
+        processed_items = fut.result()
+        # New step: scan PO folders for invoices/receipts/tax forms
+        if not self.SKIP_FILE_SCAN:
+            self.logger.info("🗂 Scanning PO folders after Monday sync to process new files...")
+            self.executor.submit(self.scan_and_process_po_folders, processed_items)
 
-                                self.po_log_database_util.create_or_update_sub_item_in_db(sub_item)
-                        # endregion
 
-                except Exception as e:
-                    self.logger.exception(f"💥 Failed to process items: {e}", exc_info=True)
-                    return
-            # endregion
-
-            # region 🧹 Cleanup Temporary File
-            if not self.config.USE_TEMP:
-                try:
-                    if os.path.exists(temp_file_path):
-                        os.remove(temp_file_path)
-                        self.logger.info(f"🧹 Temporary file removed: {temp_file_path}")
-                except Exception as e:
-                    self.logger.warning(f"⚠️ Failed to remove temporary file: {e} ⚠️")
-            # endregion
+    def parse_po_log_file(self, temp_file_path: str, project_id: str):
+        try:
+            main_items, detail_items, contacts = self.po_log_processor.parse_showbiz_po_log(temp_file_path)
+            self.logger.info(f"📝 Parsed PO Log for project {project_id}: {len(main_items)} main items, {len(detail_items)} detail items.")
+            return main_items, detail_items, contacts
         except Exception as e:
-            self.logger.critical(f"💣 Unexpected error in process_po_log: {e}", exc_info=True)
+            self.logger.exception(f"💥 Failed to parse PO Log: {e}", exc_info=True)
+            return [], [], []
 
-    def link_main_item_to_contact_in_db(self):
-        pass
+    def db_process_po_data(self, main_items, detail_items, contacts, project_id):
+        processed_items = []
+        self.logger.info("🔧 Processing PO data in the database...")
 
-    def send_contact_to_monday(self):
-        pass
+        # First, process contacts in DB if needed
+        self.process_contacts_in_db(contacts, project_id)
 
-    def send_po_to_monday(self):
-        pass
+        for item in main_items:
+            if self.DEBUG_STARTING_PO_NUMBER and int(item["PO"]) < self.DEBUG_STARTING_PO_NUMBER:
+                self.logger.info(f"⏭ Skipping PO '{item['PO']}' due to debug start number.")
+                continue
 
-    def create_detail_item_in_db(self):
-        pass
+            # Populate contact details from DB since we're doing DB first
+            item = self.populate_contact_details_from_db(item)
 
-    def send_detail_item_to_monday(self):
-        pass
+            # DB: find or create contact item
+            item = self.po_log_database_util.find_or_create_contact_item_in_db(item)
 
+            # DB: create or update main item
+            item = self.po_log_database_util.create_or_update_main_item_in_db(item)
+
+            # DB: handle detail items
+            for sub_item in detail_items:
+                if sub_item and sub_item["po_number"] == item["PO"]:
+                    sub_item["po_surrogate_id"] = item["po_surrogate_id"]
+                    # We can store parent_status if needed
+                    sub_item["parent_status"] = item["status"]
+                    self.po_log_database_util.create_or_update_sub_item_in_db(sub_item)
+
+            processed_items.append(item)
+
+        self.logger.info("✅ Database processing of PO data complete.")
+        return processed_items
+
+    def monday_process_po_data(self, processed_items, detail_items, project_id):
+        self.logger.info("🌐 Processing PO data in Monday.com...")
+
+        # Fetch all items in the group
+        monday_items = monday_api.get_items_in_project(project_id=project_id)
+
+        # Build a map from (project_id, po_number) to Monday item
+        monday_items_map = {}
+        for mi in monday_items:
+            project_id = mi["column_values"].get(monday_util.PO_PROJECT_ID_COLUMN)
+            po_number = mi["column_values"].get(monday_util.PO_NUMBER_COLUMN)
+            if project_id and po_number:
+                monday_items_map[(int(project_id), int(po_number))] = mi
+
+        # Determine items to create or update
+        items_to_create = []
+        items_to_update = []
+        for db_item in processed_items:
+            project_id = int(db_item["project_id"])
+            po_number = int(db_item["PO"])
+
+            column_values_str = monday_util.po_column_values_formatter(
+                project_id=db_item["project_id"],
+                po_number=db_item["PO"],
+                description=db_item.get("description"),
+                contact_pulse_id=db_item.get("contact_pulse_id"),
+                folder_link=db_item.get("folder_link"),
+                status=db_item.get("contact_status"),
+                producer_id=None,
+                name=db_item['contact_name']
+            )
+            new_vals = json.loads(column_values_str)
+
+            key = (project_id, po_number)
+            if key in monday_items_map:
+                monday_item = monday_items_map[key]
+                differences = monday_util.is_main_item_different(db_item, monday_item)
+                if differences:
+                    self.logger.debug(f"Item differs for PO {po_number}. Differences:")
+                    for diff in differences:
+                        self.logger.debug(
+                            f"Field: {diff['field']} | DB: {diff['db_value']} | Monday: {diff['monday_value']}"
+                        )
+                    # After logging differences, you could proceed with scheduling the update.
+                else:
+                    self.logger.debug(f"No changes for PO {po_number}, skipping update.")
+            else:
+                self.logger.debug(f"PO {po_number} does not exist on Monday, scheduling creation.")
+                items_to_create.append({
+                    "db_item": db_item,
+                    "column_values": new_vals,
+                    "monday_item_id": None
+                })
+
+        # Batch process main items
+        if items_to_create:
+            self.logger.info(f"🆕 Need to create {len(items_to_create)} main items on Monday.")
+            created_mapping = monday_api.batch_create_or_update_items(items_to_create, project_id=project_id, create=True)
+            for itm in created_mapping:
+                db_item = itm["db_item"]
+                p = int(db_item["project_id"])
+                po = int(db_item["PO"])
+                monday_items_map[(p, po)] = {
+                    "id": itm["monday_item_id"],
+                    "name": f"PO #{po}",
+                    "column_values": itm["column_values"]
+                }
+
+        if items_to_update:
+            self.logger.info(f"✏️ Need to update {len(items_to_update)} main items on Monday.")
+            updated_mapping = monday_api.batch_create_or_update_items(items_to_update, project_id=project_id, create=False)
+            for itm in updated_mapping:
+                db_item = itm["db_item"]
+                p = int(db_item["project_id"])
+                po = int(db_item["PO"])
+                monday_items_map[(p, po)]["column_values"] = itm["column_values"]
+
+        # Now handle sub-items
+        for db_item in processed_items:
+            project_id = int(db_item["project_id"])
+            po_number = int(db_item["PO"])
+
+            main_monday_item = monday_items_map.get((project_id, po_number))
+            if not main_monday_item:
+                self.logger.warning(f"❌ No Monday main item found for PO {po_number}, skipping subitems.")
+                continue
+
+            main_monday_id = main_monday_item["id"]
+            # Get DB subitems
+            sub_items_db = self.po_log_database_util.get_subitems(project_id=db_item["project_id"], po_number=db_item["PO"])
+
+            # Fetch Monday subitems
+            monday_subitems = monday_api.get_subitems_for_item(main_monday_id)
+            monday_sub_map = {}
+            for msub in monday_subitems:
+                identifiers = monday_util.extract_subitem_identifiers(msub)
+                if identifiers is not None:
+                    monday_sub_map[identifiers] = msub
+
+            subitems_to_create = []
+            subitems_to_update = []
+
+            for sdb in sub_items_db:
+                sub_col_values_str = monday_util.subitem_column_values_formatter(
+                    project_id=sdb["project_id"],
+                    po_number=sdb["po_number"],
+                    detail_item_number=sdb["detail_item_number"],
+                    line_id=sdb["line_id"],
+                    notes=sdb.get("payment_type"),
+                    status=sdb.get("state"),
+                    description=sdb.get("description"),
+                    quantity=sdb.get("quantity"),
+                    rate=sdb.get("rate"),
+                    date=sdb.get("transaction_date"),
+                    due_date=sdb.get("due_date"),
+                    account_number=sdb.get("account_number"),
+                    link=sdb.get("file_link"),
+                    OT=sdb.get("ot"),
+                    fringes=sdb.get("fringes")
+                )
+
+                new_sub_vals = json.loads(sub_col_values_str)
+                key = (sdb["project_id"], sdb["po_number"], sdb["detail_item_number"], sdb["line_id"])
+
+                if key in monday_sub_map:
+                    monday_sub = monday_sub_map[key]
+                    differences = monday_util.is_sub_item_different(sdb, monday_sub)
+                    if differences:
+                        self.logger.debug(
+                            f"Sub-item differs for detail #{sdb['detail_item_number']}. Differences:")
+                        for diff in differences:
+                            self.logger.debug(
+                                f"Field: {diff['field']} | DB: {diff['db_value']} | Monday: {diff['monday_value']}"
+                            )
+                    else:
+                        self.logger.debug(
+                            f"No changes for sub-item #{sdb['detail_item_number']}, skipping update.")
+                else:
+                    self.logger.debug(
+                        f"Sub-item #{sdb['detail_item_number']} does not exist on Monday, scheduling creation.")
+                    subitems_to_create.append({
+                        "db_sub_item": sdb,
+                        "column_values": new_sub_vals,
+                        "parent_id": main_monday_id
+                    })
+
+            # Batch process sub-items
+            if subitems_to_create:
+                self.logger.info(f"🆕 Need to create {len(subitems_to_create)} sub-items for PO {po_number}.")
+                monday_api.batch_create_or_update_subitems(subitems_to_create, parent_item_id=main_monday_id, create=True)
+
+            if subitems_to_update:
+                self.logger.info(f"✏️ Need to update {len(subitems_to_update)} sub-items for PO {po_number}.")
+                monday_api.batch_create_or_update_subitems(subitems_to_update, parent_item_id=main_monday_id, create=False)
+
+        self.logger.info("✅ Monday.com processing of PO data complete.")
+        return processed_items
+
+    def start_dropbox_link_threads(self, processed_items):
+        self.logger.info("🔗 Starting Dropbox link threads...")
+        for item in processed_items:
+            if 'po_surrogate_id' in item and item['po_surrogate_id']:
+                self.logger.info(f"🚀 Starting background thread for linking PO: {item['PO']}")
+                t = threading.Thread(target=self.update_po_links_in_background, args=(item["po_surrogate_id"],))
+                t.start()
+            else:
+                self.logger.warning(f"⚠️ No po_surrogate_id for PO {item['PO']}. Cannot start link update thread.")
+
+    # ========== INVOICE PROCESSING ==========
     def process_invoice(self, dropbox_path: str):
         self.logger.info(f"💼 Processing invoice: {dropbox_path}")
 
+        # Step 1: Parse invoice filename
         project_id, po_number, invoice_number = self.parse_invoice_filename(dropbox_path)
-        file_link = self.dropbox_util.get_file_link(dropbox_path)
-        self.logger.info(f"🔗 Retrieved file link: {file_link}")
 
-        # Add file link to detail items in DB
-        self.database_util.add_invoice_link_to_detail_items(project_id, po_number, invoice_number, file_link)
-        self.logger.info(f"✅ Added invoice link to detail items for {project_id}_{po_number}_{invoice_number}")
-
-        # If not skipping Monday, update Monday
-        if not SKIP_MONDAY:
-            detail_item_ids = self.database_util.get_detail_item_pulse_ids_for_invoice(project_id, po_number,
-                                                                                       invoice_number)
-            self.monday_api.update_detail_items_with_invoice_link(detail_item_ids, file_link)
-            self.logger.info(
-                f"🌐 Updated detail items with invoice link on Monday for {project_id}_{po_number}_{invoice_number}")
-
-        # Download invoice file
+        # Step 2: Download invoice file and extract text
         file_data = self.dropbox_api.download_file(dropbox_path)
-
-        # Extract text from the PDF
+        if not file_data:
+            self.logger.warning("⚠️ Could not download invoice file from Dropbox.")
+            return
         invoice_text = self.extract_text_from_pdf(file_data)
 
-        # Process with OpenAI
+        # Step 3: Use OpenAI to extract invoice data
         invoice_data = self.process_invoice_with_openai(invoice_text)
 
+        # Step 4: DB Processing
+        # Add invoice link to DB detail items
+        file_link = self.dropbox_util.get_file_link(dropbox_path)
+        self.database_util.add_invoice_link_to_detail_items(project_id, po_number, invoice_number, file_link)
+        self.logger.info(f"✅ Added invoice link to DB for {project_id}_{po_number}_{invoice_number}")
+
+        # Create or update invoice record in DB if we have invoice_data
         if invoice_data:
             transaction_date = invoice_data.get('invoice_date')
             due_date = invoice_data.get('due_date')
-            # 'term' may not be provided by OpenAI, set None if not present
             term = invoice_data.get('term')
             description = invoice_data.get('description')
             line_items = invoice_data.get('line_items', [])
 
-            # Calculate total from line_items
             total = 0.0
-            for item in line_items:
-                q = float(item.get('quantity', 1))
-                r = float(item.get('rate', 0.0))
-                total += (q * r)
+            for it in line_items:
+                q = float(it.get('quantity', 1))
+                r = float(it.get('rate', 0.0))
+                total += q * r
 
-            # Insert or update invoice record
             self.database_util.create_or_update_invoice(
                 project_id=project_id,
                 po_number=po_number,
@@ -301,449 +409,354 @@ class DropboxService(metaclass=SingletonMeta):
             )
             self.logger.info(f"🗃 Invoice stored in DB for {project_id}_{po_number}_{invoice_number}")
 
+        # Step 5: Monday Processing (if not SKIP_MONDAY)
+        if not self.SKIP_MONDAY:
+            detail_item_ids = self.database_util.get_detail_item_pulse_ids_for_invoice(project_id, po_number, invoice_number)
+            success = self.monday_api.update_detail_items_with_invoice_link(detail_item_ids, file_link)
+            if success:
+                self.logger.info(f"🌐 Updated invoice link on Monday: {project_id}_{po_number}_{invoice_number}")
+            else:
+                self.logger.warning("⚠️ Failed to update invoice link on Monday")
+
+        # Dropbox links can be handled later if needed (currently invoice logic does not start threads)
+
+    # ========== TAX FORM PROCESSING ==========
+    def process_tax_form(self, path: str):
+        self.logger.info(f"📜 Processing tax form: {path}")
+        # Add parsing and DB logic here if needed
+        # After DB is done, do Monday updates
+        # Then handle Dropbox links if any
+        pass
+
+    # ========== RECEIPT PROCESSING ==========
+    def process_receipt(self, path: str):
+        self.logger.info(f"🧾 Processing receipt: {path}")
+        # Parse, DB update
+        # Monday update
+        # Dropbox links if needed
+        pass
+
+    # ========== BUDGET PROCESSING ==========
+    def process_budget(self, dropbox_path: str):
+        self.logger.info(f"💼 Processing budget: {dropbox_path}")
+        filename = os.path.basename(dropbox_path)
+        try:
+            if not filename.endswith(".mbb") or filename.endswith(".mbb.lck"):
+                self.logger.info("❌ Not a valid .mbb file.")
+                return
+        except Exception as e:
+            self.logger.exception(f"💥 Error checking extension: {e}", exc_info=True)
+            return
+
+        # Extract project_id
+        try:
+            segments = dropbox_path.strip("/").split("/")
+            if len(segments) < 4:
+                self.logger.info("❌ Not enough path segments.")
+                return
+
+            project_folder = segments[0]
+            budget_folder = segments[1]
+            phase_folder = segments[2]
+
+            if budget_folder != "5. Budget" or phase_folder not in ["1.2 Working", "1.3 Actuals"]:
+                self.logger.info("❌ Budget file not in correct folder.")
+                return
+
+            project_id_match = re.match(r"^\d{4}", project_folder)
+            if not project_id_match:
+                self.logger.info("❌ Can't determine Project ID.")
+                return
+            project_id = project_id_match.group()
+
+            self.logger.info(f"🔑 Project ID: {project_id}")
+        except Exception as e:
+            self.logger.exception(f"💥 Error parsing path: {e}", exc_info=True)
+            return
+
+        try:
+            budget_root = "/".join(segments[0:3])
+            po_logs_path = f"/{budget_root}/1.5 PO Logs"
+            self.logger.info(f"🗂 PO Logs folder: {po_logs_path}")
+        except Exception as e:
+            self.logger.exception(f"💥 Error determining PO Logs folder: {e}", exc_info=True)
+            return
+
+        # DB Processing for budget if any required
+        # Currently, it just triggers a server job. Assume no DB changes required.
+
+        # Monday Processing if any (not shown in original code)
+        # If none, skip.
+
+        # Trigger server job
+        import requests
+        server_url = "http://localhost:5004/enqueue"  # Adjust to your server URL
+        self.logger.info("🖨 Triggering ShowbizPoLogPrinter via server with file URL...")
+        try:
+            response = requests.post(
+                server_url,
+                json={"project_id": project_id, "file_path": dropbox_path},
+                timeout=10
+            )
+            if response.status_code == 200:
+                job_id = response.json().get("job_id")
+                self.logger.info(f"🎉 Triggered server job with job_id: {job_id}")
+            else:
+                self.logger.error(f"❌ Failed to trigger server job. Status: {response.status_code}, Response: {response.text}")
+                return
+        except Exception as e:
+            self.logger.exception(f"💥 Error triggering server job: {e}", exc_info=True)
+            return
+
+        self.logger.info("✅ process_budget completed successfully, server job triggered with file URL.")
+
+    # ========== HELPER METHODS ==========
+
+    def process_contacts_in_db(self, contacts: list, project_id: str):
+        # If needed: handle contacts before main items
+        # Linking contacts to project or PO items in DB only
+        if contacts:
+            # Example: you might link or create contacts in DB here
+            # This may already be handled inside db_process_po_data.
+            # If not, implement additional DB logic here.
+            pass
+
+    def populate_contact_details_from_db(self, item: dict) -> dict:
+        self.logger.debug("Loading contact from DB (SKIP_MONDAY mode or separate step).")
+        contact_dict = self.po_log_database_util.get_contact_by_name(name=item["contact_name"])
+        if contact_dict:
+            item['contact_pulse_id'] = None
+            item['contact_payment_details'] = contact_dict['payment_details']
+            item['contact_email'] = contact_dict['email']
+            item['contact_phone'] = contact_dict['phone']
+            item['address_line_1'] = contact_dict['address_line_1']
+            item['city'] = contact_dict['city']
+            item['zip'] = contact_dict['zip']
+            item['tax_id'] = contact_dict['tax_id']
+            item['tax_form_link'] = contact_dict['tax_form_link']
+            item['contact_status'] = contact_dict['contact_status']
+            item['contact_country'] = contact_dict['country']
+            item['contact_tax_type'] = contact_dict['tax_type']
+        else:
+            self.logger.warning(f"No contact in DB for {item['name']}, using defaults.")
+            keys = [
+                'contact_pulse_id', 'contact_payment_details', 'contact_email', 'contact_phone',
+                'address_line_1', 'city', 'zip', 'tax_id', 'tax_form_link', 'contact_status',
+                'contact_country', 'contact_tax_type'
+            ]
+            for k in keys:
+                item[k] = None
+        return item
+
+    def update_po_links_in_background(self, po_surrogate_id):
+        logger = self.logger
+        logger.info(f"🚀 update_po_links_in_background started for PO Surrogate ID: {po_surrogate_id}")
+
+        try:
+            po_data = po_log_database_util.get_po_with_details(po_surrogate_id)
+            logger.debug(f"PO data returned from DB: {po_data}")
+            if not po_data:
+                logger.warning(f"❌ No PO data returned for po_surrogate_id={po_surrogate_id}, aborting link updates.")
+                return
+
+            # The rest of this method remains largely unchanged, as it's about linking files from Dropbox.
+            # It uses the DB and Dropbox APIs, and optionally updates Monday if not SKIP_MONDAY.
+            # Since we run it after DB and Monday steps, it's okay to proceed as-is.
+
+            # ... [No structural changes needed here, same logic of fetching links, updating DB, and Monday]
+
+            # Original code for updating links from the snippet:
+            project_id = po_data["project_id"]
+            po_number = po_data["po_number"]
+            po_pulse_id = po_data.get("pulse_id")
+            vendor_name = po_data.get("vendor_name", "Unknown Vendor")
+            detail_items = po_data.get("detail_items", [])
+            logger.debug(
+                f"Link update for PO: project_id={project_id}, po_number={po_number}, vendor='{vendor_name}', "
+                f"detail_items_count={len(detail_items)}"
+            )
+
+            project_folder_name = po_log_database_util.get_project_folder_name(project_id)
+            logger.debug(f"Project folder name retrieved: '{project_folder_name}'")
+            if not project_folder_name:
+                logger.warning(f"⚠️ Could not determine project folder name for {project_id}, no links will be found.")
+                return
+
+            base_path = f"/{project_folder_name}/1. Purchase Orders/{project_id}_{po_number} {vendor_name}"
+            logger.info(f"🔗 Base path for links: {base_path}")
+
+            # List files
+            files_in_folder = dropbox_api.list_folder_contents(base_path)
+            file_names = set(files_in_folder)
+
+            # Folder link
+            folder_link = dropbox_util.get_file_link(base_path)
+            if folder_link:
+                logger.info(f"✅ Folder link found: {folder_link}")
+                po_log_database_util.update_po_folder_link(po_surrogate_id, folder_link)
+                if not self.SKIP_MONDAY and po_pulse_id:
+                    col_values = {monday_util.PO_FOLDER_LINK_COLUMN_ID: {"url": folder_link, "text": "Folder Link"}}
+                    monday_util.update_item_columns(po_pulse_id, col_values)
+            else:
+                logger.warning("⚠️ No folder link found.")
+
+            # Tax form link
+            tax_form_candidates = [
+                f"{project_id}_{po_number} {vendor_name} W9",
+                f"{project_id}_{po_number} {vendor_name} W8-BEN",
+                f"{project_id}_{po_number} {vendor_name} W8-BEN-E"
+            ]
+            tax_form_link_found = None
+            for candidate in tax_form_candidates:
+                candidate_pdf = f"{candidate}.pdf"
+                if candidate_pdf in file_names:
+                    tax_form_link = dropbox_util.get_file_link(f"{base_path}/{candidate_pdf}")
+                    if tax_form_link:
+                        tax_form_link_found = tax_form_link
+                        break
+                else:
+                    if candidate in file_names:
+                        tax_form_link = dropbox_util.get_file_link(f"{base_path}/{candidate}")
+                        if tax_form_link:
+                            tax_form_link_found = tax_form_link
+                            break
+
+            if tax_form_link_found:
+                po_log_database_util.update_po_tax_form_link(po_surrogate_id, tax_form_link_found)
+                if not self.SKIP_MONDAY and po_pulse_id:
+                    col_values = {monday_util.PO_TAX_COLUMN_ID: tax_form_link_found}
+                    monday_util.update_item_columns(po_pulse_id, col_values)
+
+            # Invoices & Receipts links for detail items
+            for detail_item in detail_items:
+                detail_item_id = detail_item["detail_item_surrogate_id"]
+                detail_pulse_id = detail_item.get("pulse_id")
+                item_num = int(detail_item["detail_item_number"])
+                item_num_str = str(item_num)
+
+                # Invoice link
+                invoice_filename = f"{project_id}_{po_number}_{item_num_str} {vendor_name} Invoice.pdf"
+                if invoice_filename in file_names:
+                    invoice_link = dropbox_util.get_file_link(f"{base_path}/{invoice_filename}")
+                    if invoice_link:
+                        po_log_database_util.update_detail_item_file_link(detail_item_id, invoice_link)
+                        if not self.SKIP_MONDAY and detail_pulse_id:
+                            sub_cols = {monday_util.SUBITEM_LINK_COLUMN_ID: {"url": invoice_link, "text": "Invoice"}}
+                            monday_util.update_subitem_columns(detail_pulse_id, sub_cols)
+
+                # Receipt link
+                receipt_filename = f"{project_id}_{po_number}_{item_num_str} {vendor_name} Receipt.pdf"
+                if receipt_filename in file_names:
+                    receipt_link = dropbox_util.get_file_link(f"{base_path}/{receipt_filename}")
+                    if receipt_link:
+                        po_log_database_util.update_detail_item_file_link(detail_item_id, receipt_link)
+                        if not self.SKIP_MONDAY and detail_pulse_id:
+                            sub_cols = {monday_util.SUBITEM_LINK_COLUMN_ID: {"url": receipt_link, "text": "Receipt"}}
+                            monday_util.update_subitem_columns(detail_pulse_id, sub_cols)
+
+            logger.info(f"🎉 Completed background linking for PO Surrogate ID: {po_surrogate_id}")
+
+        except Exception as e:
+            logger.error("💥 Error in update_po_links_in_background:", exc_info=True)
+            traceback.print_exc()
+
     def parse_invoice_filename(self, filename: str):
-        """
-        Expected filename patterns:
-        - 2416_08 Sho Schrock-Manabe Invoice.pdf  (invoice_number defaults to 1)
-        - 2416_08_02 Sho Schrock-Manabe Invoice.pdf
-        """
         base_name = os.path.basename(filename)
         name_part = os.path.splitext(base_name)[0]
         parts = name_part.split("_")
+
         project_id = parts[0]
         po_number = parts[1]
+
         if len(parts) > 2 and parts[2].isdigit():
             invoice_number = int(parts[2])
         else:
             invoice_number = 1
+
         return project_id, po_number, invoice_number
 
     def extract_text_from_pdf(self, file_data: bytes) -> str:
-        # Attempt to extract text directly (if PDF)
         pdf_text = self.dropbox_util.extract_text_from_pdf(file_data)
         if pdf_text and pdf_text.strip():
             return pdf_text
 
-        self.logger.warning("⚠️ No direct text extracted. Attempting OCR...")
-        # Fallback to OCR
-        text_via_ocr = self.ocr_service.extract_text_from_invoice(file_data)
+        self.logger.warning("⚠️ No direct text from PDF, attempting OCR...")
+        # Assume self.ocr_service exists or you can integrate OCR here
+        # For now, we’ll try OCR via dropbox_util if implemented
+        text_via_ocr = self.dropbox_util.extract_text_with_ocr(file_data)
         return text_via_ocr
 
     def process_invoice_with_openai(self, text: str):
         info, error = self.dropbox_util.extract_info_with_openai(text)
         if error:
-            self.logger.warning(f"⚠️ Could not process invoice with OpenAI: {error}")
+            self.logger.warning(f"⚠️ OpenAI invoice process error: {error}")
             return None
         return info
 
-    def process_tax_form(self, path: str):
-        # region 💼 Process Tax Form
-        self.logger.info(f"📜 Processing tax form: {path}")
-        # endregion
-        pass
-
-    def process_receipt(self, path: str):
-        # region 🧾 Process Receipt
-        self.logger.info(f"🧾 Processing receipt: {path}")
-        # endregion
-        pass
-
-    def process_contacts(self, contacts: list, project_id: str):
-        # region 📇 Process Contacts
-        po_records = self.po_log_database_util.get_pos_by_project_id(project_id)
-        existing_contacts = self.po_log_database_util.get_contact_surrogate_ids(contacts)
-
-        self.logger.info("🌱 Starting synchronization with Database")
-        self.po_log_database_util.link_contact_to_po(existing_contacts, project_id)
-
-        self.logger.info("🌐 Starting synchronization with Monday.com")
-
+    def download_file_from_dropbox(self, path: str, temp_file_path: str) -> bool:
         try:
-            for po in po_records:
-                po_number = po.get("po_number")
-                po_pulse_id = po.get("pulse_id")
-                contact_surrogate_id = po.get("'contact_surrogate_id")
-
-                if not contact_surrogate_id:
-                    self.logger.warning(
-                        f"⚠️ No surrogate ID found for contact ID '{contact_surrogate_id}'. "
-                        f"Skipping PO '{project_id}_{po_number}'. ⚠️"
-                    )
-                    continue
-
-                contact_pulse_id = self.po_log_database_util.get_contact_pulse_id(contact_surrogate_id)
-                column_values = self.monday_util.po_column_values_formatter(contact_pulse_id=contact_pulse_id)
-
-                if not SKIP_MONDAY:
-                    update_success = self.monday_api.update_item(po_pulse_id, column_values)
-                    if update_success:
-                        self.logger.info(
-                            f"✅ Successfully linked PO '{po_number}' with Contact '{contact_surrogate_id}' in Monday.com. ✅")
-                    else:
-                        self.logger.warning(
-                            f"⚠️ Failed to link PO '{po_number}' with Contact '{contact_surrogate_id}' in Monday.com. ⚠️")
-                else:
-                    self.logger.info(
-                        f"🔧 SKIP_MONDAY is True, not updating PO '{po_number}' contact link in Monday.com.")
-            self.logger.info("🎉 Completed synchronization with Monday.com")
-        except Exception as parse_error:
-            self.logger.exception(f"💥 Error processing contacts: {parse_error}", exc_info=True)
-            raise
-        # endregion
-
-    def process_budget(self, dropbox_path: str):
-        """
-        🎉 process_budget Function 🎉
-        This function takes a dropbox_path for a .mbb budget file, verifies that it's a valid budget file
-        in the correct directory (Working or Actuals), locates the corresponding P.O Logs folder, and then
-        invokes the ShowbizPoLogPrinter to open and print the PO Log associated with that budget.
-        Finally, it uploads the resulting PO Log file to the project's 1.5 PO Logs folder on Dropbox
-        and returns the local file link.
-        """
-        self.logger.info(f"💼 Processing new budget changes: {dropbox_path}")
-        filename = os.path.basename(dropbox_path)
-
-        # Validate File Extension
-        try:
-            if not filename.endswith(".mbb") or filename.endswith(".mbb.lck"):
-                self.logger.info("❌ Not a valid .mbb file or it's an .lck file. Ignoring.")
-                return
-        except Exception as e:
-            self.logger.exception(f"💥 Error checking file extension: {e}", exc_info=True)
-            return
-
-        # Parse Path Structure
-        try:
-            segments = dropbox_path.strip("/").split("/")
-            # segments example: ["2024", "2416 - Whop Keynote", "5. Budget", "1.2 Working", "mybudget.mbb"]
-
-            if len(segments) < 4:
-                self.logger.info("❌ Path does not have enough segments to identify project and phase. Ignoring.")
-                return
-
-            project_folder = segments[0]  # e.g. "2416 - Whop Keynote"
-            budget_folder = segments[1]  # should be "5. Budget"
-            phase_folder = segments[2]  # "1.2 Working" or "1.3 Actuals"
-
-            if budget_folder != "5. Budget" or phase_folder not in ["1.2 Working", "1.3 Actuals"]:
-                self.logger.info("❌ Budget file not located in 'Working' or 'Actuals' folder. Ignoring.")
-                return
-
-            # Extract project_id from the project folder name.
-            # Assuming project folder is like "2416 - Whop Keynote" -> project_id = "2416"
-            project_id_match = re.match(r"^\d{4}", project_folder)
-            if not project_id_match:
-                self.logger.info("❌ Could not determine Project ID from folder name. Ignoring.")
-                return
-            project_id = project_id_match.group()
-
-            self.logger.info(f"🔑 Determined Project ID: {project_id}")
-        except Exception as e:
-            self.logger.exception(f"💥 Error parsing path structure: {e}", exc_info=True)
-            return
-
-        # Determine P.O Logs Folder
-        try:
-            # segments = [year, "2416 - Whop Keynote", "5. Budget", "1.2 Working", "mybudget.mbb"]
-            # We want up to the "5. Budget" segment
-            budget_root = "/".join(segments[0:3])  # e.g. "2024/2416 - Whop Keynote/5. Budget"
-            po_logs_path = f"/{budget_root}/1.5 PO Logs"
-            self.logger.info(f"🗂 P.O Logs folder path: {po_logs_path}")
-        except Exception as e:
-            self.logger.exception(f"💥 Error determining PO Logs folder: {e}", exc_info=True)
-            return
-
-        # Download Budget File Locally
-        try:
-            local_temp_dir = "./temp_files"
-            if not os.path.exists(local_temp_dir):
-                os.makedirs(local_temp_dir)
-
-            local_file_path = os.path.join(local_temp_dir, filename)
-            self.logger.info(f"⏬ Downloading '{filename}' to '{local_file_path}'...")
-
-            # Assuming dropbox_api has a method `download_file` that downloads to local_file_path:
-            file_data = self.dropbox_api.download_file(dropbox_path, local_file_path)
-            if file_data:
-                self.logger.info(f"✅ File downloaded successfully: {filename}")
-            else:
-                raise ValueError("File data is empty, download might have failed.")
-        except Exception as e:
-            self.logger.exception(f"💥 Error downloading budget file: {e}", exc_info=True)
-            return
-
-        # Invoke ShowbizPoLogPrinter
-        try:
-            from po_log_files.showbiz_log_printer import ShowbizPoLogPrinter
-
-            self.logger.info("🖨 Invoking ShowbizPoLogPrinter with the downloaded budget file...")
-            printer = ShowbizPoLogPrinter(project_id=project_id, file_path=local_file_path)
-
-            file_link = printer.run()  # This should return a file:// link to the PO_LOG file on desktop
-            self.logger.info("🎉 PO Log printing completed successfully!")
-        except Exception as e:
-            self.logger.exception(f"💥 Error invoking ShowbizPoLogPrinter: {e}", exc_info=True)
-            return
-        finally:
-            # Cleanup local .mbb file after printing
-            try:
-                if os.path.exists(local_file_path):
-                    os.remove(local_file_path)
-                    self.logger.info(f"🧹 Cleaned up temporary budget file: {local_file_path}")
-            except Exception as e:
-                self.logger.warning(f"⚠️ Failed to remove temporary file '{local_file_path}': {e}")
-
-        # Upload the PO LOG to Dropbox
-        try:
-            # The printer returns a file:// URI. Convert that to a local file path.
-            # file_link e.g.: "file:///Users/yourusername/Desktop/PO_LOGS/PO_LOG_2416_2024-12-12_14-30-45.txt"
-            from urllib.parse import urlparse
-            parsed = urlparse(file_link)
-            po_log_local_path = parsed.path  # Should give the full local path without 'file://'
-
-            # On macOS, parsed.path may start with '/Users/...', so it's a valid absolute path.
-            # We'll ensure it exists before uploading.
-            if not os.path.exists(po_log_local_path):
-                self.logger.error(f"❌ PO log file not found at '{po_log_local_path}'. Cannot upload.")
-                return
-
-            # Upload to Dropbox. Construct a destination path within the PO Logs folder.
-            po_log_filename = os.path.basename(po_log_local_path)
-            dropbox_destination = f"{po_logs_path}/{po_log_filename}"
-
-            self.logger.info(f"⏫ Uploading PO log to Dropbox at: {dropbox_destination}")
-            self.dropbox_api.upload_file(po_log_local_path, dropbox_destination)
-            self.logger.info("✅ PO Log uploaded to Dropbox successfully.")
-        except Exception as e:
-            self.logger.exception(f"💥 Error uploading PO log to Dropbox: {e}", exc_info=True)
-            return
-
-        self.logger.info("✅ process_budget completed successfully.")
-        return
-
-    def extract_receipt_info_with_openai_from_file(self, dropbox_path: str):
-        # region 🤖 Receipt Info with OpenAI
-        try:
-            text = self.extract_text_from_file(dropbox_path)
-            if not text:
-                logging.error(f"🚫 No text extracted from receipt file: {dropbox_path}")
-                return None
-
-            receipt_info = self.dropbox_util.extract_receipt_info_with_openai(text)
-            if not receipt_info:
-                logging.error(f"🚫 OpenAI failed to extract receipt info from file: {dropbox_path}")
-                return None
-
-            return receipt_info
-
-        except Exception as e:
-            logging.error(f"💥 Error extracting receipt info from file {dropbox_path}: {e}", exc_info=True)
-            return None
-        # endregion
-
-    def extract_invoice_data_from_file(self, dropbox_path: str):
-        # region 📑 Extract Invoice Data
-        text = self.dropbox_util.extract_text_from_file(dropbox_path)
-        if not text:
-            logging.error("🚫 Failed to extract text from the invoice file.")
-            return [], "Text extraction failed."
-
-        try:
-            invoice_data, error = self.dropbox_util.extract_info_with_openai(text)
-            if error:
-                logging.error(f"🚫 OpenAI processing failed with error: {error}. Manual entry may be required.")
-                return [], "Failed to process invoice with OpenAI."
-        except Exception as e:
-            logging.error(f"💥 OpenAI processing failed: {e}")
-            return [], "OpenAI processing failed."
-
-        try:
-            vendor_description = invoice_data.get("description", "")
-            line_items = []
-            for it in invoice_data.get("line_items", []):
-                description = it.get("item_description", "")
-                quantity = it.get("quantity", 1)
-                rate = float(it.get("rate", 0.0))
-                date = it.get("date", "")
-                due_date = it.get("due_date", "") or (
-                    (datetime.strptime(date, '%Y-%m-%d') + timedelta(days=30)).strftime('%Y-%m-%d')
-                    if date else ""
-                )
-                account_number = it.get("account_number", "5000")
-
-                line_items.append({
-                    'description': description,
-                    'quantity': quantity,
-                    'rate': rate,
-                    'date': date,
-                    'due_date': due_date,
-                    'account_number': account_number
-                })
-
-            return line_items, vendor_description
-
-        except Exception as e:
-            logging.error(f"💥 Error structuring invoice data: {e}")
-            return [], "Failed to structure invoice data."
-        # endregion
-
-    def extract_text_from_file(self, dropbox_path: str) -> str:
-        # region 🕵️ Extract Text from File
-        dbx_client = dropbox_client
-        dbx = dbx_client.dbx
-
-        temp_file_path = None
-        try:
-            metadata, res = dbx.files_download(dropbox_path)
+            dbx = self.dropbox_client.dbx
+            _, res = dbx.files_download(path)
             file_content = res.content
-
-            with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(dropbox_path)[-1]) as temp_file:
+            with open(temp_file_path, 'wb') as temp_file:
                 temp_file.write(file_content)
-                temp_file_path = temp_file.name
-
-            text = self.dropbox_util.extract_text_from_pdf(temp_file_path)
-            if not text:
-                logging.info(f"ℹ️ No direct text extracted from '{dropbox_path}'. Attempting OCR...")
-                text = self.dropbox_util.extract_text_with_ocr(temp_file_path)
-
-            return text or ""
-
+                self.logger.info(f"📂 File saved to {temp_file_path}")
+            return True
         except Exception as e:
-            logging.error(f"💥 Error extracting text from '{dropbox_path}': {e}", exc_info=True)
-            return ""
-        finally:
-            if temp_file_path and os.path.exists(temp_file_path):
-                try:
-                    os.remove(temp_file_path)
-                    logging.debug(f"🧹 Removed temporary file '{temp_file_path}'")
-                except Exception as cleanup_error:
-                    logging.warning(f"⚠️ Could not remove temp file '{temp_file_path}': {cleanup_error}")
-        # endregion
+            self.logger.exception(f"💥 Failed to download file: {e}", exc_info=True)
+            return False
 
-    def extract_text_with_ocr(self, file_path: str) -> str:
-        # region 👀 Extract Text with OCR
+    def cleanup_temp_file(self, temp_file_path: str):
         try:
-            images = convert_from_path(file_path)
-            text = ""
-            for img in images:
-                text += pytesseract.image_to_string(img) + "\n"
-            logging.debug(f"👁‍🗨 Extracted text from image '{file_path}' using OCR.")
-            return text
+            if os.path.exists(temp_file_path):
+                os.remove(temp_file_path)
+                self.logger.info(f"🧹 Cleaned up temp file {temp_file_path}")
         except Exception as e:
-            self.logger.exception(f"💥 Error extracting text with OCR from '{file_path}': {e}", exc_info=True)
-            return ""
-        # endregion
-
-    def populate_contact_details(self, item: dict) -> dict:
-        # region 🏷 Populate Contact Details
-        if "placeholder" in item["name"].lower():
-            item["name"] = "PLACEHOLDER"
-
-        if SKIP_MONDAY:
-            # Load contact directly from DB as a dict
-            self.logger.debug("SKIP_MONDAY: Loading contact details from DB instead of Monday.")
-            contact_dict = self.po_log_database_util.get_contact_by_name(name=item["name"])
-
-            if contact_dict:
-                # Populate item fields from the contact_dict
-                item['contact_pulse_id'] = None
-                item['contact_payment_details'] = contact_dict['payment_details']
-                item['contact_email'] = contact_dict['email']
-                item['contact_phone'] = contact_dict['phone']
-                item['address_line_1'] = contact_dict['address_line_1']
-                item['city'] = contact_dict['city']
-                item['zip'] = contact_dict['zip']
-                item['tax_id'] = contact_dict['tax_id']
-                item['tax_form_link'] = contact_dict['tax_form_link']
-                item['contact_status'] = contact_dict['contact_status']
-                item['contact_country'] = contact_dict['country']
-                item['contact_tax_type'] = contact_dict['tax_type']
-            else:
-                self.logger.warning(f"No contact found in DB for {item['name']}. Assigning defaults.")
-                # Default to None if not found
-                item['contact_pulse_id'] = None
-                item['contact_payment_details'] = None
-                item['contact_email'] = None
-                item['contact_phone'] = None
-                item['address_line_1'] = None
-                item['city'] = None
-                item['zip'] = None
-                item['tax_id'] = None
-                item['tax_form_link'] = None
-                item['contact_status'] = None
-                item['contact_country'] = None
-                item['contact_tax_type'] = None
-        else:
-            # Use Monday API to find or create contact (unchanged logic)
-            monday_contact_result = self.monday_api.find_or_create_contact_in_monday(item["name"])
-            column_values = {}
-            column_texts = {}
-
-            for entry in monday_contact_result.get("column_values", []):
-                key = entry.get('id')
-                value = entry.get('value')
-                text = entry.get('text')
-
-                if value and isinstance(value, str):
-                    try:
-                        parsed_value = json.loads(value)
-                        self.logger.debug(f"🔧 Parsed JSON for {key}: {parsed_value}")
-                    except json.JSONDecodeError:
-                        parsed_value = value
-                        self.logger.debug(f"🔧 Value for {key} not valid JSON: {value}")
-                else:
-                    parsed_value = value
-                    self.logger.debug(f"🔧 Value for {key}: {parsed_value}")
-
-                column_values[key] = parsed_value
-                column_texts[key] = text
-
-            item['contact_pulse_id'] = monday_contact_result.get("id")
-            self.logger.debug(f"🏷 Assigned contact_pulse_id: {item['contact_pulse_id']}")
-
-            mapping = {
-                'contact_payment_details': (self.monday_util.CONTACT_PAYMENT_DETAILS, True),
-                'contact_email': (self.monday_util.CONTACT_EMAIL, True),
-                'contact_phone': (self.monday_util.CONTACT_PHONE, True),
-                'address_line_1': (self.monday_util.CONTACT_ADDRESS_LINE_1, False),
-                'city': (self.monday_util.CONTACT_ADDRESS_CITY, False),
-                'zip': (self.monday_util.CONTACT_ADDRESS_ZIP, False),
-                'contact_status': (self.monday_util.CONTACT_STATUS, True),
-                'contact_country': (self.monday_util.CONTACT_ADDRESS_COUNTRY, False),
-                'contact_tax_type': (self.monday_util.CONTACT_TAX_TYPE, False)
-            }
-
-            # For Monday, we don't get tax_id or tax_form_link, so set them to None
-            item['tax_id'] = None
-            item['tax_form_link'] = None
-
-            for item_key, (column_id, use_text) in mapping.items():
-                if use_text:
-                    value = column_texts.get(column_id)
-                    item[item_key] = value
-                    self.logger.debug(f"🏷 Assigned '{item_key}' with text from '{column_id}': {value}")
-                else:
-                    value = column_values.get(column_id)
-                    item[item_key] = value
-                    self.logger.debug(f"🏷 Assigned '{item_key}' with value from '{column_id}': {value}")
-        # endregion
-        return item
+            self.logger.warning(f"⚠️ Could not remove temp file: {e}")
 
     def extract_project_id(self, file_name: str) -> str:
-        # region 🏗 Extract Project ID
         digit_sequences = re.findall(r'\d+', file_name)
-
         if not digit_sequences:
-            raise ValueError(f"❗ No digits found in file name: '{file_name}' ❗")
-
+            raise ValueError(f"❗ No digits in '{file_name}' for project_id.")
         all_digits = ''.join(digit_sequences)
-
         if len(all_digits) < 4:
-            raise ValueError(f"❗ File name '{file_name}' does not contain at least four digits for project_id. ❗")
-
-        project_id = all_digits[-4:]
-        # endregion
+            raise ValueError(f"❗ '{file_name}' doesn't have 4 digits for project_id.")
+        project_id = all_digits[:4]
         return project_id
 
-# 🎉 Instantiate the DropboxService Singleton
+    def scan_and_process_po_folders(self, processed_items: list):
+        self.logger.info("🔎 Scanning PO folders for additional files...")
+        # Iterate over processed items
+        for item in processed_items:
+            project_id = item["project_id"]
+            po_number = item["PO"]
+            po_number_padded = self.PO_NUMBER_FORMAT.format(int(po_number))
+
+            vendor_name = item["contact_name"] or "Unknown_Vendor"
+            # Construct PO folder path, e.g.: "/<ProjectFolder>/1.0 Purchase Orders/<project_id>_<po_number> <vendor_name>"
+            # You may need a utility to get the project folder name if not already available
+            project_folder_name = self.po_log_database_util.get_project_folder_name(project_id)
+            if not project_folder_name:
+                self.logger.warning(f"⚠️ No project folder name found for {project_id}. Skipping PO {po_number}.")
+                continue
+
+            po_folder_path = f"/{project_folder_name}/1. Purchase Orders/{project_id}_{po_number_padded} {vendor_name}"
+            self.logger.debug(f"Checking PO folder: {po_folder_path}")
+
+            files_in_folder = self.dropbox_api.list_folder_contents(po_folder_path)
+            for file_name in files_in_folder:
+                full_path = f"{po_folder_path}/{file_name}"
+                # Determine file type using the same logic as in determine_file_type or a simplified regex check.
+                if re.search(self.INVOICE_REGEX, file_name, re.IGNORECASE):
+                    self.logger.info(f"🧭 Found invoice file: {file_name}")
+                    self.process_invoice(full_path)
+                elif re.search(self.TAX_FORM_REGEX, file_name, re.IGNORECASE):
+                    self.logger.info(f"🧭 Found tax form file: {file_name}")
+                    self.process_tax_form(full_path)
+                elif re.search(self.RECEIPT_REGEX, file_name, re.IGNORECASE):
+                    self.logger.info(f"🧭 Found receipt file: {file_name}")
+                    self.process_receipt(full_path)
+                else:
+                    self.logger.debug(f"❌ Unsupported or irrelevant file type: {file_name}. Skipping.")
+
 dropbox_service = DropboxService()

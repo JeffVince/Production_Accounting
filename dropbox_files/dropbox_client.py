@@ -265,34 +265,6 @@ class DropboxClient(metaclass=SingletonMeta):
                     # Implement retry logic or alerting as needed
                     time.sleep(60)  # Wait before retrying
 
-    def create_share_link(dbx_client, dropbox_path):
-        """
-        Creates a shared link for the specified Dropbox path.
-        """
-        try:
-            # Add namespace ID if applicable and ensure path format
-            if dbx_client.namespace_id:
-                dropbox_path = f"ns:{dbx_client.namespace_id}/{dropbox_path.lstrip('/')}"
-
-            # Use the same path root for sharing endpoints
-            dbx_sharing = dbx_client.dbx.with_path_root(common.PathRoot.namespace_id(dbx_client.namespace_id))
-
-            # Check for existing shared links
-            links = dbx_sharing.sharing_list_shared_links(path=dropbox_path, direct_only=True).links
-            if links:
-                logging.info(f"Existing shared link found for '{dropbox_path}': {links[0].url}")
-                return links[0].url
-            else:
-                # Create a new shared link
-                settings = dropbox_files.sharing.SharedLinkSettings(
-                    requested_visibility=dropbox_files.sharing.RequestedVisibility.public
-                )
-                shared_link = dbx_sharing.sharing_create_shared_link_with_settings(dropbox_path, settings)
-                logging.info(f"Created new shared link for '{dropbox_path}': {shared_link.url}")
-                return shared_link.url
-        except dropbox_files.exceptions.ApiError as e:
-            logging.error(f"Error creating shared link for '{dropbox_path}': {e}")
-            return None
 
 
 dropbox_client = DropboxClient()

@@ -1,4 +1,5 @@
 # /orchestration/orchestrator.py
+import glob
 import os
 import threading
 import time
@@ -16,6 +17,8 @@ logger = logging.getLogger(__name__)
 setup_logging()
 
 
+
+
 class Orchestrator:
     def __init__(self):
         # Initialize Services
@@ -31,11 +34,29 @@ class Orchestrator:
         logger.info("Starting background tasks...")
         #self.schedule_po_log_check()
 
-        ## TEMP STUFF
-        if self.config.USE_TEMP:
-             # grab the temp file from the directory
-             self.dropbox_service.process_po_log("temp_2416.txt")
+        if dropbox_service.USE_TEMP_FILE:
+            # Specify the directory containing the log files
+            log_dir = "./temp_files/"
 
+            # Debugging: Print the resolved absolute path
+            absolute_log_dir = os.path.abspath(log_dir)
+
+            # Identify all PO_LOG files with a matching pattern
+            log_files = glob.glob(os.path.join(absolute_log_dir, "PO_LOG_2416-*.txt"))
+
+            # Debugging: Print found files
+
+            if log_files:
+                # Find the most recently modified log file
+                latest_log_file = max(log_files, key=os.path.getmtime)
+
+                # Debugging: Print the selected log file
+
+                # Pass the most recent file to the process_po_log function
+                self.dropbox_service.process_po_log(latest_log_file)
+            else:
+                # Handle the case where no PO_LOG files are found
+                self.logger.error("No PO LOG FILES FOUND FOR TESTING")
 
         #MAIN STUFF
         # self.schedule_monday_main_items_sync()

@@ -39,6 +39,7 @@ class MondayUtil(metaclass=SingletonMeta):
     PO_FOLDER_LINK_COLUMN_ID = 'dup__of_tax_form__1'
     PO_STATUS_COLUMN_ID = 'status'
     PO_PRODUCER_COLUMN_ID = 'people'
+    PO_TAX_FORM_COLUMN_ID = 'mirror__1'
 
     # Column IDs for Subitems
     SUBITEM_NOTES_COLUMN_ID = 'payment_notes__1'
@@ -53,7 +54,9 @@ class MondayUtil(metaclass=SingletonMeta):
     SUBITEM_LINK_COLUMN_ID = 'link'  # Link column ID
     SUBITEM_OT_COLUMN_ID = 'numbers0__1'
     SUBITEM_FRINGE_COLUMN_ID = 'numbers9__1'
-
+    SUBITEM_LINE_NUMBER_COLUMN_ID = "numbers_Mjj5uYts"
+    SUBITEM_PO_COLUMN_ID = "numbers_Mjj60Olh"
+    SUBITEM_PROJECT_ID_COLUMN_ID = "numbers_Mjj8k8Yt"
     # Column IDs for Contacts
     CONTACT_NAME = 'name'
     CONTACT_PHONE = 'phone'
@@ -396,28 +399,12 @@ class MondayUtil(metaclass=SingletonMeta):
 
     def po_column_values_formatter(self, project_id=None, po_number=None, tax_id=None, description=None,
                                    contact_pulse_id=None, folder_link=None, status=None, producer_id=None, name=None):
-        """
-        Formats the column values for creating or updating a main PO item.
-
-        Args:
-            project_id (str, optional): The ID of the project associated with the PO.
-            po_number (str, optional): The PO number.
-            tax_id (str, optional): Tax-related ID.
-            description (str, optional): Description of the PO.
-            contact_pulse_id (int, optional): Pulse ID of the contact to connect.
-            folder_link (str, optional): URL link to the folder.
-            status (str, optional): Status of the PO.
-            producer_id (int, optional): ID of the producer assigned to the PO.
-
-        Returns:
-            dict: A dictionary of main PO column IDs and their corresponding values.
-        """
-
         column_values = {}
         if project_id:
             column_values[self.PO_PROJECT_ID_COLUMN] = project_id
         if name:
-            column_values["name"] = name
+            # Ensure `name` is not a set
+            column_values["name"] = list(name) if isinstance(name, set) else name
         if po_number:
             column_values[self.PO_NUMBER_COLUMN] = po_number
         if tax_id:
@@ -433,137 +420,100 @@ class MondayUtil(metaclass=SingletonMeta):
         if producer_id:
             column_values[self.PO_PRODUCER_COLUMN_ID] = {'personsAndTeams': [{'id': producer_id, 'kind': 'person'}]}
 
+        # Ensure all values are JSON-serializable
+        for key, value in column_values.items():
+            if isinstance(value, set):
+                column_values[key] = list(value)
+
         self.logger.debug(f"Formatted PO column values: {column_values}")
         return json.dumps(column_values)
+
 
     def prep_po_log_item_for_monday(self, item):
         pass
 
     # --------------------- SUBITEM METHODS ---------------------
 
-    def subitem_column_values_formatter(self, notes=None, status=None, description=None,
+    def subitem_column_values_formatter(self, project_id=None, po_number=None, detail_item_number=None, line_id=None,
+                                        notes=None, status=None, description=None,
                                         quantity=None, rate=None, date=None, due_date=None,
-                                        account_number=None, link=None, item_number=None, OT=None, fringes=None):
-        """
-        Formats the column values for creating or updating a subitem.
-
-        Args:
-            notes (str, optional): Payment notes.
-            status (str, optional): Status of the subitem.
-            file_id (str, optional): Receipt or invoice ID.
-            description (str, optional): Description of the subitem.
-            quantity (float, optional): Quantity value.
-            rate (float, optional): Rate value.
-            date (str, optional): Date in 'YYYY-MM-DD' format.
-            due_date (str, optional): Due date in 'YYYY-MM-DD' format.
-            account_number (str, optional): Account number.
-            link (str, optional): URL link.
-
-        Returns:
-            dict: A dictionary of subitem column IDs and their corresponding values.
-        """
-
-        # Mapping of account numbers to Monday IDs
-
-        account_number_to_id_map = {
-            "5300": 1,
-            "5000": 2,
-            "6040": 3,
-            "5330": 4
-        }
-
+                                        account_number=None, link=None, OT=None, fringes=None):
         column_values = {}
 
-        # NOTES 📝
         if notes: column_values[self.SUBITEM_NOTES_COLUMN_ID] = notes
-
-        # STATUS ✅
         if status: column_values[self.SUBITEM_STATUS_COLUMN_ID] = {'label': status}
-
-        # DESCRIPTION ✍️
         if description: column_values[self.SUBITEM_DESCRIPTION_COLUMN_ID] = description
 
-        # QUANTITY 🧳
         if quantity is not None:
             try:
-                # Clean the quantity: remove commas, strip whitespace, and convert to Decimal
                 cleaned_quantity = Decimal(str(quantity).replace(',', '').strip())
-                column_values[self.SUBITEM_QUANTITY_COLUMN_ID] = float(cleaned_quantity)  # Convert to float if required
+                column_values[self.SUBITEM_QUANTITY_COLUMN_ID] = float(cleaned_quantity)
             except (ValueError, InvalidOperation) as e:
-                self.logger.error(f"Invalid quantity value '{quantity}': {e}")
+                self.logger.error(f"Invalid quantity '{quantity}': {e}")
                 column_values[self.SUBITEM_QUANTITY_COLUMN_ID] = None
 
-        # RATE 💰
         if rate is not None:
             try:
-                # Clean the rate: remove commas, strip whitespace, and convert to Decimal
                 cleaned_rate = Decimal(str(rate).replace(',', '').strip())
-                column_values[self.SUBITEM_RATE_COLUMN_ID] = float(cleaned_rate)  # Convert to float if required
+                column_values[self.SUBITEM_RATE_COLUMN_ID] = float(cleaned_rate)
             except (ValueError, InvalidOperation) as e:
-                self.logger.error(f"Invalid rate value '{rate}': {e}")
+                self.logger.error(f"Invalid rate '{rate}': {e}")
                 column_values[self.SUBITEM_RATE_COLUMN_ID] = None
 
-        # OT
-        if OT is not None: column_values[self.SUBITEM_OT_COLUMN_ID] = OT
+        if OT is not None:
+            column_values[self.SUBITEM_OT_COLUMN_ID] = OT
+        if fringes is not None:
+            column_values[self.SUBITEM_FRINGE_COLUMN_ID] = fringes
 
-        # FRINGES
-        if fringes is not None: column_values[self.SUBITEM_FRINGE_COLUMN_ID] = fringes
-
-        # TRANSACTION DATE 📆
         if date:
             try:
-                # Check if `date` is a valid non-empty string
                 if isinstance(date, str) and date.strip():
-                    # Parse and format the `date` to ensure it's in 'YYYY-MM-DD'
                     parsed_date = parser.parse(date.strip())
-                    formatted_date = parsed_date.strftime('%Y-%m-%d')
-                    column_values[self.SUBITEM_DATE_COLUMN_ID] = {'date': formatted_date}
-                else:
-                    raise ValueError(f"Invalid date value: {date}")
-
+                    column_values[self.SUBITEM_DATE_COLUMN_ID] = {'date': parsed_date.strftime('%Y-%m-%d')}
             except Exception as e:
-                self.logger.error(f"Error parsing and formatting date '{date}': {e}")
+                self.logger.error(f"Error parsing date '{date}': {e}")
 
-        # DUE DATE 📆
         if due_date:
             try:
-                # Check if `due_date` is a valid non-empty string
                 if isinstance(due_date, str) and due_date.strip():
-                    # Parse and format the `due_date` to ensure it's in 'YYYY-MM-DD'
                     parsed_due_date = parser.parse(due_date.strip())
-                    formatted_due_date = parsed_due_date.strftime('%Y-%m-%d')
-                    column_values[self.SUBITEM_DUE_DATE_COLUMN_ID] = {'date': formatted_due_date}
-                else:
-                    raise ValueError(f"Invalid due_date value: {due_date}")
+                    column_values[self.SUBITEM_DUE_DATE_COLUMN_ID] = {'date': parsed_due_date.strftime('%Y-%m-%d')}
             except Exception as e:
-                self.logger.error(f"Error parsing and formatting due_date '{due_date}': {e}")
+                self.logger.error(f"Error parsing due_date '{due_date}': {e}")
 
-        # ACCOUNT NUMBER 🧾
         if account_number:
             try:
-                # Clean and extract only numeric parts from the account number
                 cleaned_account_number = re.sub(r'[^\d]', '', str(account_number).strip())
-
-                # Convert the cleaned value to an integer
                 if cleaned_account_number:
                     column_values[self.SUBITEM_ACCOUNT_NUMBER_COLUMN_ID] = int(cleaned_account_number)
                 else:
-                    raise ValueError(f"Account number '{account_number}' resulted in an empty value after cleaning.")
+                    raise ValueError(f"Account number '{account_number}' invalid after cleaning.")
             except (ValueError, TypeError) as e:
-                self.logger.error(f"Invalid account number value '{account_number}': {e}")
+                self.logger.error(f"Invalid account number '{account_number}': {e}")
                 column_values[self.SUBITEM_ACCOUNT_NUMBER_COLUMN_ID] = None
 
-       # INVOICE OR RECEIPT LINK 🔗
-        if link: column_values[self.SUBITEM_LINK_COLUMN_ID] = {'url': link, 'text': 'Link'}
+        if link:
+            column_values[self.SUBITEM_LINK_COLUMN_ID] = {'url': link, 'text': 'Link'}
 
-        # INVOICE OR RECEIPT NUMBER 📇
-        #region
-        if item_number:
-            column_values[self.SUBITEM_ID_COLUMN_ID] = int(item_number)
+        if po_number is not None:
+            column_values[self.SUBITEM_PO_COLUMN_ID] = po_number
+
+        if detail_item_number is not None:
+            column_values[self.SUBITEM_ID_COLUMN_ID] = float(detail_item_number)
+
+        if line_id is not None:
+            column_values[self.SUBITEM_LINE_NUMBER_COLUMN_ID] = int(line_id)
+
+        if project_id is not None:
+            column_values[self.SUBITEM_PROJECT_ID_COLUMN_ID] = project_id
+
+        # Ensure all values are JSON-serializable
+        for key, value in column_values.items():
+            if isinstance(value, set):
+                column_values[key] = list(value)
+
         self.logger.debug(f"Formatted subitem column values: {column_values}")
         return json.dumps(column_values)
-        #endregion
-
 
     def create_subitem(self, parent_item_id, subitem_name, column_values):
         """
@@ -772,6 +722,187 @@ class MondayUtil(metaclass=SingletonMeta):
         linked_pulse_id = [item['linkedPulseId'] for item in parsed_value.get('linkedPulseIds', [])]
         return linked_pulse_id
 
+    def is_main_item_different(self, db_item, monday_item):
+        differences = []
 
+        # Extract Monday column values for easy access
+        col_vals = monday_item["column_values"]
+
+        # Define a mapping between DB fields and Monday fields
+        field_map = [
+            {
+                "field": "project_id",
+                "db_value": db_item.get("project_id"),
+                "monday_value": col_vals.get("project_id")
+            },
+            {
+                "field": "contact_name",
+                "db_value": db_item.get("contact_name"),
+                "monday_value": monday_item.get("name")
+            },
+            {
+                "field": "PO",
+                "db_value": str(db_item.get("PO")),
+                "monday_value": col_vals.get("numeric__1")
+            },
+            {
+                "field": "description",
+                "db_value": db_item.get("description"),
+                "monday_value": col_vals.get("text6")
+            }
+        ]
+
+        # Compare each mapped field
+        for f in field_map:
+            db_val = f["db_value"] if f["db_value"] is not None else ""
+            mon_val = f["monday_value"] if f["monday_value"] is not None else ""
+
+            # Convert both sides to strings trimmed of whitespace for uniform comparison
+            db_str = str(db_val).strip()
+            mon_str = str(mon_val).strip()
+
+            if db_str != mon_str:
+                differences.append({
+                    "field": f["field"],
+                    "db_value": db_str,
+                    "monday_value": mon_str
+                })
+
+        return differences
+
+    def is_sub_item_different(self, db_sub_item, monday_sub_item):
+        differences = []
+
+        col_vals = monday_sub_item["column_values"]
+
+        def safe_str(val):
+            return str(val).strip() if val is not None else ""
+
+        # Example field mapping for sub-items:
+        # Adjust these mappings to your actual column IDs for sub-items
+        field_map = [
+            {
+                "field": "project_id",
+                "db_value": safe_str(db_sub_item["project_id"]),
+                "monday_value": safe_str(col_vals.get(self.SUBITEM_PROJECT_ID_COLUMN_ID))
+            },
+            {
+                "field": "po_number",
+                "db_value": safe_str(db_sub_item["po_number"]),
+                "monday_value": safe_str(col_vals.get(self.SUBITEM_PO_COLUMN_ID))
+            },
+            {
+                "field": "detail_item_number",
+                "db_value": safe_str(db_sub_item["detail_item_number"]),
+                "monday_value": safe_str(int(float(col_vals.get(self.SUBITEM_ID_COLUMN_ID))))
+            },
+            {
+                "field": "line_id",
+                "db_value": safe_str(db_sub_item.get("line_id")),
+                "monday_value": safe_str(col_vals.get(self.SUBITEM_LINE_NUMBER_COLUMN_ID))
+            },
+            {
+                "field": "description",
+                "db_value": safe_str(db_sub_item.get("description")),
+                "monday_value": safe_str(col_vals.get(self.SUBITEM_DESCRIPTION_COLUMN_ID))
+            },
+            {
+                "field": "quantity",
+                "db_value": safe_str(db_sub_item.get("quantity")),
+                "monday_value": safe_str(col_vals.get(self.SUBITEM_QUANTITY_COLUMN_ID))
+            },
+            {
+                "field": "rate",
+                "db_value": safe_str(db_sub_item.get("rate")),
+                "monday_value": safe_str(col_vals.get(self.SUBITEM_RATE_COLUMN_ID))
+            },
+            {
+                "field": "state",
+                "db_value": safe_str(db_sub_item.get("state", "PENDING")),
+                "monday_value": safe_str(
+                    # Ensure col_vals[self.SUBITEM_STATUS_COLUMN_ID] is a dictionary
+                    col_vals.get(self.SUBITEM_STATUS_COLUMN_ID, {}).get("label")
+                    if isinstance(col_vals.get(self.SUBITEM_STATUS_COLUMN_ID), dict)
+                    else col_vals.get(self.SUBITEM_STATUS_COLUMN_ID)
+                )
+            },
+            {
+                "field": "file_link",
+                "db_value": safe_str(db_sub_item.get("file_link")),
+                "monday_value": safe_str(
+                    col_vals.get(self.SUBITEM_LINK_COLUMN_ID, {}).get("url")
+                    if isinstance(col_vals.get(self.SUBITEM_LINK_COLUMN_ID), dict)
+                    else ""
+                )
+            },
+            {
+                "field": "ot",
+                "db_value": safe_str(db_sub_item.get("ot")),
+                "monday_value": safe_str(col_vals.get(self.SUBITEM_OT_COLUMN_ID))
+            },
+            {
+                "field": "fringes",
+                "db_value": safe_str(db_sub_item.get("fringes")),
+                "monday_value": safe_str(col_vals.get(self.SUBITEM_FRINGE_COLUMN_ID))
+            }
+        ]
+
+        # Handle date fields separately if needed
+        db_date = safe_str(db_sub_item.get("transaction_date"))
+        mo_date = safe_str(
+            col_vals.get(self.SUBITEM_DATE_COLUMN_ID, {}).get("date")
+            if isinstance(col_vals.get(self.SUBITEM_DATE_COLUMN_ID), dict)
+            else col_vals.get(self.SUBITEM_DATE_COLUMN_ID)
+        )
+
+        field_map.append({
+            "field": "transaction_date",
+            "db_value": db_date,
+            "monday_value": mo_date
+        })
+
+        db_due = safe_str(db_sub_item.get("due_date"))
+        mo_due = safe_str(
+            col_vals.get(self.SUBITEM_DUE_DATE_COLUMN_ID, {}).get("date")
+            if isinstance(col_vals.get(self.SUBITEM_DUE_DATE_COLUMN_ID), dict)
+            else col_vals.get(self.SUBITEM_DUE_DATE_COLUMN_ID)
+        )
+
+        field_map.append({
+            "field": "due_date",
+            "db_value": db_due,
+            "monday_value": mo_due
+        })
+
+        # Compare each field and record differences
+        for f in field_map:
+            if f["db_value"] != f["monday_value"]:
+                differences.append({
+                    "field": f["field"],
+                    "db_value": f["db_value"],
+                    "monday_value": f["monday_value"]
+                })
+
+        return differences
+
+    def extract_subitem_identifiers(self, monday_sub_item):
+        col_vals = monday_sub_item["column_values"]
+
+        def safe_int(val):
+            try:
+                return int(val)
+            except (ValueError, TypeError):
+                return None
+
+        project_id = safe_int(float(col_vals.get(self.SUBITEM_PROJECT_ID_COLUMN_ID)))
+        po_number = safe_int(float(col_vals.get(self.SUBITEM_PO_COLUMN_ID)))
+        detail_num = safe_int(float(col_vals.get(self.SUBITEM_ID_COLUMN_ID)))
+        line_id = safe_int(float(col_vals.get(self.SUBITEM_LINE_NUMBER_COLUMN_ID)))
+
+        if project_id is not None and po_number is not None and detail_num is not None and line_id is not None:
+            return project_id, po_number, detail_num, line_id
+        else:
+            self.logger.warning("Subitem missing one of the required identifiers.")
+            return None
 
 monday_util = MondayUtil()

@@ -111,6 +111,7 @@ class PurchaseOrder(Base):
         ForeignKey('contacts.pulse_id', onupdate='CASCADE', ondelete='RESTRICT'),
         nullable=False,
     )
+    contact_name = Column(String(255), nullable=False)
     pulse_id = Column(MYSQL_BIGINT, nullable=True, unique=True)
     project_id = Column(
         MYSQL_INTEGER(unsigned=True),
@@ -247,6 +248,7 @@ class DetailItem(Base):
     ot = Column(MYSQL_DECIMAL(15, 2))
     fringes = Column(MYSQL_DECIMAL(15, 2))
     vendor = Column(String(255))
+    line_id = Column(MYSQL_INTEGER)
     description = Column(String(255), nullable=True)
     file_link = Column(String(255), nullable=True, comment='Link to invoice or receipt in Dropbox')
     state = Column(
@@ -263,8 +265,9 @@ class DetailItem(Base):
         nullable=False,
     )
     parent_pulse_id = Column(MYSQL_BIGINT, nullable=True, unique=False)
-
-    detail_item_number = Column(MYSQL_DECIMAL(4, 2), nullable=False, default=1)
+    po_number = Column(MYSQL_INTEGER, nullable=False)
+    project_id = Column(MYSQL_INTEGER, nullable=False)
+    detail_item_number = Column(MYSQL_INTEGER, nullable=False, default=1)
 
     # Indexes
     Index('account_number_idx', 'account_number')
