@@ -1,0 +1,363 @@
+├── 2401 - D4vd 'HINAH'
+├── 2402 - Fourth Daughter 'Higher'
+├── 2403 - DJ Snake 'Teka'
+├── 2404 - Ben Carson
+├── 2405 - Alex Banin 'IFE'
+├── 2406 - Rhea Raj 'Hush'
+├── 2407 - Foster The People 'LIP'
+├── 2408 - WC24
+├── 2408 - Whop Commercial
+├── 2410 - Whop Creator Profiles
+├── 2412 - Proper Wild 24
+├── 2413 - Foser The People 'SYITA'
+├── 2414 - Marwan Moussa
+├── 2415 - Cycora 'Hero Film'
+├── 2416 - Whop Keynote
+│   ├── 0. Accounting
+│   │   ├── 2. Invoices
+│   │   │   ├── Inv # 2416-01.pdf
+│   │   │   ├── Inv # 2416-02.pdf
+│   │   │   ├── Inv # 2416-03.pdf
+│   │   │   └── Inv # 2416-04.pdf
+│   │   ├── 3. Reports & Logs
+│   │   │   ├── 3.1 PO Logs
+│   │   │   ├── 3.2 Xero Logs
+│   │   │   ├── 3.3 Discrepancy Reports
+│   │   │   ├── 3.4 Bills to Pay
+│   │   │   └── 3.5 Project P&L
+│   │   └── 4. Approved Actuals
+│   ├── 1. Purchase Orders
+│   │   ├── 2416_01 PETTY CASH
+│   │   ├── 2416_02 Credit Card 8738
+│   │   │   ├── 2416_02_01 Airbnb Receipt.pdf
+│   │   │   ├── 2416_02_02 Amazon Receipt.pdf
+│   │   │   ├── 2416_02_03 Amazon Receipt.pdf
+│   │   │   ├── 2416_02_04 Amazon Receipt.pdf
+│   │   │   ├── ... (additional receipts)
+│   │   │   └── 2416_02_31 Target Receipt.pdf
+│   │   ├── 2416_03 Credit Card 1138
+│   │   │   ├── 2416_03_01 Uber Receipt.pdf
+│   │   │   ├── 2416_03_02 Uber Receipt.pdf
+│   │   │   ├── 2416_03_03 Uber Receipt.pdf
+│   │   │   ├── ... (additional receipts)
+│   │   │   └── 2416_03_81 Target Reciept.pdf
+│   │   ├── 2416_04 David Lee
+│   │   ├── 2416_05 Credit Card 1120
+│   │   │   ├── 2416_05_01 American Express Receipt.pdf
+│   │   │   └── 2416_05_02 American Express Receipt.pdf
+│   │   ├── 2416_06 Gotham City Drones, Inc
+│   │   │   ├── Gotham City Drones, Inc. Invoice.pdf
+│   │   │   ├── Add'l Files
+│   │   │   │   └── Brooklyn Drones_Ophelia & Company__Agreement_2024.pdf
+│   │   │   └── Gotham City Drones, Inc. W9.pdf
+│   │   ├── 2416_07 Be Electric Studios LLC
+│   │   │   ├── 2416_07 Be Electric Studios, LLC Invoice 01.pdf
+│   │   │   ├── 2416_07 Be Electric Studios, LLC W9.pdf
+│   │   │   ├── 2416_07_02 Be Electric Studios, LLC Invoice.pdf
+│   │   │   ├── ... (additional invoices)
+│   │   │   └── Add'l Files
+│   │   │       ├── 102524_Ophelia_Studio 10 Contract.pdf
+│   │   │       └── Be_Electric_Wire_Transfer_Instructions_2022.pdf
+│   │   ├── 2416_08 Sho Schrock-Manabe
+│   │   │   ├── 2416_08 Sho Schrock-Manabe Invoice.pdf
+│   │   │   ├── 2416_08 Sho Schrock-Manabe W9.pdf
+│   │   │   └── Reimbursement Receipts
+│   │   │       ├── Sho Schrock-Manabe Reimbursement Receipt 01.pdf
+│   │   │       └── Sho Schrock-Manabe Reimbursement Receipt 02.pdf
+│   │   ├── 2416_09 Robert Taylor And Co LLC
+│   │   │   ├── 2416_09 Robert Taylor And Co LLC Invoice.pdf
+│   │   │   └── 2416_09 Robert Taylor And Co LLC Receipt.pdf
+│   │   ├── ... (additional purchase orders)
+│   │   └── TO PROCESS - 2416 Whop Keynote PO Log 11-10-24.pdf
+│   ├── 2. Payroll
+│   │   ├── 2.1 Blank Payroll Forms
+│   │   │   ├── CMS
+│   │   │   │   ├── CAPS 2021 W-4.pdf
+│   │   │   │   ├── CAPS Crew Timecard - Fillable.pdf
+│   │   │   │   ├── ... (additional forms)
+│   │   │   │   └── INTERNAL CAPS Timecard Completion Instructions.pdf
+│   │   │   └── Media Services
+│   │   │       ├── FREELANCER_ACH_DEPOSIT_fillable.pdf
+│   │   │       ├── Media Services Job Start Form.pdf
+│   │   │       └── Non-Union_Start_and_Timecard_Commercial.pdf
+│   │   ├── 2.2 Timecard Scans
+│   │   └── 2.3 Worker's Comp
+│   │       ├── 2 MS Refusal of Medical Treatment.pdf
+│   │       ├── C-105.2(09-17)Zurich-Division of Labor Standards Permit and Certificate Unit.pdf
+│   │       ├── MS WC Kit 2020.pdf
+│   │       ├── Media Services Payroll - DB120.pdf
+│   │       ├── NYPFL Required Posting 2020 - Media Services Payroll.pdf
+│   │       └── NYPFL Required Posting 2020 - Media Services Processing.pdf
+│   ├── 3. Petty Cash
+│   │   ├── 1. Crew PC Folders
+│   │   │   ├── PC_2416_01 Suthee Ritthaworn
+│   │   │   │   ├── 2416_01_01 Uniqlo Receipt.pdf
+│   │   │   │   ├── ... (additional receipts)
+│   │   │   │   └── _Suthee Ritthaworn Transfer IN from COMPANY.pdf
+│   │   │   ├── PC_2416_02 Luke Polihrom
+│   │   │   │   ├── PC_2416_02_01 Amazon Receipt.pdf
+│   │   │   │   ├── ... (additional receipts)
+│   │   │   │   └── _Luke Polihrom Transfer IN From COMPANY.pdf
+│   │   │   ├── PC_2416_03 Jaden James
+│   │   │   │   ├── Jaden James PETTY CASH RECEIPT AND AGREEMENT FORM SIGNED.pdf
+│   │   │   │   ├── Jaden James Transfer IN from COMPANY.pdf
+│   │   │   │   ├── ... (additional transfers)
+│   │   │   └── PC_2416_04 Kristen Mom
+│   │   │       ├── PC_2416_04 Kristen Mom Receipt 01.pdf
+│   │   │       ├── ... (additional receipts)
+│   │   │       └── _Kristen Mom PETTY CASH RECEIPT AND AGREEMENT FORM.pdf
+│   │   ├── Kristen Mom PETTY CASH RECEIPT AND AGREEMENT FORM.pdf
+│   │   ├── Ophelia Petty Cash Topsheet.xls
+│   │   ├── PETTY CASH RECEIPT AND AGREEMENT FORM.docx
+│   │   └── PETTY CASH RECEIPT AND AGREEMENT FORM.pdf
+│   ├── 4. Production
+│   │   ├── 4.0 Job Contract
+│   │   │   ├── 2416 - Whop 4.0 Mission Film - PSA - Signed.pdf
+│   │   │   ├── 2416 - Whop 4.0 Mission Film - PSA.pages
+│   │   │   ├── 2416 - Whop 4.0 Mission Film - PSA.pdf
+│   │   │   ├── Art Director's Agreement
+│   │   │   │   ├── Whop Mission Film Art Director Agreement V2.pdf
+│   │   │   │   ├── ... (additional agreements)
+│   │   │   │   └── Whop Mission Film Art Director Agreement.pdf
+│   │   │   └── Old
+│   │   │       ├── 2416 - Whop 4.0 Keynote - PSA V1.pdf
+│   │   │       ├── ... (additional old files)
+│   │   │       └── 2416 - Whop 4.0 Keynote - PSA.pages
+│   │   ├── 4.1 Creative Documents
+│   │   │   ├── Animatic
+│   │   │   │   ├── Animatic V1.mov
+│   │   │   │   └── Animatic V2.mov
+│   │   │   ├── Best Sref Codes and Prompts by Ciguleva Sep 28.pdf
+│   │   │   ├── DSLR Shot.mov
+│   │   │   ├── Jeff's VO
+│   │   │   │   ├── New Recording 11.m4a
+│   │   │   │   ├── New Recording 12.m4a
+│   │   │   │   └── New Recording 13.m4a
+│   │   │   ├── Music
+│   │   │   │   ├── Flint Afterdusk.wav
+│   │   │   │   ├── Liquid Memoirs Solace.wav
+│   │   │   │   └── Tamuz Dekel Blue Beings.wav
+│   │   │   ├── Phone Asset
+│   │   │   │   ├── Adobe After Effects Auto-Save
+│   │   │   │   │   ├── Product Eng Handoff 4.0 (1) auto-save 4.aep
+│   │   │   │   │   ├── ... (additional auto-saves)
+│   │   │   │   │   └── Product Eng Handoff 4.0 (1) auto-save 8.aep
+│   │   │   │   ├── Product Eng Handoff 4.0 (1).aep
+│   │   │   │   ├── Product Eng Handoff 4.0 (1).mov
+│   │   │   │   └── Product Eng Handoff 4.0 (1)_2.mov
+│   │   │   ├── Pre-comp 1.mov
+│   │   │   ├── Product Eng Handoff 4.0 (1).mov
+│   │   │   ├── ... (additional video files)
+│   │   │   ├── Storyboards
+│   │   │   │   ├── 1 2.jpg
+│   │   │   │   ├── 1.jpg
+│   │   │   │   ├── ... (additional storyboard images)
+│   │   │   │   └── V2 Drive 20.jpg
+│   │   │   ├── TENNIS CLUB LOGO.psd
+│   │   │   ├── UI-Video.mov
+│   │   │   └── Video insert.mov
+│   │   ├── 4.2 Call Sheet:Crew List
+│   │   │   ├── Day 1 - 10:25
+│   │   │   │   └── Callsheet | 2416 - Whop Keynote | Pre-Build | Friday, October 25th 2024 .pdf
+│   │   │   ├── Day 2 - 10:26
+│   │   │   │   └── Callsheet | 2416 - Whop Keynote | Pre-Light | Saturday, October 26th 2024 | V2.pdf
+│   │   │   ├── ... (additional days)
+│   │   │   ├── Keynote Diagram Ophelia.pdf
+│   │   │   └── Short Call Sheet Template.xlsx
+│   │   ├── 4.3 Calendar:Schedule
+│   │   │   └── Schedule
+│   │   │       └── Whop Shooting Schedule  - 10.27 v.3.pdf
+│   │   ├── 4.4 Deal Memos
+│   │   │   ├── Abbey Harris Deal Memo.pdf
+│   │   │   ├── Adam Braun Deal Memo.pdf
+│   │   │   ├── ... (additional deal memos)
+│   │   │   └── Xhiba Curtis Deal Memo.pdf
+│   │   ├── 4.5 Talent and Casting
+│   │   │   ├── 1. Casting
+│   │   │   │   ├── 1. General Casting
+│   │   │   │   ├── 2. Casting Callbacks
+│   │   │   │   ├── 3. Casting Selects
+│   │   │   │   │   └── WHOP Mission Film __ Wardrobe Sizes & Fitting Schedule - Google Sheets.pdf
+│   │   │   │   ├── 4. Booking Sheets
+│   │   │   │   │   ├── WHOPOct26Skins.docx
+│   │   │   │   │   └── WHOPOct27Skins.docx
+│   │   │   │   └── 5. Size Sheets
+│   │   │   ├── 2. Talent Contracts and Releases
+│   │   │   │   ├── 1. Principle Talent Releases - Alpha Order w: Photos (Separated by shoot day)
+│   │   │   │   │   └── goodco_TALENT_RELEASE.pdf
+│   │   │   │   ├── 2. EXTRAS CONTRACTS & RELEASES - ALPHA ORDER W: PHOTOS (SEPARATED BY SHOOT DAY)
+│   │   │   │   │   ├── Alina Pazynych
+│   │   │   │   │   │   └── Alina Pazynych.pdf
+│   │   │   │   │   ├── Ashlea Mayne
+│   │   │   │   │   │   └── Ashlea Mayne.pdf
+│   │   │   │   │   ├── ... (additional talents)
+│   │   │   │   │   └── Sydney Jenkins
+│   │   │   │   │       └── Sydney Jenkins.pdf
+│   │   │   │   └── 3. CROWD RELEASE
+│   │   │   ├── 3. Exhibit G and Schedule A
+│   │   │   │   ├── 1. Shoot Days
+│   │   │   │   └── 2. Fittings
+│   │   │   ├── 4. Talent Contract Acknowledgement Email From Agency Producer
+│   │   │   ├── 5. Child Actors : Minors Paperwork
+│   │   │   │   ├── COOGAN ACCOUNTS
+│   │   │   │   └── Work Permits & IDs
+│   │   │   │       └── Dylan Asuncion
+│   │   │   │           ├── Child performer permit.pdf
+│   │   │   │           └── Department of Labor.pdf
+│   │   │   ├── 6. NDA
+│   │   │   │   ├── GoodCo NDA.pages
+│   │   │   │   └── GoodCo NDA.pdf
+│   │   │   ├── 7. Release Forms
+│   │   │   │   ├── Talent Release_With Money.pdf
+│   │   │   │   ├── goodco_LOCATION_RELEASE.pages
+│   │   │   │   ├── goodco_TALENT_RELEASE_WITHOUT_MONEY.pages
+│   │   │   │   ├── goodco_TALENT_RELEASE_WITH_MONEY.pages
+│   │   │   │   └── goodco_TALENT_RELEASE_WITH_PAYMENT.pages
+│   │   │   ├── 8. Talent Paperwork Packet 2021
+│   │   │   │   ├── 2021_NON-UNION_Start_and_Timecard.pdf
+│   │   │   │   └── 2021_UNION_Start_and_Timecard.pdf
+│   │   │   ├── 9. SIGNED Talent Forms
+│   │   │   │   ├── Dylan Asuncion Talent Release.pdf
+│   │   │   │   ├── ... (additional signed forms)
+│   │   │   │   └── Ashlea Mayne Talent Release.pdf
+│   │   │   └── Wardrobe Notes for Whop Mission Film_rs.pdf
+│   │   ├── 4.6 Job Specific COI's
+│   │   │   ├── DB 120 - expires 6.18.25 - DOL.pdf
+│   │   │   ├── New York City Camera, Inc - COI.pdf
+│   │   │   ├── Ophelia, LLC - COI - Be Electric Stages LLC.pdf
+│   │   │   ├── ... (additional COIs)
+│   │   │   └── ls551-child-performer-wc (1).pdf
+│   │   ├── 4.7 Production Reports
+│   │   │   └── Production Report.pdf
+│   │   ├── 4.8 NDAs
+│   │   │   ├── Abbey Harris NDA.pdf
+│   │   │   ├── ... (additional NDAs)
+│   │   │   └── Xhiba Curtis NDA.pdf
+│   │   └── 4.9 Misc
+│   │       ├── alba_lensdistortiongrid01
+│   │       │   ├── alba_lensdistortiongrid02
+│   │       │   │   ├── lens distortion grid 2to1 base plus smaller checkers.pdf
+│   │       │   │   ├── alba_lensdistortiongrid02.zip
+│   │       │   │   └── lens distortion grid 2to1 base checker only.pdf
+│   │       │   └── alba_lensdistortiongrid01.zip
+│   │       └── alba_lensdistortiongrid01.zip
+│   ├── 5. Budget
+│   │   ├── 1.1 Bid
+│   │   │   ├── 2416 - Whop Keynote - Bid V6.mbb
+│   │   │   ├── 2416 - Whop Keynote - Bid V6.pdf
+│   │   │   └── Old
+│   │   │       ├── 2416 - Whop Keynote - Bid 170.mbb
+│   │   │       ├── 2416 - Whop Keynote - Bid 170.pdf
+│   │   │       ├── ... (additional old bids)
+│   │   │       └── To Present
+│   │   │           ├── 2416 - Whop Keynote - Bid 215.pdf
+│   │   │           ├── 2416 - Whop Keynote - Bid 280.pdf
+│   │   │           └── 2416 - Whop Keynote - Bid 380.pdf
+│   │   ├── 1.2 Working
+│   │   │   ├── WORKING 2416 - Whop Keynote.mbb
+│   │   │   └── old
+│   │   │       └── WORKING 2416 - Whop Keynote.mbb
+│   │   ├── 1.3 Actuals
+│   │   │   └── ACTUALS 2416 - Whop Keynote.mbb
+│   │   ├── 1.4 Overages
+│   │   │   ├── Overage Form #1 (signed).pdf
+│   │   │   ├── Overage Form #1.pdf
+│   │   │   ├── Overage Form #1.xlsx
+│   │   │   └── VOID
+│   │   │       ├── Overage Form #2 V2.pdf
+│   │   │       ├── Overage Form #2.pdf
+│   │   │       ├── Overage Form #2.xlsx
+│   │   │       ├── Overage Form #3 V2.pdf
+│   │   │       ├── Overage Form #3 V2.xlsx
+│   │   │       ├── Overage Form #3.pdf
+│   │   │       └── Overage Form #3.xlsx
+│   │   └── 1.5 PO Logs
+│   │       ├── PO_LOG_2416-2024-12-14_17-49-23.txt
+│   │       ├── PO_LOG_2416-2024-12-14_21-50-11.txt
+│   │       ├── ... (additional PO logs)
+│   │       └── PO_LOG_2416-2024-12-15_15-36-38.txt
+│   ├── 6. Resources
+│   │   ├── Animals
+│   │   │   └── American Human Society Protocol.pdf
+│   │   ├── CC 8738.pdf
+│   │   ├── Empty W9.pdf
+│   │   ├── Forms and Contracts
+│   │   │   ├── Empty W9.pdf
+│   │   │   ├── Location Agreement Template.pages
+│   │   │   ├── Ophelia Crew Invoice and W9.pdf
+│   │   │   ├── Ophelia NDA - Contractor.pdf
+│   │   │   ├── Ophelia_NDA.pdf
+│   │   │   ├── Overage Form.xlsx
+│   │   │   ├── Unsigned_Freelance Crew Deal.docx
+│   │   │   └── _Invoice Templates
+│   │   │       ├── Invoice Packet.pdf
+│   │   │       └── z_archive
+│   │   │           ├── W9_2.pdf
+│   │   │           └── fw9 (2).pdf
+│   │   ├── Invoice template.pdf
+│   │   ├── Jeffrey Haskell Passport
+│   │   │   └── Jeffrey Haskell Passport.pdf
+│   │   ├── Media Services Payroll
+│   │   │   ├── FREELANCER_ACH_DEPOSIT_fillable.pdf
+│   │   │   └── Non-Union_Start_and_Timecard_Commercial.pdf
+│   │   ├── Ophelia Producer's Handbook - SS.pdf
+│   │   ├── Ophelia Talent Release.docx
+│   │   ├── Ophelia Talent Release.pdf
+│   │   ├── Ophelia_NDA.pdf
+│   │   ├── PETTY CASH RECEIPT AND AGREEMENT FORM.pdf
+│   │   └── SAG-AFTRA
+│   │       ├── 2019 All Commercial Rate Sheets.pdf
+│   │       ├── 2021 Music Video Rate Sheet.pdf
+│   │       ├── Commercial Production Checklist.pdf
+│   │       ├── Exhibit G Form - Commercial Projects.pdf
+│   │       └── Schedule A Form - Music Videos.pdf
+│   ├── 7. Delivery
+│   │   ├── 7.1 Delivery Assets
+│   │   ├── 7.2 Credits
+│   │   └── 7.3 BTS
+│   ├── 8. Artist Folder
+│   │   └── 8.1 Artists
+│   ├── Art RECEIPTS-INVOICES WKG
+│   │   ├── Art Receipts_to Fix.pdf
+│   │   ├── HOME DEPOT.png
+│   │   ├── IMG_1775.HEIC
+│   │   ├── LYFT.PNG
+│   │   ├── PDF backup
+│   │   │   ├── TARGET.png
+│   │   │   ├── Target Receipt 1.png
+│   │   │   ├── ... (additional PDF backups)
+│   │   │   └── san jose restaurant.heic
+│   │   ├── STREET TEAM.HEIC
+│   │   ├── Target Receipt 2.pdf
+│   │   ├── _Captured
+│   │   │   ├── Amazon.com - Order 111-2191003-8650650.pdf
+│   │   │   ├── ... (additional captured receipts)
+│   │   │   └── Wayneco Reciept.pdf
+│   │   ├── parking.heic
+│   │   ├── pc alexia.PNG
+│   │   ├── pc natalia.PNG
+│   │   ├── pc robie scola.PNG
+│   │   └── z_PNG Hell
+│   │       ├── AM 1.PNG
+│   │       ├── ... (additional PNG files)
+│   │       └── AM 9.PNG
+│   ├── MYSTERY RECEIPTS (WARDROBE)
+│   │   ├── 2416_02_22 Lulu Lemon.pdf
+│   │   ├── 2416_02_23 Lulu Lemon.pdf
+│   │   ├── 2416_02_24 HM Receipt.pdf
+│   │   └── 2416_02_25 HM Receipt.pdf
+│   └── Wardrobe Receipts WKG
+│       ├── 11.8 2nd Batch of Wardrobe Receipts
+│       │   ├── Receipt_2024-10-31_142757.jpeg
+│       │   ├── ... (additional receipts)
+│       │   └── Screen Shot 2024-11-22 at 12.37.40 PM.png
+│       ├── WHOP Expense UBER Receipts.pdf
+│       ├── WHOP Wardrobe Budgeting.xlsx
+│       ├── Wardrobe Receipts Final.pdf
+│       ├── _Wardrobe Receipts.pdf
+│       └── z_archive
+│           ├── 2024-10-31_142141.jpeg
+│           ├── ... (additional archive files)
+│           └── _Wardrobe Receipts Final copy.pdf
+├── 2420 - Whop Creator Profiles Block 3
+├── 2421 - Born Reckless

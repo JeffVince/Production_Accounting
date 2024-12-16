@@ -37,7 +37,6 @@ class MondayUtil(metaclass=SingletonMeta):
     PO_DESCRIPTION_COLUMN_ID = 'text6'  # Item Description column ID
     PO_CONTACT_CONNECTION_COLUMN_ID = 'connect_boards1'
     PO_FOLDER_LINK_COLUMN_ID = 'dup__of_tax_form__1'
-    PO_STATUS_COLUMN_ID = 'status'
     PO_PRODUCER_COLUMN_ID = 'people'
     PO_TAX_FORM_COLUMN_ID = 'mirror__1'
 
@@ -57,6 +56,7 @@ class MondayUtil(metaclass=SingletonMeta):
     SUBITEM_LINE_NUMBER_COLUMN_ID = "numbers_Mjj5uYts"
     SUBITEM_PO_COLUMN_ID = "numbers_Mjj60Olh"
     SUBITEM_PROJECT_ID_COLUMN_ID = "numbers_Mjj8k8Yt"
+
     # Column IDs for Contacts
     CONTACT_NAME = 'name'
     CONTACT_PHONE = 'phone'
@@ -82,7 +82,6 @@ class MondayUtil(metaclass=SingletonMeta):
         PO_DESCRIPTION_COLUMN_ID: "description",
         PO_CONTACT_CONNECTION_COLUMN_ID: "contact_id",
         PO_FOLDER_LINK_COLUMN_ID: "folder_link",
-        PO_STATUS_COLUMN_ID: "state",
         PO_PRODUCER_COLUMN_ID: "producer"
     }
 
@@ -415,8 +414,6 @@ class MondayUtil(metaclass=SingletonMeta):
             column_values[self.PO_CONTACT_CONNECTION_COLUMN_ID] = {'item_ids': [contact_pulse_id]}
         if folder_link:
             column_values[self.PO_FOLDER_LINK_COLUMN_ID] = {'url': folder_link, 'text': 'Folder Link'}
-        if status:
-            column_values[self.PO_STATUS_COLUMN_ID] = {'label': status}
         if producer_id:
             column_values[self.PO_PRODUCER_COLUMN_ID] = {'personsAndTeams': [{'id': producer_id, 'kind': 'person'}]}
 

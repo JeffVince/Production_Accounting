@@ -13,6 +13,7 @@
       <sourceFolder url="file://$MODULE_DIR$/dropbox_files" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/po_log_files" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/AICP Code Map" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/invoice_files" isTestSource="false" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />

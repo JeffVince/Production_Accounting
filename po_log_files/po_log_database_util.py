@@ -763,20 +763,20 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
                 self.logger.error(f"💥 Error in get_po_with_details: {e}", exc_info=True)
                 return None
 
-    def update_po_folder_link(self, po_surrogate_id, folder_link):
+    def update_po_folder_link(self, project_id, po_number, folder_link):
         """
         🗄 Update the folder_link for the PO with the given po_surrogate_id.
         """
         with get_db_session() as session:
             try:
-                po = session.query(PurchaseOrder).filter_by(po_surrogate_id=po_surrogate_id).one_or_none()
+                po = session.query(PurchaseOrder).filter_by(project_id=project_id, po_number=po_number).one_or_none()
                 if not po:
-                    self.logger.warning(f"⚠️ No PO found for po_surrogate_id={po_surrogate_id}, cannot update folder_link.")
+                    self.logger.warning(f"⚠️ No PO found for PO# {po_number}, cannot update folder_link.")
                     return False
 
                 po.folder_link = folder_link
                 session.commit()
-                self.logger.info(f"🔗 Updated folder_link for PO {po_surrogate_id} to {folder_link}")
+                self.logger.info(f"🔗 Updated folder_link for PO {po_number} to {folder_link}")
                 return True
             except Exception as e:
                 session.rollback()
@@ -842,6 +842,213 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
                 return None
 
     # endregion
+
+    # region ✨ NEW PULSE ID UPDATE METHODS ✨
+    def update_main_item_pulse_id(self, project_id: str, po_number: str, pulse_id: int):
+        """
+        🔧 Update the main item's pulse_id in the database by searching with project_id and po_number.
+
+        Args:
+            project_id (str): The project ID.
+            po_number (str): The PO number.
+            pulse_id (int): The Monday.com pulse_id to store.
+
+        Returns:
+            bool: True if updated successfully, False otherwise.
+        """
+        try:
+            with get_db_session() as session:
+                po = session.query(PurchaseOrder).filter_by(project_id=project_id, po_number=po_number).one_or_none()
+                if not po:
+                    self.logger.warning(
+                        f"⚠️ No PurchaseOrder found for project_id={project_id}, po_number={po_number}. Cannot update pulse_id."
+                    )
+                    return False
+                po.pulse_id = pulse_id
+                session.commit()
+                self.logger.info(
+                    f"✅ Updated main item pulse_id for project_id={project_id}, po_number={po_number} to {pulse_id}"
+                )
+                return True
+        except Exception as e:
+            self.logger.error(f"💥 Error updating main item pulse_id: {e}", exc_info=True)
+            return False
+
+    def update_detail_item_pulse_ids(self, project_id: str, po_number: str, detail_item_number: str, line_id: str,
+                                     pulse_id: int, parent_pulse_id: int):
+        """
+        🔧 Update the detail (sub) item's pulse_id and parent_pulse_id in the database.
+
+        Args:
+            project_id (str): The project ID.
+            po_number (str): The PO number.
+            detail_item_number (str): The detail item's number identifier.
+            line_id (str): The line_id of the detail item.
+            pulse_id (int): The Monday.com pulse_id of the sub-item.
+            parent_pulse_id (int): The Monday.com pulse_id of the parent item.
+
+        Returns:
+            bool: True if updated successfully, False otherwise.
+        """
+        try:
+            with get_db_session() as session:
+                detail_item = session.query(DetailItem).join(PurchaseOrder,
+                                                             PurchaseOrder.po_surrogate_id == DetailItem.parent_surrogate_id).filter(
+                    PurchaseOrder.project_id == project_id,
+                    PurchaseOrder.po_number == po_number,
+                    DetailItem.detail_item_number == detail_item_number,
+                    DetailItem.line_id == line_id
+                ).one_or_none()
+
+                if not detail_item:
+                    self.logger.warning(
+                        f"⚠️ No DetailItem found for project_id={project_id}, po_number={po_number}, detail_item_number={detail_item_number}, line_id={line_id}"
+                    )
+                    return False
+
+                detail_item.pulse_id = pulse_id
+                detail_item.parent_pulse_id = parent_pulse_id
+                session.commit()
+                self.logger.info(
+                    f"✅ Updated detail item pulse_id for project_id={project_id}, po_number={po_number}, detail_item_number={detail_item_number}, line_id={line_id} to pulse_id={pulse_id}, parent_pulse_id={parent_pulse_id}"
+                )
+                return True
+        except Exception as e:
+            self.logger.error(f"💥 Error updating detail item pulse_ids: {e}", exc_info=True)
+            return False
+    # endregion
+
+    def get_all_processed_items(self):
+        """
+        🔍 Retrieves all purchase orders from the database that have a pulse_id
+        (indicating they've been matched with Monday items) but have no folder_link.
+        This assumes that having a pulse_id means they've been "processed" enough
+        to appear on Monday and are ready for Dropbox link updates.
+
+        Returns:
+            list of dict: A list of dictionaries containing basic PO info needed
+                          for Dropbox link retrieval and Monday updates.
+        """
+        try:
+            with get_db_session() as session:
+                # Fetch all POs that have pulse_id assigned but no folder_link yet
+                # Adjust the filters as needed to fit the definition of "processed"
+                pos = session.query(PurchaseOrder).filter(
+                    PurchaseOrder.pulse_id.isnot(None),
+                    (PurchaseOrder.folder_link == None) | (PurchaseOrder.folder_link == "")
+                ).all()
+
+                processed_items = []
+                for po in pos:
+                    processed_items.append({
+                        "po_surrogate_id": po.po_surrogate_id,
+                        "project_id": po.project_id,
+                        "PO": po.po_number,
+                        "pulse_id": po.pulse_id
+                    })
+
+                self.logger.info(f"✅ Retrieved {len(processed_items)} processed items that need Dropbox links.")
+                return processed_items
+
+        except Exception as e:
+            self.logger.error(f"💥 Error retrieving processed items: {e}", exc_info=True)
+            return []
+
+    def get_purchase_orders(self, project_id=None, po_number=None, detail_item_number=None, line_id=None):
+        """
+        Retrieve Purchase Orders from the database with optional filters and include their associated detail items.
+
+        Filtering logic:
+        - If no parameters are provided, return all POs.
+        - If project_id is provided, filter POs by project_id.
+        - If po_number is provided, filter POs by po_number.
+        - If detail_item_number is provided, return only POs having detail items matching that detail_item_number.
+        - If line_id is provided, return only POs having detail items matching that line_id.
+
+        Returns:
+            list: A list of dictionaries, each representing a PurchaseOrder and its associated detail items.
+        """
+        from sqlalchemy import and_
+
+        with get_db_session() as session:
+            # Start building the PO query
+            query = session.query(PurchaseOrder)
+
+            # If we need to filter by detail_item_number or line_id, we must join the DetailItem table
+            detail_filtering = (detail_item_number is not None or line_id is not None)
+            if detail_filtering:
+                query = query.join(DetailItem, PurchaseOrder.po_surrogate_id == DetailItem.parent_surrogate_id)
+
+            # Apply filters to the PO query
+            if project_id is not None:
+                query = query.filter(PurchaseOrder.project_id == project_id)
+            if po_number is not None:
+                query = query.filter(PurchaseOrder.po_number == po_number)
+            if detail_item_number is not None:
+                query = query.filter(DetailItem.detail_item_number == detail_item_number)
+            if line_id is not None:
+                query = query.filter(DetailItem.line_id == line_id)
+
+            # Execute the query to get POs
+            purchase_orders = query.all()
+
+            # If no POs found, return empty
+            if not purchase_orders:
+                return []
+
+            # Extract surrogate IDs of the found POs
+            po_surrogate_ids = [po.po_surrogate_id for po in purchase_orders]
+
+            # Now we get the associated detail items
+            detail_query = session.query(DetailItem).filter(DetailItem.parent_surrogate_id.in_(po_surrogate_ids))
+            # If we had filtering by detail item number or line_id, apply it here too (redundant but ensures correctness)
+            if detail_item_number is not None:
+                detail_query = detail_query.filter(DetailItem.detail_item_number == detail_item_number)
+            if line_id is not None:
+                detail_query = detail_query.filter(DetailItem.line_id == line_id)
+
+            detail_items = detail_query.all()
+
+            # Group detail items by their parent_surrogate_id (PO)
+            detail_map = {}
+            for d in detail_items:
+                detail_map.setdefault(d.parent_surrogate_id, []).append({
+                    "detail_item_surrogate_id": d.detail_item_surrogate_id,
+                    "detail_item_number": d.detail_item_number,
+                    "line_id": d.line_id,
+                    "description": d.description,
+                    "transaction_date": d.transaction_date.isoformat() if d.transaction_date else None,
+                    "due_date": d.due_date.isoformat() if d.due_date else None,
+                    "quantity": float(d.quantity) if d.quantity is not None else None,
+                    "rate": float(d.rate) if d.rate is not None else None,
+                    "ot": float(d.ot) if d.ot is not None else None,
+                    "fringes": float(d.fringes) if d.fringes is not None else None,
+                    "vendor": d.vendor,
+                    "state": d.state,
+                    "account_number": d.account_number,
+                    "payment_type": d.payment_type,
+                    "pulse_id": d.pulse_id,
+                    "file_link": d.file_link,
+                })
+
+            # Build the final result set, embedding detail items into their respective PO
+            results = []
+            for po in purchase_orders:
+                results.append({
+                    "po_surrogate_id": po.po_surrogate_id,
+                    "project_id": po.project_id,
+                    "po_number": po.po_number,
+                    "contact_id": po.contact_id,
+                    "pulse_id": po.pulse_id,
+                    "state": po.state,
+                    "description": po.description,
+                    "po_type": po.po_type,
+                    "folder_link": po.folder_link,
+                    "tax_form_link": po.tax_form_link,
+                    "subitems": detail_map.get(po.po_surrogate_id, [])
+                })
+
+            return results
 
 # endregion
 

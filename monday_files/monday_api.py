@@ -996,14 +996,14 @@ class MondayAPI(metaclass=SingletonMeta):
                 try:
                     create_response = self.create_subitem(parent_item_id, subitem_name, column_values_json)
                     new_id = create_response["data"]["create_subitem"]["id"]
-                    si["monday_subitem_id"] = new_id
+                    si["monday_item_id"] = new_id
                     updated_batch.append(si)
                 except Exception as e:
                     self.logger.exception(f"Error creating subitem for {db_sub_item}: {e}")
                     raise
             else:
                 # Update existing subitems
-                sub_id = si["monday_subitem_id"]
+                sub_id = si["monday_item_id"]
                 try:
                     self.update_item(sub_id, column_values_json, type="subitem")
                     updated_batch.append(si)
