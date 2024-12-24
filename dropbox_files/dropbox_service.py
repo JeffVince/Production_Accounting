@@ -56,7 +56,7 @@ class DropboxService(metaclass=SingletonMeta):
     USE_TEMP_FILE = True         # Whether to use a local temp file
     DEBUG_STARTING_PO_NUMBER = 0 # If set, skip POs below this number
     SKIP_DATABASE = False
-    ADD_PO_TO_MONDAY = False
+    ADD_PO_TO_MONDAY = True
     GET_FOLDER_LINKS = False
     GET_CONTACTS = False
 
@@ -566,7 +566,10 @@ class DropboxService(metaclass=SingletonMeta):
                     self.logger.info(
                         f"Both folder links and contact sync done. Now creating POs in Monday for project_id={project_number}."
                     )
-                    self.create_pos_in_monday(project_number)
+                    if self.ADD_PO_TO_MONDAY:
+                        self.create_pos_in_monday(int(project_number))
+                    else:
+                        self.logger.info("SKIPPING MONDAY PO CREATION")
                 else:
                     self.logger.warning("❌ Could not determine project_id from processed_items.")
             else:
@@ -734,8 +737,7 @@ class DropboxService(metaclass=SingletonMeta):
     #region Event Processing - PO Log - Step 4 - Monday Processing
     def create_pos_in_monday(self, project_number):
         self.logger.info("🌐 Processing PO data in Monday.com...")
-
-        # Fetch all items in the group
+        # Fetch all items in the project
         monday_items = monday_api.get_items_in_project(project_id=project_number)
 
         # Fetch all po's from DB
@@ -744,8 +746,8 @@ class DropboxService(metaclass=SingletonMeta):
         # Build a map from (project_id, po_number) to Monday item
         monday_items_map = {}
         for mi in monday_items:
-            pid = mi["column_values"].get(monday_util.PO_PROJECT_ID_COLUMN)
-            pono = mi["column_values"].get(monday_util.PO_NUMBER_COLUMN)
+            pid = mi["column_values"].get(monday_util.PO_PROJECT_ID_COLUMN)["text"]
+            pono = mi["column_values"].get(monday_util.PO_NUMBER_COLUMN)["text"]
             if pid and pono:
                 monday_items_map[(int(pid), int(pono))] = mi
 
@@ -756,19 +758,20 @@ class DropboxService(metaclass=SingletonMeta):
         for db_item in processed_items:
 
             contact_item = self.database_util.search_contacts(['id'],[db_item["contact_id"]])
-            contact_pulse_id = contact_item["pulse_id"]
-            contact_name = contact_item["name"]
+            db_item["contact_pulse_id"] = contact_item["pulse_id"]
+            db_item["contact_name"] = contact_item["name"]
+            db_item["project_number"] = project_number
             p_id = project_number
             po_no = int(db_item["po_number"])
 
             column_values_str = monday_util.po_column_values_formatter(
-                project_id=project_number,
+                project_id=str(project_number),
                 po_number=db_item["po_number"],
                 description=db_item.get("description"),
-                contact_pulse_id=contact_pulse_id,
+                contact_pulse_id=db_item["contact_pulse_id"],
                 folder_link=db_item.get("folder_link"),
                 producer_id=None,
-                name=contact_name
+                name=db_item["contact_name"]
             )
             new_vals = json.loads(column_values_str)
 
@@ -887,6 +890,8 @@ class DropboxService(metaclass=SingletonMeta):
 
                 if sub_key in monday_sub_map:
                     monday_sub = monday_sub_map[sub_key]
+                    sdb["project_number"] = db_item["project_number"]
+                    sdb["po_number"] = db_item["po_number"]
                     differences = monday_util.is_sub_item_different(sdb, monday_sub)
                     if differences:
                         self.logger.info(f"Sub-item differs for detail #{sdb['detail_number']} (PO {po_no}). Differences: {differences}")
@@ -933,8 +938,8 @@ class DropboxService(metaclass=SingletonMeta):
                 for usub in updated_subs:
                     db_sub_item = usub["db_sub_item"]
                     monday_subitem_id = usub["monday_item_id"]
-                    self.po_log_database_util.update_detail_item_pulse_ids(
-                        project_number, db_sub_item["po_number"], db_sub_item["detail_item_number"], db_sub_item["line_id"],
+                    self.database_util.update_detail_item_by_keys(
+                        project_number, db_item["po_number"], db_sub_item["detail_number"], db_sub_item["line_id"],
                         pulse_id=monday_subitem_id, parent_pulse_id=main_monday_id
                     )
                     db_sub_item["pulse_id"] = monday_subitem_id
@@ -942,44 +947,6 @@ class DropboxService(metaclass=SingletonMeta):
 
         self.logger.info("✅ Monday.com processing of PO data complete.")
         return processed_items
-    #endregion
-
-    #region CALLBACKS
-    def after_pos_added_to_monday(self, fut):
-        """
-        Callback for after we finish Monday updates.
-        Possibly triggers Dropbox tasks next.
-        """
-        try:
-            pass
-            processed_items = fut.result()
-            #dropbox_future = self.executor.submit(self.add_dropbox_folder_link, processed_items, self.PROJECT_NUMBER)
-            #dropbox_future.add_done_callback(self.after_pos_linked_to_files)
-        except Exception as e:
-            self.logger.error(f"❌ after_monday_done encountered an error: {e}", exc_info=True)
-
-    def after_pos_linked_to_files(self, fut):
-        """
-        Callback after finishing getting tax and folder links from POs
-        """
-        try:
-            processed_items = fut.result()
-            self.logger.info("✅ MEDIA LINKING COMPLETE.")
-            if self.ADD_PO_TO_MONDAY:
-                monday_future = self.executor.submit(self.create_pos_in_monday, processed_items, self.PROJECT_NUMBER)
-                monday_future.add_done_callback(self.after_pos_added_to_monday)
-        except Exception as e:
-            self.logger.error(f"❌ MEDIA LINKING ENCOUNTERED AN ERROR: {e}", exc_info=True)
-
-    def after_tax_forms_done(self, fut):
-        """
-        Callback after finishing the dropbox_process_tax_form.
-        """
-        try:
-            _ = fut.result()
-            self.logger.info("✅ dropbox_process_tax_form completed.")
-        except Exception as e:
-            self.logger.error(f"❌ after_tax_forms_done encountered an error: {e}", exc_info=True)
     #endregion
 
     #region Helpers

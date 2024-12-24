@@ -825,6 +825,7 @@ class MondayAPI(metaclass=SingletonMeta):
                     column_values {
                         id
                         text
+                        value
                     }
                 }
             }
@@ -848,7 +849,12 @@ class MondayAPI(metaclass=SingletonMeta):
                 cursor = data.get("cursor")
 
                 for it in items_data:
-                    cv_dict = {cv["id"]: cv["text"] for cv in it.get("column_values", [])}
+                    cv_dict = {
+                        cv["id"]: {
+                            "text": cv.get("text"),
+                            "value": cv.get("value")
+                        } for cv in it.get("column_values", [])
+                    }
                     all_items.append({
                         "id": it["id"],
                         "name": it["name"],

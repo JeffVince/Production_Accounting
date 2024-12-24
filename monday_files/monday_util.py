@@ -486,17 +486,33 @@ class MondayUtil(metaclass=SingletonMeta):
             try:
                 if isinstance(date, str) and date.strip():
                     parsed_date = parser.parse(date.strip())
-                    column_values[self.SUBITEM_DATE_COLUMN_ID] = {'date': parsed_date.strftime('%Y-%m-%d')}
+                elif isinstance(date, datetime):
+                    parsed_date = date
+                else:
+                    raise ValueError("Unsupported date format")
+                column_values[self.SUBITEM_DATE_COLUMN_ID] = {'date': parsed_date.strftime('%Y-%m-%d')}
             except Exception as e:
                 self.logger.error(f"Error parsing date '{date}': {e}")
 
         if due_date:
             try:
+                # Debugging/logging to ensure due_date is being received correctly
+                self.logger.debug(f"Processing due_date: {due_date}")
+
+                # Check and handle both string and datetime object formats
                 if isinstance(due_date, str) and due_date.strip():
                     parsed_due_date = parser.parse(due_date.strip())
-                    column_values[self.SUBITEM_DUE_DATE_COLUMN_ID] = {'date': parsed_due_date.strftime('%Y-%m-%d')}
+                elif isinstance(due_date, datetime):
+                    parsed_due_date = due_date
+                else:
+                    raise ValueError("Unsupported due_date format")
+
+                # Add the parsed due_date to column_values
+                column_values[self.SUBITEM_DUE_DATE_COLUMN_ID] = {'date': parsed_due_date.strftime('%Y-%m-%d')}
             except Exception as e:
+                # Log and re-raise the exception for better debugging
                 self.logger.error(f"Error parsing due_date '{due_date}': {e}")
+                raise  # Re-raise to identify issues during debugging
 
         if account_number:
             try:
@@ -744,12 +760,28 @@ class MondayUtil(metaclass=SingletonMeta):
         # Extract Monday column values for easy access
         col_vals = monday_item["column_values"]
 
+        if "connect_boards1" in col_vals and col_vals["connect_boards1"]:
+            # If it’s the new format:
+            if "value" in col_vals["connect_boards1"]:
+                if json.loads(col_vals["connect_boards1"]["value"]):
+                    if json.loads(col_vals["connect_boards1"]["value"]).get("linkedPulseIds"):
+                        linked_pulse_id = json.loads(col_vals["connect_boards1"]["value"]).get("linkedPulseIds")[0]["linkedPulseId"]
+                    else:
+                        linked_pulse_id = None
+                else:
+                        linked_pulse_id = None
+            else:
+                linked_pulse_id = None
+        else:
+            linked_pulse_id = None
+
+
         # Define a mapping between DB fields and Monday fields
         field_map = [
             {
                 "field": "project_number",
                 "db_value": db_item.get("project_number"),
-                "monday_value": col_vals.get("project_id")
+                "monday_value": col_vals.get("project_id")["text"]
             },
             {
                 "field": "contact_name",
@@ -759,12 +791,17 @@ class MondayUtil(metaclass=SingletonMeta):
             {
                 "field": "PO",
                 "db_value": str(db_item.get("po_number")),
-                "monday_value": col_vals.get("numeric__1")
+                "monday_value": col_vals.get("numeric__1")["text"]
             },
             {
                 "field": "description",
                 "db_value": db_item.get("description"),
-                "monday_value": col_vals.get("text6")
+                "monday_value": col_vals.get("text6")["text"]
+            },
+            {
+                "field": "Connected Contact",
+                "db_value": db_item.get("contact_pulse_id"),
+                "monday_value": linked_pulse_id
             }
         ]
 
@@ -794,34 +831,17 @@ class MondayUtil(metaclass=SingletonMeta):
         def safe_str(val):
             return str(val).strip() if val is not None else ""
 
+        def are_values_equal(db_val, monday_val):
+            # Try comparing as numbers if possible
+            try:
+                return float(db_val) == float(monday_val)
+            except ValueError:
+                # Fallback to string comparison
+                return db_val == monday_val
+
         # Example field mapping for sub-items:
         # Adjust these mappings to your actual column IDs for sub-items
         field_map = [
-            {
-                "field": "project_id",
-                "db_value": safe_str(db_sub_item["project_id"]),
-                "monday_value": safe_str(col_vals.get(self.SUBITEM_PROJECT_ID_COLUMN_ID))
-            },
-            {
-                "field": "po_number",
-                "db_value": safe_str(db_sub_item["po_number"]),
-                "monday_value": safe_str(col_vals.get(self.SUBITEM_PO_COLUMN_ID))
-            },
-            {
-                "field": "detail_item_number",
-                "db_value": safe_str(db_sub_item["detail_item_number"]),
-                "monday_value": safe_str(int(float(col_vals.get(self.SUBITEM_ID_COLUMN_ID))))
-            },
-            {
-                "field": "line_id",
-                "db_value": safe_str(db_sub_item.get("line_id")),
-                "monday_value": safe_str(col_vals.get(self.SUBITEM_LINE_NUMBER_COLUMN_ID))
-            },
-            {
-                "field": "description",
-                "db_value": safe_str(db_sub_item.get("description")),
-                "monday_value": safe_str(col_vals.get(self.SUBITEM_DESCRIPTION_COLUMN_ID))
-            },
             {
                 "field": "quantity",
                 "db_value": safe_str(db_sub_item.get("quantity")),
@@ -833,25 +853,6 @@ class MondayUtil(metaclass=SingletonMeta):
                 "monday_value": safe_str(col_vals.get(self.SUBITEM_RATE_COLUMN_ID))
             },
             {
-                "field": "state",
-                "db_value": safe_str(db_sub_item.get("state", "PENDING")),
-                "monday_value": safe_str(
-                    # Ensure col_vals[self.SUBITEM_STATUS_COLUMN_ID] is a dictionary
-                    col_vals.get(self.SUBITEM_STATUS_COLUMN_ID, {}).get("label")
-                    if isinstance(col_vals.get(self.SUBITEM_STATUS_COLUMN_ID), dict)
-                    else col_vals.get(self.SUBITEM_STATUS_COLUMN_ID)
-                )
-            },
-            {
-                "field": "file_link",
-                "db_value": safe_str(db_sub_item.get("file_link")),
-                "monday_value": safe_str(
-                    col_vals.get(self.SUBITEM_LINK_COLUMN_ID, {}).get("url")
-                    if isinstance(col_vals.get(self.SUBITEM_LINK_COLUMN_ID), dict)
-                    else ""
-                )
-            },
-            {
                 "field": "ot",
                 "db_value": safe_str(db_sub_item.get("ot")),
                 "monday_value": safe_str(col_vals.get(self.SUBITEM_OT_COLUMN_ID))
@@ -860,39 +861,30 @@ class MondayUtil(metaclass=SingletonMeta):
                 "field": "fringes",
                 "db_value": safe_str(db_sub_item.get("fringes")),
                 "monday_value": safe_str(col_vals.get(self.SUBITEM_FRINGE_COLUMN_ID))
+            },
+            {
+                "field": "transaction_date",
+                "db_value": safe_str(db_sub_item.get("transaction_date")),
+                "monday_value": safe_str(
+                    col_vals.get(self.SUBITEM_DATE_COLUMN_ID, {}).get("date")
+                    if isinstance(col_vals.get(self.SUBITEM_DATE_COLUMN_ID), dict)
+                    else col_vals.get(self.SUBITEM_DATE_COLUMN_ID)
+                )
+            },
+            {
+                "field": "due_date",
+                "db_value": safe_str(db_sub_item.get("due_date")),
+                "monday_value": safe_str(
+                    col_vals.get(self.SUBITEM_DUE_DATE_COLUMN_ID, {}).get("date")
+                    if isinstance(col_vals.get(self.SUBITEM_DUE_DATE_COLUMN_ID), dict)
+                    else col_vals.get(self.SUBITEM_DUE_DATE_COLUMN_ID)
+                )
             }
         ]
 
-        # Handle date fields separately if needed
-        db_date = safe_str(db_sub_item.get("transaction_date"))
-        mo_date = safe_str(
-            col_vals.get(self.SUBITEM_DATE_COLUMN_ID, {}).get("date")
-            if isinstance(col_vals.get(self.SUBITEM_DATE_COLUMN_ID), dict)
-            else col_vals.get(self.SUBITEM_DATE_COLUMN_ID)
-        )
-
-        field_map.append({
-            "field": "transaction_date",
-            "db_value": db_date,
-            "monday_value": mo_date
-        })
-
-        db_due = safe_str(db_sub_item.get("due_date"))
-        mo_due = safe_str(
-            col_vals.get(self.SUBITEM_DUE_DATE_COLUMN_ID, {}).get("date")
-            if isinstance(col_vals.get(self.SUBITEM_DUE_DATE_COLUMN_ID), dict)
-            else col_vals.get(self.SUBITEM_DUE_DATE_COLUMN_ID)
-        )
-
-        field_map.append({
-            "field": "due_date",
-            "db_value": db_due,
-            "monday_value": mo_due
-        })
-
         # Compare each field and record differences
         for f in field_map:
-            if f["db_value"] != f["monday_value"]:
+            if not are_values_equal(f["db_value"], f["monday_value"]):
                 differences.append({
                     "field": f["field"],
                     "db_value": f["db_value"],

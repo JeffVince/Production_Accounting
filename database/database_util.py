@@ -56,7 +56,7 @@ class DatabaseOperations:
         if not record:
             return None
         record_values =  {c.name: getattr(record, c.name) for c in record.__table__.columns}
-        self.logger.debug(f"🤓 Let me gather all column data from record={record_values['id']} so we can handle it more easily.")
+        self.logger.debug(f"🤓 Pulling record: {record_values['id']} from table {record.__table__}")
         return record_values
 
     def _search_records(self, model, column_names, values):
