@@ -167,36 +167,56 @@ class DatabaseOperations:
     # -------------------------------------------------------------------------
     # PurchaseOrders by (project_number, po_number)
     # -------------------------------------------------------------------------
-    def search_purchase_order_by_keys(self, project_number, po_number):
+    def search_purchase_order_by_keys(self, project_number, po_number=None):
         """
-        🔍 Search for a PurchaseOrder by (project_number, po_number).
-        We join Project and filter by project_number, then filter by PurchaseOrder.po_number.
+        🔍 Search for PurchaseOrders based on provided keys.
+
+        - If only project_number is provided, return all PurchaseOrders under that project.
+        - If both project_number and po_number are provided, return PurchaseOrders matching both.
+
+        Args:
+            project_number (str): The project number to filter by.
+            po_number (str, optional): The purchase order number to filter by.
+
+        Returns:
+            Serialized PurchaseOrder(s) or None if no matches found.
         """
-        self.logger.debug(
-            f"🤔 Let's see if we can locate a PurchaseOrder for project_number='{project_number}', po_number='{po_number}'"
-        )
-        self.logger.info(f"🚦 Checking PurchaseOrder table for project_number={project_number}, po_number={po_number}")
+        # Build the search criteria string for logging
+        search_criteria = f"project_number='{project_number}'"
+        if po_number:
+            search_criteria += f", po_number='{po_number}'"
+
+        self.logger.debug(f"🤔 Checking for PurchaseOrders with ({search_criteria}).")
+        self.logger.info(f"🚦 Searching PurchaseOrders with {search_criteria}")
+
         with get_db_session() as session:
             try:
+                # Start building the query with necessary joins
                 query = (
                     session.query(PurchaseOrder)
-                    .join(Project, PurchaseOrder.project_id == Project.id)
-                    .filter(Project.project_number == project_number)
-                    .filter(PurchaseOrder.po_number == po_number)
+                        .join(Project, PurchaseOrder.project_id == Project.id)
+                        .filter(Project.project_number == project_number)
                 )
+
+                # Add filter for po_number if provided
+                if po_number:
+                    query = query.filter(PurchaseOrder.po_number == po_number)
+
                 results = query.all()
+
                 if not results:
-                    self.logger.info("🙅 We didn't find a PurchaseOrder with those keys.")
+                    self.logger.info("🙅 No PurchaseOrders matched the provided keys.")
                     return None
                 elif len(results) == 1:
                     self.logger.info("🎯 Exactly ONE PurchaseOrder matched. Perfect!")
                     return self._serialize_record(results[0])
                 else:
-                    self.logger.info(f"🎯 We found {len(results)} matching PurchaseOrders. Sending them all back.")
+                    self.logger.info(f"🎯 Found {len(results)} matching PurchaseOrders. Returning list.")
                     return [self._serialize_record(r) for r in results]
+
             except Exception as e:
                 session.rollback()
-                self.logger.error(f"💥 Couldn't complete the PurchaseOrder search: {e}", exc_info=True)
+                self.logger.error(f"💥 Error searching for PurchaseOrders: {e}", exc_info=True)
                 return None
 
     def create_purchase_order_by_keys(self, project_number, po_number, **kwargs):

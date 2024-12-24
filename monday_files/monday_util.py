@@ -423,7 +423,7 @@ class MondayUtil(metaclass=SingletonMeta):
         if contact_pulse_id:
             column_values[self.PO_CONTACT_CONNECTION_COLUMN_ID] = {'item_ids': [contact_pulse_id]}
         if folder_link:
-            column_values[self.PO_FOLDER_LINK_COLUMN_ID] = {'url': folder_link, 'text': 'Folder Link'}
+            column_values[self.PO_FOLDER_LINK_COLUMN_ID] = {'url': folder_link, 'text': '📦'}
         if producer_id:
             column_values[self.PO_PRODUCER_COLUMN_ID] = {'personsAndTeams': [{'id': producer_id, 'kind': 'person'}]}
 

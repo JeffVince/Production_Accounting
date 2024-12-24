@@ -566,7 +566,7 @@ class DropboxService(metaclass=SingletonMeta):
                     self.logger.info(
                         f"Both folder links and contact sync done. Now creating POs in Monday for project_id={project_number}."
                     )
-                    self.create_pos_in_monday(processed_items, project_number)
+                    self.create_pos_in_monday(project_number)
                 else:
                     self.logger.warning("❌ Could not determine project_id from processed_items.")
             else:
@@ -732,11 +732,14 @@ class DropboxService(metaclass=SingletonMeta):
     #endregion
 
     #region Event Processing - PO Log - Step 4 - Monday Processing
-    def create_pos_in_monday(self, processed_items, project_number):
+    def create_pos_in_monday(self, project_number):
         self.logger.info("🌐 Processing PO data in Monday.com...")
 
         # Fetch all items in the group
         monday_items = monday_api.get_items_in_project(project_id=project_number)
+
+        # Fetch all po's from DB
+        processed_items = self.database_util.search_purchase_order_by_keys(project_number = project_number)
 
         # Build a map from (project_id, po_number) to Monday item
         monday_items_map = {}
@@ -751,18 +754,21 @@ class DropboxService(metaclass=SingletonMeta):
         items_to_update = []
 
         for db_item in processed_items:
-            p_id = int(db_item["project_number"])
+
+            contact_item = self.database_util.search_contacts(['id'],[db_item["contact_id"]])
+            contact_pulse_id = contact_item["pulse_id"]
+            contact_name = contact_item["name"]
+            p_id = project_number
             po_no = int(db_item["po_number"])
 
             column_values_str = monday_util.po_column_values_formatter(
-                project_id=db_item["project_number"],
+                project_id=project_number,
                 po_number=db_item["po_number"],
                 description=db_item.get("description"),
-                contact_pulse_id=db_item.get("contact_pulse_id"),
+                contact_pulse_id=contact_pulse_id,
                 folder_link=db_item.get("folder_link"),
-                status=db_item.get("contact_status"),
                 producer_id=None,
-                name=db_item['contact_name']
+                name=contact_name
             )
             new_vals = json.loads(column_values_str)
 
@@ -796,7 +802,7 @@ class DropboxService(metaclass=SingletonMeta):
                 monday_item_id = itm["monday_item_id"]
                 self.database_util.update_purchase_order(db_item["id"], pulse_id=monday_item_id)
                 db_item["pulse_id"] = monday_item_id
-                p = int(db_item["project_number"])
+                p = project_number
                 po = int(db_item["po_number"])
                 monday_items_map[(p, po)] = {
                     "id": monday_item_id,
@@ -811,20 +817,20 @@ class DropboxService(metaclass=SingletonMeta):
             for itm in updated_mapping:
                 db_item = itm["db_item"]
                 monday_item_id = itm["monday_item_id"]
-                self.database_util.update_purchase_order_by_keys(db_item["project_number"], db_item["po_number"], pulse_id=monday_item_id)
+                self.database_util.update_purchase_order_by_keys(project_number, db_item["po_number"], pulse_id=monday_item_id)
                 db_item["pulse_id"] = monday_item_id
-                p = int(db_item["project_number"])
+                p =project_number
                 po = int(db_item["po_number"])
                 monday_items_map[(p, po)]["column_values"] = itm["column_values"]
 
         # Ensure all main items have pulse_ids
         for db_item in processed_items:
-            p_id = int(db_item["project_number"])
+            p_id = project_number
             po_no = int(db_item["po_number"])
             main_monday_item = monday_items_map.get((p_id, po_no))
             if main_monday_item and not db_item.get("pulse_id"):
                 monday_item_id = main_monday_item["id"]
-                updated = self.database_util.update_purchase_order_by_keys(db_item["project_number"], db_item["po_number"], pulse_id=monday_item_id)
+                updated = self.database_util.update_purchase_order_by_keys(project_number, db_item["po_number"], pulse_id=monday_item_id)
 
                 if updated:
                     db_item["pulse_id"] = monday_item_id
@@ -832,7 +838,7 @@ class DropboxService(metaclass=SingletonMeta):
 
         # Handle sub-items
         for db_item in processed_items:
-            p_id = int(db_item["project_number"])
+            p_id = project_number
             po_no = int(db_item["po_number"])
             main_monday_item = monday_items_map.get((p_id, po_no))
             if not main_monday_item:
@@ -840,7 +846,7 @@ class DropboxService(metaclass=SingletonMeta):
                 continue
 
             main_monday_id = main_monday_item["id"]
-            sub_items_db = self.database_util.search_detail_item_by_keys(db_item["project_number"], db_item["po_number"])
+            sub_items_db = self.database_util.search_detail_item_by_keys(project_number, db_item["po_number"])
 
             monday_subitems = monday_api.get_subitems_for_item(main_monday_id)
             monday_sub_map = {}
@@ -860,7 +866,7 @@ class DropboxService(metaclass=SingletonMeta):
 
             for sdb in subitems_list:
                 sub_col_values_str = monday_util.subitem_column_values_formatter(
-                    project_id=db_item["project_number"],
+                    project_id=project_number,
                     po_number= db_item["po_number"],
                     detail_item_number=sdb["detail_number"],
                     line_id=sdb["line_id"],
@@ -877,7 +883,7 @@ class DropboxService(metaclass=SingletonMeta):
                     fringes=sdb.get("fringes")
                 )
                 new_sub_vals = json.loads(sub_col_values_str)
-                sub_key = (db_item["project_number"], db_item["po_number"], sdb["detail_number"], sdb["line_id"])
+                sub_key = (project_number, db_item["po_number"], sdb["detail_number"], sdb["line_id"])
 
                 if sub_key in monday_sub_map:
                     monday_sub = monday_sub_map[sub_key]
@@ -895,7 +901,7 @@ class DropboxService(metaclass=SingletonMeta):
                         # Ensure pulse_id in DB
                         sub_pulse_id = monday_sub["id"]
                         self.po_log_database_util.update_detail_item_pulse_ids(
-                            db_item["project_number"], db_item["po_number"], sdb["detail_number"], sdb["line_id"],
+                            project_number, db_item["po_number"], sdb["detail_number"], sdb["line_id"],
                             pulse_id=sub_pulse_id, parent_pulse_id=main_monday_id
                         )
                         sdb["pulse_id"] = sub_pulse_id
@@ -915,7 +921,7 @@ class DropboxService(metaclass=SingletonMeta):
                     db_sub_item = csub["db_sub_item"]
                     monday_subitem_id = csub["monday_item_id"]
                     self.database_util.update_detail_item_by_keys(
-                        db_item["project_number"], db_item["po_number"], db_sub_item["detail_number"], db_sub_item["line_id"],
+                        project_number, db_item["po_number"], db_sub_item["detail_number"], db_sub_item["line_id"],
                         pulse_id=monday_subitem_id, parent_pulse_id=main_monday_id
                     )
                     db_sub_item["pulse_id"] = monday_subitem_id
@@ -928,7 +934,7 @@ class DropboxService(metaclass=SingletonMeta):
                     db_sub_item = usub["db_sub_item"]
                     monday_subitem_id = usub["monday_item_id"]
                     self.po_log_database_util.update_detail_item_pulse_ids(
-                        db_sub_item["project_number"], db_sub_item["po_number"], db_sub_item["detail_item_number"], db_sub_item["line_id"],
+                        project_number, db_sub_item["po_number"], db_sub_item["detail_item_number"], db_sub_item["line_id"],
                         pulse_id=monday_subitem_id, parent_pulse_id=main_monday_id
                     )
                     db_sub_item["pulse_id"] = monday_subitem_id
