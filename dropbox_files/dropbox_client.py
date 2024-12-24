@@ -133,13 +133,23 @@ class DropboxClient(metaclass=SingletonMeta):
         """
         try:
             with open('../token.json', 'r') as token_file:
-                token_data = json.load(token_file)
-                if time.time() < token_data['expires_at']:
-                    self.token_expiry_time = token_data['expires_at']
-                    return token_data['access_token']
-                else:
-                    logging.info("Access token expired.")
-                    return None  # Token expired
+                raw_data = token_file.read()  # Read the content as a string
+                # Preprocess the JSON string to remove any extra closing braces
+                if raw_data.endswith('}}'):
+                    raw_data = raw_data[:-1]  # Remove the extra '}' at the end
+
+                # Attempt to parse the corrected JSON string
+                try:
+                    token_data = json.loads(raw_data)
+                    if time.time() < token_data['expires_at']:
+                        self.token_expiry_time = token_data['expires_at']
+                        return token_data['access_token']
+                    else:
+                        logging.info("Access token expired.")
+                        return None  # Token expired
+                except json.JSONDecodeError as e:
+                    logging.error(f"JSON decode error: {e}")
+                    return None  # Invalid JSON
         except FileNotFoundError:
             logging.info("Access token file not found.")
             return None

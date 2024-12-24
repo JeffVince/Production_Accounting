@@ -18,15 +18,15 @@ class POLogProcessor(metaclass=SingletonMeta):
             self.logger.info("🎬🍿 PO Log Processor initialized (Custom Version) 🌟")
             self._initialized = True
 
-    def _extract_project_id(self, file_path: str) -> str:
+    def _extract_project_number(self, file_path: str) -> str:
         filename = os.path.basename(file_path)
         self.logger.debug(f"🔍 Searching for project ID in filename: '{filename}'")
         pattern = r"^PO_LOG_(\d{4})[-_]\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.txt$"
         match = re.match(pattern, filename)
         if match:
-            project_id = match.group(1)
-            self.logger.info(f"✅ Project ID '{project_id}' extracted from filename '{filename}'. 🎉")
-            return project_id
+            project_number = match.group(1)
+            self.logger.info(f"✅ Project ID '{project_number}' extracted from filename '{filename}'. 🎉")
+            return project_number
         else:
             self.logger.warning(f"⚠️ No Project ID found in filename '{filename}'. Defaulting to '0000' 🤔")
             return '0000'
@@ -41,7 +41,7 @@ class POLogProcessor(metaclass=SingletonMeta):
             return "INV"
 
     def _determine_status(self, pay_id: str) -> str:
-        status = "Paid" if "PAID" in (pay_id or "").upper() else "PENDING"
+        status = "PAID" if "PAID" in (pay_id or "").upper() else "PENDING"
         self.logger.debug(f"📝 Status determined as '{status}' for pay_id='{pay_id}'")
         return status
 
@@ -63,10 +63,12 @@ class POLogProcessor(metaclass=SingletonMeta):
             return 0.0
 
     def _parse_factors(self, factors: str, subtotal: float):
-        self.logger.debug(f"🔧 Parsing factors: '{factors}' with subtotal='{subtotal}'")
+        self.logger.debug(
+            f"🔧 Parsing factors: '{factors}' with subtotal='{subtotal}' '")
         clean_factors = re.sub(r'\s+', ' ', factors.replace(',', ''))
 
-        main_pattern = r'(\d+(?:\.\d+)?)\s*(?:days?)?\s*x\s*(\d+(?:\.\d+)?)'
+        # Updated regex to allow negative numbers
+        main_pattern = r'(-?\d+(?:\.\d+)?)\s*\w*\s*x\s*(-?\d+(?:\.\d+)?)'
         match = re.search(main_pattern, clean_factors, flags=re.IGNORECASE)
 
         quantity = 1.0
@@ -78,22 +80,28 @@ class POLogProcessor(metaclass=SingletonMeta):
                 quantity = float(match.group(1))
                 rate = float(match.group(2))
                 self.logger.debug(f"✔️ Found quantity='{quantity}' and rate='{rate}' from factors.")
-            except Exception as e:
-                self.logger.warning(f"❗️ Error parsing factors '{factors}': {e} - using fallback.")
+            except ValueError as e:
+                error_msg = f"❗️ Error parsing factors '{factors}': {e}"
+                self.logger.error(error_msg)
+                raise e
+        else:
+            error_msg = f"❗️ Factors '{factors}' do not match the expected pattern."
+            self.logger.error(error_msg)
 
-        plus_pattern = r'\+\s*\$?(\d+(?:\.\d+)?)\s*(?:OT|Misc)?'
+        # Additional parsing for OT if needed
+        plus_pattern = r'\+\s*\$?(-?\d+(?:\.\d+)?)\s*(?:OT|Misc)?'
         plus_match = re.search(plus_pattern, clean_factors, flags=re.IGNORECASE)
         if plus_match:
             try:
                 ot = float(plus_match.group(1))
                 self.logger.debug(f"✔️ Found OT='{ot}' from factors.")
-            except Exception as e:
+            except ValueError as e:
                 self.logger.warning(f"❗️ Error parsing OT from factors '{factors}': {e}")
 
         return quantity, rate, ot
 
-    def _read_and_store_entries(self, file_path: str, project_id: str):
-        self.logger.info(f"📂 Reading file: '{file_path}' for project_id='{project_id}'")
+    def _read_and_store_entries(self, file_path: str, project_number: str):
+        self.logger.info(f"📂 Reading file: '{file_path}' for project_number='{project_number}'")
 
         main_items = []
         contacts = []
@@ -131,7 +139,7 @@ class POLogProcessor(metaclass=SingletonMeta):
                     transaction_date_str = row[0].strip()
                     raw_type = row[1].strip()
                     pay_id = row[2].strip()
-                    account = row[3].strip()
+                    account = row[3].strip().lstrip("0")
                     item_id = row[4].strip()
                     vendor = row[5].strip()
                     description = row[6].strip()
@@ -167,18 +175,22 @@ class POLogProcessor(metaclass=SingletonMeta):
                 # Determine contact name
                 if payment_type == "PC":
                     contact_name = "PETTY CASH"
+                    vendor_type = "PC"
                 elif payment_type == "CC":
                     contact_name = f"Credit Card {pay_id}"
+                    vendor_type = "CC"
                 else:
                     contact_name = vendor if vendor else "UNKNOWN CONTACT"
+                    vendor_type = "Vendor"
 
-                po_key = (project_id, po_number)
+
+                po_key = (project_number, po_number)
                 if po_key not in po_map:
                     main_item_desc = description if description else ''
                     main_item = {
-                        'project_id': project_id,
+                        'project_number': project_number,
                         'contact_name': contact_name,
-                        'PO': po_number,
+                        'po_number': po_number,
                         'status': status,
                         'po_type': payment_type,
                         'description': main_item_desc,
@@ -190,8 +202,9 @@ class POLogProcessor(metaclass=SingletonMeta):
 
                     contacts.append({
                         "name": contact_name,
-                        "project_id": project_id,
-                        "PO": po_number
+                        "project_number": project_number,
+                        "po_number": po_number,
+                        "vendor_type": vendor_type
                     })
                     self.logger.debug(f"📦 Created main item for PO='{po_number}' with contact='{contact_name}'.")
 
@@ -221,8 +234,8 @@ class POLogProcessor(metaclass=SingletonMeta):
                     envelope_number = 0
 
                 entry = {
-                    'project_id': project_id,
-                    'PO': po_number,
+                    'project_number': project_number,
+                    'po_number': po_number,
                     'vendor': vendor,
                     'date': transaction_date,
                     'due_date': due_date,
@@ -291,7 +304,7 @@ class POLogProcessor(metaclass=SingletonMeta):
         line_id_counters = defaultdict(int)
 
         for entry in raw_entries:
-            key_for_ids = (entry['PO'], entry['envelope_number'])
+            key_for_ids = (entry['po_number'], entry['envelope_number'])
             item_id_raw = entry['item_id_raw']
             payment_type = entry['payment_type']
             envelope_number = entry['envelope_number']
@@ -337,30 +350,31 @@ class POLogProcessor(metaclass=SingletonMeta):
                     detail_item_id = str(numeric_id)
 
                 # Assign line_id based on repeated occurrences of the same detail_item_id
-                line_id_key = (entry['PO'], detail_item_id)
+                line_id_key = (entry['po_number'], detail_item_id)
                 line_id_counters[line_id_key] += 1
                 line_id = line_id_counters[line_id_key]
 
             entry['detail_item_id'] = detail_item_id
             entry['line_id'] = line_id
             self.logger.debug(
-                f"🆔 Assigned detail_item_id='{detail_item_id}' and line_id='{line_id}' for PO='{entry['PO']}', payment_type='{payment_type}'."
+                f"🆔 Assigned detail_item_id='{detail_item_id}' and line_id='{line_id}' for PO='{entry['po_number']}', payment_type='{payment_type}'."
             )
 
     def parse_showbiz_po_log(self, file_path: str):
         self.logger.info(f"🚀 Starting parse_showbiz_po_log for file: {file_path}")
-        project_id = self._extract_project_id(file_path)
+        project_number = self._extract_project_number(file_path)
 
-        main_items, contacts, raw_entries, manual_ids_by_po = self._read_and_store_entries(file_path, project_id)
+        main_items, contacts, raw_entries, manual_ids_by_po = self._read_and_store_entries(file_path, project_number)
         self._assign_item_ids(raw_entries, manual_ids_by_po)
 
         detail_items = []
         self.logger.debug("🔄 Creating detail_items from raw_entries...")
         for entry in raw_entries:
+
             quantity, rate, ot = self._parse_factors(entry['factors'], entry['subtotal'])
             detail_item = {
-                'project_id': entry['project_id'],
-                'po_number': entry['PO'],         # rename key from 'PO' to 'po_number' if desired
+                'project_number': entry['project_number'],
+                'po_number': entry['po_number'],
                 'detail_item_id': entry['detail_item_id'],
                 'line_id': entry['line_id'],
                 'vendor': entry['vendor'],
@@ -382,13 +396,13 @@ class POLogProcessor(metaclass=SingletonMeta):
         # Sum amounts for main items
         self.logger.debug("🔢 Summing up amounts for main items...")
         for m in main_items:
-            rel_details = [d for d in detail_items if d['po_number'] == m['PO'] and d['project_id'] == m['project_id']]
+            rel_details = [d for d in detail_items if d['po_number'] == m['po_number'] and d['project_number'] == m['project_number']]
             total_amount = sum(d['total'] for d in rel_details)
             m['amount'] = total_amount
-            self.logger.debug(f"📈 PO='{m['PO']}' total amount='{total_amount}'")
+            self.logger.debug(f"📈 PO='{m['po_number']}' total amount='{total_amount}'")
 
         self.logger.info(
-            f"🎉 Parsed {len(main_items)} main items, {len(detail_items)} detail items, and {len(contacts)} contacts for project {project_id}."
+            f"🎉 Parsed {len(main_items)} main items, {len(detail_items)} detail items, and {len(contacts)} contacts for project {project_number}."
         )
         if self.TEST_MODE:
             self.logger.debug(f"🗒 Main Items: {main_items}")

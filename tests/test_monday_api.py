@@ -62,7 +62,7 @@ def test_find_or_create_contact_in_monday(monday_api_instance):
          patch.object(monday_api_instance, 'create_contact') as mock_create_contact:
         # Test when contact exists
         mock_fetch_contact.return_value = {"id": "999", "name": "Existing Contact"}
-        result = monday_api_instance.find_or_create_contact_in_monday("Existing Contact")
+        result = monday_api_instance.create_contact_in_monday("Existing Contact")
         assert result == {"id": "999", "name": "Existing Contact"}
 
         # Test when contact doesn't exist
@@ -75,5 +75,5 @@ def test_find_or_create_contact_in_monday(monday_api_instance):
                 }
             }
         }
-        result = monday_api_instance.find_or_create_contact_in_monday("New Contact")
+        result = monday_api_instance.create_contact_in_monday("New Contact")
         assert result == {"id": "1010", "name": "New Contact"}

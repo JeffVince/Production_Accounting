@@ -199,7 +199,7 @@ class MondayAPI(metaclass=SingletonMeta):
         }
         return self._make_request(query, variables)
 
-    def update_item(self, item_id: str, column_values: dict, type="main"):
+    def update_item(self, item_id: str, column_values, type="main"):
         """Updates an existing item."""
         query = '''
         mutation ($board_id: ID!, $item_id: ID!, $column_values: JSON!) {
@@ -213,8 +213,10 @@ class MondayAPI(metaclass=SingletonMeta):
             board_id = self.PO_BOARD_ID
         elif type == "subitem":
             board_id = self.SUBITEM_BOARD_ID
-        else:
+        elif type == "contact":
             board_id = self.CONTACT_BOARD_ID
+        else:
+            board_id = "main"
 
         variables = {
             'board_id': str(board_id),
@@ -223,7 +225,7 @@ class MondayAPI(metaclass=SingletonMeta):
         }
         return self._make_request(query, variables)
 
-    def fetch_all_items(self, board_id, limit=50):
+    def fetch_all_items(self, board_id, limit=200):
         """
         Fetch all items from a Monday.com board using cursor-based pagination.
         Returns a list of items, unchanged.
@@ -301,7 +303,7 @@ class MondayAPI(metaclass=SingletonMeta):
             if not cursor:
                 break
 
-            print(f"Fetched {len(items)} items from board {board_id}.")
+            self.logger.info(f"Fetched {len(items)} items from board {board_id}.")
 
         return all_items
 
@@ -398,13 +400,13 @@ class MondayAPI(metaclass=SingletonMeta):
 
         return all_items
 
-    def fetch_all_contacts(self, board_id: object, limit: object = 150) -> object:
+    def fetch_all_contacts(self, board_id: object, limit: object = 250) -> object:
         """
         Fetch all contacts from a given board, returns the list of items as before.
         """
         all_items = []
         cursor = None
-
+        self.logger.info(f"Fetching all contacts from Monday.com")
         while True:
             if cursor:
                 query = """
@@ -475,7 +477,7 @@ class MondayAPI(metaclass=SingletonMeta):
             if not cursor:
                 break
 
-            print(f"Fetched {len(items)} items from board {board_id}.")
+            self.logger.debug(f"Fetched {len(items)} items from board {board_id}.")
 
         return all_items
 
@@ -634,31 +636,6 @@ class MondayAPI(metaclass=SingletonMeta):
         items = response.get("data", {}).get("items_page_by_column_values", {}).get("items", [])
         return items[0] if items else None
 
-    def fetch_contact_by_name(self, name):
-        query = '''
-        query ($board_id: ID!, $name: String!) {
-            complexity { query before after }
-            items_page_by_column_values (limit: 1, board_id: $board_id, columns: [{column_id: "name", column_values: [$name]}]) {
-                items {
-                  id
-                  name
-                }
-            }
-        }'''
-        variables = {
-            'board_id': int(self.CONTACT_BOARD_ID),
-            'name': str(name),
-        }
-        response = self._make_request(query, variables)
-        if len(response["data"]["items_page_by_column_values"]["items"]) == 1:
-            contact = response["data"]["items_page_by_column_values"]["items"][0]
-            contact_item = self.fetch_item_by_ID(contact["id"])
-            if contact_item:
-                return contact_item
-            else:
-                return None
-        else:
-            contact = None
 
     def fetch_item_by_name(self, name, board='PO'):
         query = '''
@@ -692,15 +669,6 @@ class MondayAPI(metaclass=SingletonMeta):
         if not len(item) == 1:
             return None
         return item
-
-    # 🙆‍
-    def find_or_create_contact_in_monday(self, name):
-        contact = self.fetch_contact_by_name(name)
-        if contact:  # contact exists
-            return contact
-        else:  # create a contact
-            response = self.create_contact(name)
-            return response["data"]["create_item"]
 
     # 💰
     def find_or_create_item_in_monday(self, item, column_values):
@@ -1076,6 +1044,203 @@ class MondayAPI(metaclass=SingletonMeta):
                 self.logger.warning(f"No ID returned for item {i} in batch.")
 
         return batch
+
+    # region 🙌 Contact Utilities
+
+    def parse_tax_number(self, tax_str: str):
+        """
+        Removes hyphens (e.g., for SSN '123-45-6789' or EIN '12-3456789') and attempts to parse as int.
+        Returns None if parsing fails or if the string is empty.
+        """
+        if not tax_str:
+            return None
+
+        cleaned = tax_str.replace('-', '')
+        try:
+            return int(cleaned)
+        except ValueError:
+            self.logger.warning(
+                f"⚠️ Could not parse tax number '{tax_str}' as int after removing hyphens."
+            )
+            return None
+
+    def extract_monday_contact_fields(self, contact_item: dict) -> dict:
+        """
+        Convert a Monday contact_item (including its column_values) into a structured dict of:
+            {
+              "pulse_id": ...,
+              "phone": ...,
+              "email": ...,
+              "address_line_1": ...,
+              "city": ...,
+              "zip_code": ...,
+              "country": ...,
+              "tax_type": ...,
+              "tax_number_str": ...,
+              "payment_details": ...,
+              "vendor_status": ...,
+              "tax_form_link": ...
+            }
+        Use your contact column IDs from monday_util.
+        """
+        column_values = contact_item.get("column_values", [])
+
+        # Helper function to parse the link from cv["value"] if it exists,
+        # otherwise default to the "text" field.
+        def parse_column_value(cv):
+            """
+            Returns the link if 'url' is found in cv['value'], else returns cv['text'].
+            """
+            raw_text = cv.get("text") or ""
+            raw_value = cv.get("value")
+
+            # Attempt to parse JSON from "value" to see if there's a 'url' field
+            if raw_value:
+                try:
+                    data = json.loads(raw_value)
+                    # If it's a Link column, 'data["url"]' usually holds the actual link
+                    if isinstance(data, dict) and data.get("url"):
+                        return data["url"]
+                except (ValueError, TypeError):
+                    pass
+
+            # If we get here, either no "url" was found or no JSON could be parsed,
+            # so return the plain text field
+            return raw_text
+
+        # Create a dict keyed by column ID, choosing the best representation (URL if present)
+        parsed_values = {}
+        for cv in column_values:
+            col_id = cv["id"]
+            parsed_values[col_id] = parse_column_value(cv)
+
+        # If you want to see how each column ID was interpreted, uncomment:
+        # print(parsed_values)
+
+        return {
+            "pulse_id": contact_item["id"],
+            "phone": parsed_values.get(self.monday_util.CONTACT_PHONE),
+            "email": parsed_values.get(self.monday_util.CONTACT_EMAIL),
+            "address_line_1": parsed_values.get(self.monday_util.CONTACT_ADDRESS_LINE_1),
+            "city": parsed_values.get(self.monday_util.CONTACT_ADDRESS_CITY),
+            "zip_code": parsed_values.get(self.monday_util.CONTACT_ADDRESS_ZIP),
+            "country": parsed_values.get(self.monday_util.CONTACT_ADDRESS_COUNTRY),
+            "tax_type": parsed_values.get(self.monday_util.CONTACT_TAX_TYPE),
+            "tax_number_str": parsed_values.get(self.monday_util.CONTACT_TAX_NUMBER),
+            "payment_details": parsed_values.get(self.monday_util.CONTACT_PAYMENT_DETAILS),
+            "vendor_status": parsed_values.get(self.monday_util.CONTACT_STATUS),
+            "tax_form_link": parsed_values.get(self.monday_util.CONTACT_TAX_FORM_LINK),
+        }
+
+    def create_contact_in_monday(self, name: str) -> dict:
+        """
+        Finds a contact by name. If it exists, returns the Monday item (including column_values).
+        If it does not exist, creates a new contact in Monday, then fetches its item and returns it.
+        """
+        self.logger.info(f"➕ Creating new Monday contact for '{name}'.")
+        create_resp = self.create_contact(name)
+        new_id = create_resp["data"]["create_item"]["id"]
+        self.logger.info(f"✅ Created Monday contact with pulse_id={new_id}. Retrieving its data...")
+        # fetch the full item (with column_values) so we can return consistent data
+        created_item = self.fetch_item_by_ID(new_id)
+        return created_item
+
+    def sync_db_contact_to_monday(self, db_contact):
+        """
+        Pushes DB contact fields up to Monday.com, updating the matching contact pulse.
+        If the contact has no pulse_id, it logs a warning and returns.
+        """
+        if not db_contact.pulse_id:
+            self.logger.warning(
+                f"⚠️ DB Contact id={db_contact.id}, name='{db_contact.name}' has no pulse_id. "
+                "Use 'find_or_create_contact_in_monday' first."
+            )
+            return
+
+        self.logger.info(
+            f"🔄 Updating Monday contact (pulse_id={db_contact.pulse_id}) with DB fields..."
+        )
+
+        # Build out the column_values dict by referencing the contact fields in your DB
+        # and mapping them to your Monday "Contacts" board columns.
+        column_values = {
+            # Basic contact info
+            self.monday_util.CONTACT_PHONE: db_contact.phone or "",
+            self.monday_util.CONTACT_EMAIL: db_contact.email or "",
+            self.monday_util.CONTACT_ADDRESS_LINE_1: db_contact.address_line_1 or "",
+
+            # Address fields
+            self.monday_util.CONTACT_CITY: db_contact.city or "",
+            self.monday_util.CONTACT_STATE: db_contact.state or "",
+            self.monday_util.CONTACT_COUNTRY: db_contact.country or "",
+            self.monday_util.CONTACT_ZIP: db_contact.zip_code or "",
+
+            # Tax info
+            self.monday_util.CONTACT_TAX_TYPE: db_contact.tax_type or "",
+            self.monday_util.CONTACT_TAX_NUMBER: str(db_contact.tax_number) if db_contact.tax_number else "",
+            self.monday_util.CONTACT_TAX_FORM_LINK: db_contact.tax_form_link or "",
+
+            # Payment details, vendor status
+            self.monday_util.CONTACT_PAYMENT_DETAILS: db_contact.payment_details or "",
+            self.monday_util.CONTACT_VENDOR_STATUS: db_contact.vendor_status or "",
+        }
+
+        # Update the contact item in Monday
+        self.update_item(item_id=db_contact.pulse_id, column_values=column_values, type="Contacts")
+        self.logger.info(
+            f"✅ Monday contact (pulse_id={db_contact.pulse_id}) updated with DB field values."
+        )
+
+    def _update_monday_tax_form_link(self, pulse_id, new_link):
+        """
+        Update Monday contact's tax_form_link column with the new link.
+        The 'text' of the link will reflect the type of tax form
+        (e.g., 'W-9', 'W-8BEN', or a default 'Tax Form').
+        """
+        if not pulse_id:
+            self.logger.warning("No pulse_id to update Monday link.")
+            return
+
+        # 1) Determine the tax form type from the URL
+        #    We'll do a case-insensitive check in the link.
+        #    If you have more patterns, just add them to the if/elif chain below.
+        link_lower = new_link.lower()
+        if "w9" in link_lower:
+            link_text = "W-9"
+        elif "w8-ben-e" in link_lower:
+            link_text = "W-8BEN-E"
+        elif "w8-ben" in link_lower:
+            link_text = "W-8BEN"
+        else:
+            link_text = "Tax Form"
+
+        # 2) Build the JSON link object: {"url": "...", "text": "..."}
+        link_value = {
+            "url": new_link,
+            "text": link_text
+        }
+
+        # 3) Convert to JSON and send the update to Monday
+        column_values =json.dumps({
+            self.monday_util.CONTACT_TAX_FORM_LINK:link_value
+        })
+        try:
+            self.update_item(
+                item_id=str(pulse_id),
+                column_values=column_values,
+                type="contact"
+            )
+            self.logger.info(
+                f"✅ Updated Monday contact (pulse_id={pulse_id}) "
+                f"tax_form_link='{new_link}' (text='{link_text}')."
+            )
+        except Exception as e:
+            self.logger.exception(
+                f"Failed to update Monday contact (pulse_id={pulse_id}) "
+                f"with link '{new_link}': {e}",
+                exc_info=True
+            )
+    # endregion
 
 
 monday_api = MondayAPI()

@@ -1,7 +1,9 @@
 # integrations/dropbox_api.py
+import json
 import logging
 import os
 from typing import Optional, List, Dict
+import re
 
 import dropbox
 from dropbox import common
@@ -20,6 +22,7 @@ class DropboxAPI(metaclass=SingletonMeta):
             self.logger = logging.getLogger("app_logger")
             self.dbx_client = dropbox_client
             self.dbx = self.dbx_client.dbx
+            self.TAX_FORM_REGEX = r"(?i)\b(w9)|(w8-ben)|(w8-bene)|(w8-ben-e)\b"
 
     def upload_file(self, file_path: str, destination_path: str):
         """Uploads a file to Dropbox."""
@@ -103,11 +106,8 @@ class DropboxAPI(metaclass=SingletonMeta):
 
             for entry in entries:
                 if isinstance(entry, FileMetadata):
-                    # Get a temporary link for the file
-                    link_result = self.dbx.files_get_temporary_linkge(entry.path_lower)
                     files_data.append({
                         'file_name': entry.name,
-                        'file_link': link_result.link
                     })
 
         except Exception as e:
@@ -115,16 +115,15 @@ class DropboxAPI(metaclass=SingletonMeta):
 
         return files_data
 
-    def get_project_po_folders_and_links(
-        self,
-        project_id: Optional[str] = None,
-        po_number: Optional[str] = None
-    ) -> List[Dict[str, str]]:
+    def get_po_tax_form_link(self,
+         project_number: Optional[str] = None,
+         po_number: Optional[str] = None
+     ) -> List[Dict[str, str]]:
         """
         Retrieves PO folders and their shared links based on provided parameters.
 
         Args:
-            project_id (str, optional): The ID of the project. Defaults to None.
+            project_number (str, optional): The ID of the project. Defaults to None.
             po_number (str, optional): The number of the PO. Defaults to None.
 
         Returns:
@@ -134,22 +133,190 @@ class DropboxAPI(metaclass=SingletonMeta):
         project_po_data = []
 
         try:
-            if project_id is None:
+            if project_number is None:
                 # Scenario 1: No arguments provided - Retrieve all PO folders in the '2024' namespace
-                self.logger.info("📁 No project_id provided. Retrieving all PO folders under the '2024' namespace.")
+                self.logger.info("📁 No project_number provided. Retrieving all PO folders under the '2024' namespace.")
                 all_projects = self.list_all_projects(namespace="2024")
                 if not all_projects:
                     self.logger.warning("⚠️ No projects found under the '2024' namespace.")
                     return []
 
                 for project in all_projects:
-                    current_project_id = project['id']
+                    current_project_number = project['id']
                     project_folder_path = project['path']
                     po_base_path = f"{project_folder_path}/1. Purchase Orders"
 
                     po_folders = self.list_project_po_folders(po_base_path)
                     if not po_folders:
-                        self.logger.info(f"ℹ️ No PO folders found for project_id={current_project_id} at '{po_base_path}'")
+                        self.logger.info(f"ℹ️ No PO folders found for project_number={current_project_number} at '{po_base_path}'")
+                        continue
+
+                    for po_folder in po_folders:
+                        # check if there's a tax form
+                        files = self.list_files_in_folder(po_folder["path"])
+                        tax_form_link = ""
+                        form_type = ""
+                        for file in files:
+                            match = re.search(self.TAX_FORM_REGEX, file['file_name'].lower(), re.IGNORECASE)
+                            if match:
+                                self.logger.info(f"💼 Identified as tax form: {file['file_name']}")
+                                # get the share link
+                                tax_form_link = self.create_share_link(po_folder["path"])
+                                if match.group(1):
+                                    form_type = "W-9"
+                                elif match.group(2):
+                                    form_type = "W-8BEN"
+                                elif match.group(3):
+                                    form_type = "W-8BEN-E"
+                                elif match.group(4):
+                                    form_type = "W-8BEN-E"
+
+                                self.logger.info(f"💼 Identified as tax form: {file['file_name']} ({form_type})")
+                        project_po_data.append({
+                            'po_folder_name': po_folder['name'],
+                            'po_folder_path': po_folder['path'],
+                            'po_tax_form_link': tax_form_link,
+                            'form_type': form_type
+                        })
+
+            elif project_number and po_number is None:
+                # Scenario 2: Only project_number provided - Retrieve all PO folders for the specified project
+                self.logger.info(f"📁 Retrieving PO folders for project_number={project_number}")
+                project_folder_path = self.find_project_folder(project_number)
+                if not project_folder_path:
+                    self.logger.warning(f"⚠️ Unable to find project folder for project_number={project_number}")
+                    return []
+
+                po_base_path = f"{project_folder_path}/1. Purchase Orders"
+                po_folders = self.list_project_po_folders(po_base_path)
+                if not po_folders:
+                    self.logger.info(f"ℹ️ No PO folders found for project_number={project_number} at '{po_base_path}'")
+                    return []
+
+                for po_folder in po_folders:
+                    # check if there's a tax form
+                    files = self.list_files_in_folder(po_folder["path"])
+                    tax_form_link = ""
+                    form_type = ""
+                    for file in files:
+                        match = re.search(self.TAX_FORM_REGEX, file['file_name'].lower(), re.IGNORECASE)
+                        if match:
+                            self.logger.info(f"💼 Identified as tax form: {file['file_name']}")
+                            # get the share link
+                            tax_form_link = self.create_share_link(po_folder["path"])
+                            if match.group(1):
+                                form_type = "W-9"
+                            elif match.group(2):
+                                form_type = "W-8BEN"
+                            elif match.group(3):
+                                form_type = "W-8BEN-E"
+                            elif match.group(4):
+                                form_type = "W-8BEN-E"
+
+                            self.logger.info(f"💼 Identified as tax form: {file['file_name']} ({form_type})")
+                    project_po_data.append({
+                        'po_folder_name': po_folder['name'],
+                        'po_folder_path': po_folder['path'],
+                        'po_tax_form_link': tax_form_link,
+                        'form_type': form_type
+                    })
+
+            elif project_number and po_number:
+                # Scenario 3: Both project_number and po_number provided - Retrieve specific PO folder
+                self.logger.info(f"📁 Retrieving PO folder for project_number={project_number} and po_number={po_number}")
+                project_folder_path = self.find_project_folder(project_number)
+                if not project_folder_path:
+                    self.logger.warning(f"⚠️ Unable to find project folder for project_number={project_number}")
+                    return []
+
+                # Ensure po_number has leading zero if it's a single digit
+                formatted_po_number = f"{int(po_number):02}"
+                self.logger.debug(f"📌 Formatted po_number: {formatted_po_number}")
+
+                po_base_path = f"{project_folder_path}/1. Purchase Orders"
+                po_folders = self.list_project_po_folders(po_base_path)
+                if not po_folders:
+                    self.logger.info(f"ℹ️ No PO folders found for project_number={project_number} at '{po_base_path}'")
+                    return []
+
+                # Search for the specific PO folder
+                specific_po_folder = next(
+                    (po for po in po_folders if po['name'].startswith(f"{project_number}_{formatted_po_number}")),
+                    None
+                )
+                po_path = specific_po_folder['path'] + "/"
+                files = self.list_files_in_folder(po_path)
+                tax_form_link = ""
+                form_type = ""
+                for file in files:
+                    match = re.search(self.TAX_FORM_REGEX, file["file_name"], re.IGNORECASE)
+                    if match:
+                        self.logger.info(f"💼 Identified as tax form: {file['file_name']}")
+                        # get the share link
+                        tax_form_link = self.create_share_link(po_path + file["file_name"])
+                        if match.group(1):
+                            form_type = "W-9"
+                        elif match.group(2):
+                            form_type = "W-8BEN"
+                        elif match.group(3):
+                            form_type = "W-8BEN-E"
+                        elif match.group(4):
+                            form_type = "W-8BEN-E"
+
+                        self.logger.info(f"💼 Identified as tax form: {file['file_name']} ({form_type})")
+                        continue
+                project_po_data.append({
+                    'po_folder_name': specific_po_folder["name"],
+                    'po_folder_path': specific_po_folder["path"],
+                    'po_tax_form_link': tax_form_link,
+                    'form_type': form_type
+                })
+            else:
+                self.logger.error("❗ Invalid combination of parameters provided.")
+                return []
+
+        except Exception as e:
+            self.logger.exception(f"💥 An error occurred while retrieving PO folders: {e}")
+            return []
+
+        self.logger.info(f"✅ Retrieved {len(project_po_data)} PO folders based on the provided parameters.")
+        return project_po_data
+
+    def get_project_po_folders_with_link(
+        self,
+        project_number: Optional[str] = None,
+        po_number: Optional[str] = None
+    ) -> List[Dict[str, str]]:
+        """
+        Retrieves PO folders and their shared links based on provided parameters.
+
+        Args:
+            project_number (str, optional): The ID of the project. Defaults to None.
+            po_number (str, optional): The number of the PO. Defaults to None.
+
+        Returns:
+            List[Dict[str, str]]: A list of dictionaries containing 'po_folder_name',
+                                    'po_folder_path', and 'po_folder_link'.
+        """
+        project_po_data = []
+
+        try:
+            if project_number is None:
+                # Scenario 1: No arguments provided - Retrieve all PO folders in the '2024' namespace
+                self.logger.info("📁 No project_number provided. Retrieving all PO folders under the '2024' namespace.")
+                all_projects = self.list_all_projects(namespace="2024")
+                if not all_projects:
+                    self.logger.warning("⚠️ No projects found under the '2024' namespace.")
+                    return []
+
+                for project in all_projects:
+                    current_project_number = project['id']
+                    project_folder_path = project['path']
+                    po_base_path = f"{project_folder_path}/1. Purchase Orders"
+
+                    po_folders = self.list_project_po_folders(po_base_path)
+                    if not po_folders:
+                        self.logger.info(f"ℹ️ No PO folders found for project_number={current_project_number} at '{po_base_path}'")
                         continue
 
                     for po_folder in po_folders:
@@ -160,18 +327,18 @@ class DropboxAPI(metaclass=SingletonMeta):
                             'po_folder_link': po_link
                         })
 
-            elif project_id and po_number is None:
-                # Scenario 2: Only project_id provided - Retrieve all PO folders for the specified project
-                self.logger.info(f"📁 Retrieving PO folders for project_id={project_id}")
-                project_folder_path = self.find_project_folder(project_id)
+            elif project_number and po_number is None:
+                # Scenario 2: Only project_number provided - Retrieve all PO folders for the specified project
+                self.logger.info(f"📁 Retrieving PO folders for project_number={project_number}")
+                project_folder_path = self.find_project_folder(project_number)
                 if not project_folder_path:
-                    self.logger.warning(f"⚠️ Unable to find project folder for project_id={project_id}")
+                    self.logger.warning(f"⚠️ Unable to find project folder for project_number={project_number}")
                     return []
 
                 po_base_path = f"{project_folder_path}/1. Purchase Orders"
                 po_folders = self.list_project_po_folders(po_base_path)
                 if not po_folders:
-                    self.logger.info(f"ℹ️ No PO folders found for project_id={project_id} at '{po_base_path}'")
+                    self.logger.info(f"ℹ️ No PO folders found for project_number={project_number} at '{po_base_path}'")
                     return []
 
                 for po_folder in po_folders:
@@ -182,12 +349,12 @@ class DropboxAPI(metaclass=SingletonMeta):
                         'po_folder_link': po_link
                     })
 
-            elif project_id and po_number:
-                # Scenario 3: Both project_id and po_number provided - Retrieve specific PO folder
-                self.logger.info(f"📁 Retrieving PO folder for project_id={project_id} and po_number={po_number}")
-                project_folder_path = self.find_project_folder(project_id)
+            elif project_number and po_number:
+                # Scenario 3: Both project_number and po_number provided - Retrieve specific PO folder
+                self.logger.info(f"📁 Retrieving PO folder for project_number={project_number} and po_number={po_number}")
+                project_folder_path = self.find_project_folder(project_number)
                 if not project_folder_path:
-                    self.logger.warning(f"⚠️ Unable to find project folder for project_id={project_id}")
+                    self.logger.warning(f"⚠️ Unable to find project folder for project_number={project_number}")
                     return []
 
                 # Ensure po_number has leading zero if it's a single digit
@@ -197,12 +364,12 @@ class DropboxAPI(metaclass=SingletonMeta):
                 po_base_path = f"{project_folder_path}/1. Purchase Orders"
                 po_folders = self.list_project_po_folders(po_base_path)
                 if not po_folders:
-                    self.logger.info(f"ℹ️ No PO folders found for project_id={project_id} at '{po_base_path}'")
+                    self.logger.info(f"ℹ️ No PO folders found for project_number={project_number} at '{po_base_path}'")
                     return []
 
                 # Search for the specific PO folder
                 specific_po_folder = next(
-                    (po for po in po_folders if po['name'].startswith(f"{project_id}_{formatted_po_number}")),
+                    (po for po in po_folders if po['name'].startswith(f"{project_number}_{formatted_po_number}")),
                     None
                 )
 
@@ -214,7 +381,7 @@ class DropboxAPI(metaclass=SingletonMeta):
                         'po_folder_link': po_link
                     })
                 else:
-                    self.logger.warning(f"⚠️ PO folder with po_number={formatted_po_number} not found in project_id={project_id}")
+                    self.logger.warning(f"⚠️ PO folder with po_number={formatted_po_number} not found in project_number={project_number}")
                     return []
 
             else:
@@ -238,7 +405,6 @@ class DropboxAPI(metaclass=SingletonMeta):
         Returns:
             List[Dict[str, str]]: A list of projects, each dict with 'id' and 'path'.
         """
-        self.logger.info(f"📁 Listing all projects under the namespace '{namespace}'.")
         # Construct the path root for the namespace
         dbx_namespaced = self.dbx.with_path_root(common.PathRoot.namespace_id(self.dbx_client.namespace_id))
         base_path = ""
@@ -254,16 +420,16 @@ class DropboxAPI(metaclass=SingletonMeta):
             projects = []
             for entry in entries:
                 if isinstance(entry, FolderMetadata):
-                    # We assume the project_id is in the folder name, e.g., "2416_ProjectName"
+                    # We assume the project_number is in the folder name, e.g., "2416_ProjectName"
                     # If it's not, adjust accordingly.
                     folder_path = entry.path_lower
                     folder_name = entry.name
-                    # Try extracting project_id from folder_name if needed
-                    # For simplicity, assume the project_id is exactly the folder name or part of it.
+                    # Try extracting project_number from folder_name if needed
+                    # For simplicity, assume the project_number is exactly the folder name or part of it.
                     # If the project naming convention isn't straightforward,
-                    # you may need a more specific logic to find the project_id.
-                    # Example: if folder_name starts with digits (project_id), parse them:
-                    # project_id_str = re.match(r"(\d+)", folder_name).group(1)
+                    # you may need a more specific logic to find the project_number.
+                    # Example: if folder_name starts with digits (project_number), parse them:
+                    # project_number_str = re.match(r"(\d+)", folder_name).group(1)
                     # Use folder_name directly or parse based on your naming convention.
                     # In this example, we just return all folders as "projects"
                     projects.append({
@@ -280,18 +446,18 @@ class DropboxAPI(metaclass=SingletonMeta):
             self.logger.exception(f"💥 Error listing projects under '{namespace}': {e}")
             return []
 
-    def find_project_folder(self, project_id: str, namespace: str = "2024") -> Optional[str]:
+    def find_project_folder(self, project_number: str, namespace: str = "2024") -> Optional[str]:
         """
-        Searches for a folder whose name (or metadata) contains the given project_id under the specified namespace.
+        Searches for a folder whose name (or metadata) contains the given project_number under the specified namespace.
 
         Args:
-            project_id (str): The ID of the project.
+            project_number (str): The ID of the project.
             namespace (str): The namespace under which projects are stored. Defaults to '2024'.
 
         Returns:
             Optional[str]: The path_lower of the matched project folder if found, else None.
         """
-        self.logger.info(f"🔍 Searching for project folder with project_id='{project_id}' in namespace='{namespace}'.")
+        self.logger.info(f"🔍 Searching for project folder with project_number='{project_number}' in namespace='{namespace}'.")
 
         # First, list all projects under the given namespace
         all_projects = self.list_all_projects(namespace=namespace)
@@ -299,14 +465,14 @@ class DropboxAPI(metaclass=SingletonMeta):
             self.logger.warning(f"⚠️ No projects found in namespace='{namespace}'.")
             return None
 
-        # Attempt to find a project folder that matches the given project_id
-        # Assuming that `project_id` is either exactly the folder name or a substring of the folder name.
+        # Attempt to find a project folder that matches the given project_number
+        # Assuming that `project_number` is either exactly the folder name or a substring of the folder name.
         for project in all_projects:
-            if str(project_id) in project['id']:
+            if str(project_number) in project['id']:
                 self.logger.debug(f"✅ Found project folder: '{project['id']}' at '{project['path']}'")
                 return project['path']
 
-        self.logger.warning(f"⚠️ Project folder with project_id='{project_id}' not found in namespace='{namespace}'.")
+        self.logger.warning(f"⚠️ Project folder with project_number='{project_number}' not found in namespace='{namespace}'.")
         return None
 
     def create_share_link(self, dropbox_path: str) -> Optional[str]:
@@ -394,4 +560,31 @@ class DropboxAPI(metaclass=SingletonMeta):
         self.logger.debug(f"✅ Found {len(folders)} folders under '{po_base_path}'.")
         return folders
 
+    def _update_monday_tax_form_link(self, pulse_id, new_link):
+        """
+        Update Monday contact's tax_form_link column with the new link.
+        """
+        if not pulse_id:
+            self.logger.warning("No pulse_id to update Monday link.")
+            return
+
+        # Monday typically wants a JSON string: {"url": "...", "text": "..."}
+        link_value = {"url": new_link, "text": "Tax Form"}
+        column_values = {
+            "tax_form_link_column": json.dumps(link_value)
+        }
+        try:
+            self.monday_api.update_item(
+                item_id=str(pulse_id),
+                column_values=column_values,
+                type="Contacts"  # Or however you designate the board
+            )
+            self.logger.info(
+                f"✅ Updated Monday contact (pulse_id={pulse_id}) tax_form_link='{new_link}'."
+            )
+        except Exception as e:
+            self.logger.exception(
+                f"Failed to update Monday contact (pulse_id={pulse_id}) with link '{new_link}': {e}",
+                exc_info=True
+            )
 dropbox_api = DropboxAPI()

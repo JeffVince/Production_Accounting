@@ -337,7 +337,7 @@ class TestMondayDatabaseUtil(unittest.TestCase):
         aicp_code_entry = AicpCode(code='5000', aicp_code_surrogate_id=1)
         session.query.return_value.filter_by.return_value.one_or_none.return_value = aicp_code_entry
 
-        result = self.db_util.get_aicp_code_surrogate_id('5000')
+        result = self.db_util.get_aicp_code('5000')
         self.assertEqual(result, 1)
 
     @patch('monday_database_util.get_db_session')
@@ -351,7 +351,7 @@ class TestMondayDatabaseUtil(unittest.TestCase):
         # Mock query to return None
         session.query.return_value.filter_by.return_value.one_or_none.return_value = None
 
-        result = self.db_util.get_aicp_code_surrogate_id('9999')
+        result = self.db_util.get_aicp_code('9999')
         self.assertIsNone(result)
 
     @patch('monday_database_util.get_db_session')

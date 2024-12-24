@@ -240,7 +240,6 @@ class DropboxUtil(metaclass=SingletonMeta):
         extracted_info = response.choices[0].message.content.strip()
         # print("OPEN AI INFO", extracted_info)
         # Parse the JSON response
-        print(extracted_info)
 
         try:
             info = json.loads(extracted_info)

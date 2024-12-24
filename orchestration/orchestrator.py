@@ -53,27 +53,27 @@ class Orchestrator:
                 # Debugging: Print the selected log file
 
                 # Pass the most recent file to the process_po_log function
-                self.dropbox_service.process_po_log(latest_log_file)
+                self.dropbox_service.po_log_orchestrator(latest_log_file)
             else:
                 # Handle the case where no PO_LOG files are found
                 self.logger.error("No PO LOG FILES FOUND FOR TESTING")
 
         #MAIN STUFF
-        # self.schedule_monday_main_items_sync()
-        # self.schedule_monday_sub_items_sync()
-        # self.schedule_monday_contact_sync()
+        #self.schedule_monday_main_items_sync()
+        #self.schedule_monday_sub_items_sync()
+        #self.schedule_monday_contact_sync()
         #self.coordinate_state_transitions()
 
     def schedule_monday_main_items_sync(self, interval=90000):
 
         def sync_monday_to_main_items():
             while True:
-                time.sleep(interval)
                 logger.info("Fetching Main Item entries")
                 try:
                     self.monday_service.sync_main_items_from_monday_board()
                 except Exception as e:
                     logger.error(f"Error fetching Main Item entries: {e}")
+                time.sleep(interval)
 
         threading.Thread(target=sync_monday_to_main_items, daemon=True).start()
 
@@ -81,12 +81,12 @@ class Orchestrator:
 
         def sync_monday_to_sub_items():
             while True:
-                time.sleep(interval)
                 logger.info("Fetching Sub Item entries")
                 try:
                     self.monday_service.sync_sub_items_from_monday_board()
                 except Exception as e:
                     logger.error(f"Error fetching Sub Item entries and syncing them to DB: {e}")
+                time.sleep(interval)
 
         threading.Thread(target=sync_monday_to_sub_items, daemon=True).start()
 
@@ -94,12 +94,12 @@ class Orchestrator:
 
         def sync_contacts_from_monday_board():
             while True:
-                time.sleep(interval)
                 logger.info("Fetching Sub Item entries")
                 try:
                     self.monday_service.sync_contacts_from_monday_board()
                 except Exception as e:
                     logger.error(f"Error fetching Sub Item entries and syncing them to DB: {e}")
+                time.sleep(interval)
 
 
         threading.Thread(target=sync_contacts_from_monday_board, daemon=True).start()

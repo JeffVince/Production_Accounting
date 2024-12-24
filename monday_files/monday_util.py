@@ -3,7 +3,6 @@
 import json
 import logging
 import os
-from decimal import Decimal, InvalidOperation
 import re
 
 from dateutil import parser
@@ -93,7 +92,7 @@ class MondayUtil(metaclass=SingletonMeta):
         SUBITEM_QUANTITY_COLUMN_ID: "quantity",  # Maps to quantity in the DB
         SUBITEM_RATE_COLUMN_ID: "rate",  # Maps to rate in the DB
         SUBITEM_DATE_COLUMN_ID: "transaction_date",  # Maps to transaction_date in the DB
-        SUBITEM_ACCOUNT_NUMBER_COLUMN_ID: "account_number_id",  # Maps to account_number_id in the DB
+        SUBITEM_ACCOUNT_NUMBER_COLUMN_ID: "account_number",  # Maps to account_number in the DB
         SUBITEM_LINK_COLUMN_ID: "file_link"  # Maps to file_link for link references in the DB
     }
 
@@ -150,7 +149,6 @@ class MondayUtil(metaclass=SingletonMeta):
             self.logger.info(f"Retrieved subitem board ID: {self._subitem_board_id}")
 
             self._initialized = True
-
 
     # --------------------- PROPERTIES ---------------------
 
@@ -351,7 +349,7 @@ class MondayUtil(metaclass=SingletonMeta):
             self.logger.error(f"HTTP Error {response.status_code}: {response.text}")
             return None
 
-    def update_item_columns(self, item_id, column_values):
+    def update_item_columns(self, item_id, column_values, board="po"):
         """
         Updates multiple columns of an item in Monday.com.
 
@@ -361,14 +359,26 @@ class MondayUtil(metaclass=SingletonMeta):
 
         Returns:
             bool: True if the update was successful, False otherwise.
+            :param item_id:
+            :param column_values:
+            :param board:
         """
         # Convert the column values to JSON
         column_values_json = json.dumps(column_values).replace('"', '\\"')
 
+        if board == "po":
+            board_id = self.PO_BOARD_ID
+        elif board == "contact":
+            board_id = self.CONTACT_BOARD_ID
+        elif board == "subitem":
+            board_id = self.SUBITEM_BOARD_ID
+        else:
+            board_id = self.PO_BOARD_ID
+
         query = f'''
         mutation {{
             change_multiple_column_values(
-                board_id: {self.PO_BOARD_ID},
+                board_id: {board_id},
                 item_id: {item_id},
                 column_values: "{column_values_json}"
             ) {{
@@ -425,7 +435,6 @@ class MondayUtil(metaclass=SingletonMeta):
         self.logger.debug(f"Formatted PO column values: {column_values}")
         return json.dumps(column_values)
 
-
     def prep_po_log_item_for_monday(self, item):
         pass
 
@@ -443,24 +452,35 @@ class MondayUtil(metaclass=SingletonMeta):
 
         if quantity is not None:
             try:
-                cleaned_quantity = Decimal(str(quantity).replace(',', '').strip())
+                cleaned_quantity = float(str(quantity).replace(',', '').strip())
                 column_values[self.SUBITEM_QUANTITY_COLUMN_ID] = float(cleaned_quantity)
-            except (ValueError, InvalidOperation) as e:
+            except (ValueError) as e:
                 self.logger.error(f"Invalid quantity '{quantity}': {e}")
                 column_values[self.SUBITEM_QUANTITY_COLUMN_ID] = None
 
         if rate is not None:
             try:
-                cleaned_rate = Decimal(str(rate).replace(',', '').strip())
+                cleaned_rate = float(str(rate).replace(',', '').strip())
                 column_values[self.SUBITEM_RATE_COLUMN_ID] = float(cleaned_rate)
-            except (ValueError, InvalidOperation) as e:
+            except (ValueError) as e:
                 self.logger.error(f"Invalid rate '{rate}': {e}")
                 column_values[self.SUBITEM_RATE_COLUMN_ID] = None
 
         if OT is not None:
-            column_values[self.SUBITEM_OT_COLUMN_ID] = OT
+            try:
+                cleaned_OT = float(str(OT).replace(',','').strip())
+                column_values[self.SUBITEM_OT_COLUMN_ID] = float(cleaned_OT)
+            except (ValueError) as e:
+                self.logger.error(f"Invalid OT '{OT}': {e}")
+                column_values[self.SUBITEM_OT_COLUMN_ID] = None
+
         if fringes is not None:
-            column_values[self.SUBITEM_FRINGE_COLUMN_ID] = fringes
+            try:
+                cleaned_fringe = float(str(fringes).replace(',', '').strip())
+                column_values[self.SUBITEM_FRINGE_COLUMN_ID] = float(cleaned_fringe)
+            except (ValueError) as e:
+                self.logger.error(f"Invalid fringes '{fringes}': {e}")
+                column_values[self.SUBITEM_FRINGE_COLUMN_ID] = None
 
         if date:
             try:
@@ -677,7 +697,6 @@ class MondayUtil(metaclass=SingletonMeta):
     def prep_po_log_contact_for_monday(self, item):
         pass
 
-
     # --------------------- VALIDATION METHODS ---------------------
 
     def validate_monday_request(self, request_headers):
@@ -709,7 +728,7 @@ class MondayUtil(metaclass=SingletonMeta):
     # --------------------- HELPER METHODS ---------------------
     def get_item_data(self, monday_response):
 
-        item_dict =  monday_response['data']['items'][0]
+        item_dict = monday_response['data']['items'][0]
         columns_dict = {item['id']: item for item in item_dict['column_values']}
 
         return item_dict, columns_dict
@@ -728,8 +747,8 @@ class MondayUtil(metaclass=SingletonMeta):
         # Define a mapping between DB fields and Monday fields
         field_map = [
             {
-                "field": "project_id",
-                "db_value": db_item.get("project_id"),
+                "field": "project_number",
+                "db_value": db_item.get("project_number"),
                 "monday_value": col_vals.get("project_id")
             },
             {
@@ -739,7 +758,7 @@ class MondayUtil(metaclass=SingletonMeta):
             },
             {
                 "field": "PO",
-                "db_value": str(db_item.get("PO")),
+                "db_value": str(db_item.get("po_number")),
                 "monday_value": col_vals.get("numeric__1")
             },
             {
@@ -901,5 +920,26 @@ class MondayUtil(metaclass=SingletonMeta):
         else:
             self.logger.warning("Subitem missing one of the required identifiers.")
             return None
+
+    def _extract_tax_link_from_monday(self, pulse_id, all_monday_contacts):
+        """
+        Given a contact's Monday pulse_id, find that contact in `all_monday_contacts`
+        and return the link's 'url' if it exists.
+        """
+        if not pulse_id:
+            return None
+
+        for c in all_monday_contacts:
+            if c["id"] == str(pulse_id):
+                # Look through column_values for the tax form link column:
+                for col in c.get("column_values", []):
+                    if col["id"] == self.CONTACT_TAX_FORM_LINK:
+                        try:
+                            val = json.loads(col["value"])
+                            return val.get("url")  # or text
+                        except:
+                            return col.get("text")
+        return None
+
 
 monday_util = MondayUtil()
