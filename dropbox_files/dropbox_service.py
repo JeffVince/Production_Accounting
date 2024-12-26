@@ -482,7 +482,17 @@ class DropboxService(metaclass=SingletonMeta):
                 self.logger.info("SYNCING PO FOLDER LINKS")
                 def get_folder_links(processed_items):
                     for item in processed_items:
-                        self.update_po_folder_link(item["project_number"], item["po_number"])
+                        db_project = self.database_util.search_projects(["project_number"], [item["project_number"]])
+                        if isinstance(db_project, list):
+                            db_project = db_project[0]
+                        db_po = self.database_util.search_purchase_orders(["project_id", "po_number"], [db_project["id"], item["po_number"]])
+                        if isinstance(db_po, list):
+                            db_po = db_po[0]
+                        if db_po["folder_link"]:
+                            self.logger.debug(f"✅Folder Link is already present for {db_project['project_number']}_{db_po['po_number']}")
+                        else:
+                            self.logger.debug(f"Folder link not found in DB -- retrieving from Dropbox")
+                            self.update_po_folder_link(item["project_number"], item["po_number"])
                 folder_links_future = self.executor.submit(get_folder_links, processed_items)
             #endregion
 
