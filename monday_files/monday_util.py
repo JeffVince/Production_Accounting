@@ -864,7 +864,11 @@ class MondayUtil(metaclass=SingletonMeta):
             },
             {
                 "field": "transaction_date",
-                "db_value": safe_str(db_sub_item.get("transaction_date")),
+                "db_value": (
+                    safe_str(db_sub_item.get("transaction_date")).split(" ")[0]
+                    if safe_str(db_sub_item.get("transaction_date"))
+                    else None
+                ),
                 "monday_value": safe_str(
                     col_vals.get(self.SUBITEM_DATE_COLUMN_ID, {}).get("date")
                     if isinstance(col_vals.get(self.SUBITEM_DATE_COLUMN_ID), dict)
@@ -873,7 +877,11 @@ class MondayUtil(metaclass=SingletonMeta):
             },
             {
                 "field": "due_date",
-                "db_value": safe_str(db_sub_item.get("due_date")),
+                "db_value": (
+                    safe_str(db_sub_item.get("due_date")).split(" ")[0]
+                    if safe_str(db_sub_item.get("due_date"))
+                    else None
+                ),
                 "monday_value": safe_str(
                     col_vals.get(self.SUBITEM_DUE_DATE_COLUMN_ID, {}).get("date")
                     if isinstance(col_vals.get(self.SUBITEM_DUE_DATE_COLUMN_ID), dict)

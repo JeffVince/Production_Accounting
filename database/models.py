@@ -192,6 +192,8 @@ class DetailItem(Base):
     quantity = Column(MYSQL_DECIMAL(15, 2), nullable=False, server_default='1.00')
     ot = Column(MYSQL_DECIMAL(15, 2), nullable=True, server_default='0.00')
     fringes = Column(MYSQL_DECIMAL(15, 2), nullable=True, server_default='0.00')
+    pulse_id = Column(MYSQL_BIGINT, nullable=True)
+    parent_pulse_id = Column(MYSQL_BIGINT, nullable=True)
     sub_total = Column(
         MYSQL_DECIMAL(15, 2),
         Computed("ROUND(((rate * quantity) + IFNULL(ot,0) + IFNULL(fringes,0)),2)", persisted=True),

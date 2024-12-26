@@ -49,7 +49,7 @@ class MondayDatabaseUtil(metaclass=SingletonMeta):
             self.logger.info("Monday Database Utility initialized")
 
             # Instantiate DatabaseOperations
-            self.db_ops = DatabaseOperations(self.logger)
+            self.db_ops = DatabaseOperations()
 
             self._initialized = True
     #endregion

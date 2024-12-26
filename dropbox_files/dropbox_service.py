@@ -20,6 +20,8 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, wait, ALL_COMPLETED
 from typing import Optional
 
+from models import Contact
+
 from dropbox_files.dropbox_api import dropbox_api
 from config import Config
 from dropbox_files.dropbox_client import dropbox_client
@@ -57,7 +59,8 @@ class DropboxService(metaclass=SingletonMeta):
     DEBUG_STARTING_PO_NUMBER = 0 # If set, skip POs below this number
     SKIP_DATABASE = False
     ADD_PO_TO_MONDAY = True
-    GET_FOLDER_LINKS = False
+    GET_FOLDER_LINKS = True
+    GET_TAX_LINKS = True
     GET_CONTACTS = False
 
     executor = ThreadPoolExecutor(max_workers=5)
@@ -80,9 +83,7 @@ class DropboxService(metaclass=SingletonMeta):
             self.config = Config()
             self.dropbox_api = dropbox_api
             self.po_log_database_util = po_log_database_util
-
-            # Our new DatabaseOperations instance for all DB logic
-            self.database_util = DatabaseOperations(self.logger)
+            self.database_util = DatabaseOperations()
 
             self.logger.info("📦 Dropbox Service initialized 🌟")
             self._initialized = True
@@ -270,6 +271,7 @@ class DropboxService(metaclass=SingletonMeta):
         self.logger.info("🔧 Processing PO data in the database...")
 
         processed_items = []
+        all_db_contacts = self.database_util.search_contacts()
 
         for i, item in enumerate(main_items):
             try:
@@ -281,8 +283,8 @@ class DropboxService(metaclass=SingletonMeta):
                 # 2) Find or create Contact
                 contact_name = item["contact_name"]
                 self.logger.info(f"🔍 Checking for Contact: {contact_name}")
-                contact_search = self.database_util.search_contacts(["name"], [contact_name])
 
+                contact_search = self.database_util.find_contact_close_match(contact_name, all_db_contacts)
                 if contact_search:
                     if isinstance(contact_search, list):
                         contact_search = contact_search[0]
@@ -294,12 +296,8 @@ class DropboxService(metaclass=SingletonMeta):
                     )
                 else:
                     self.logger.info(f"🆕 Creating Contact: {contact_name}")
-                    new_contact = self.database_util.create_contact(
-                        name=contact_name,
-                        vendor_type=contacts[i].get("vendor_type", "Vendor"),
-                    )
+                    new_contact = self.database_util.create_minimal_contact(contact_name)
                     contact_id = new_contact["id"] if new_contact else None
-
                 if not contact_id:
                     self.logger.warning(f"⚠️ Could not determine contact_id for contact '{contact_name}'; skipping PO creation.")
                     continue
@@ -365,6 +363,7 @@ class DropboxService(metaclass=SingletonMeta):
                     )
 
                 item["po_surrogate_id"] = po_surrogate_id
+                item["contact_id"] = contact_id
                 processed_items.append(item)
 
             except Exception as ex:
@@ -487,72 +486,39 @@ class DropboxService(metaclass=SingletonMeta):
                 folder_links_future = self.executor.submit(get_folder_links, processed_items)
             #endregion
 
-            #region GET CONTACT DATA & TAX LINKS
-            if self.GET_CONTACTS:
-                self.logger.info("SYNCING CONTACTS")
-
-                # 1) Fetch all Monday contacts once
-                all_monday_contacts = self.monday_api.fetch_all_contacts(self.monday_util.CONTACT_BOARD_ID)
-
-                def get_contact_data(processed_items, all_monday_contacts):
-                    self.logger.debug(f"Starting get_contact_data with {len(processed_items)} items")
-
+            #region TAX LINKS
+            if self.GET_TAX_LINKS:
+                def get_tax_links(processed_items):
                     for idx, item in enumerate(processed_items):
-                        cname = item.get("contact_name", "")
-                        self.logger.debug(f"Item {idx + 1}/{len(processed_items)} → contact_name='{cname}'")
-
-                        try:
-                            # (A) Sync DB contact with Monday first
-                            db_contact = self.sync_contacts_to_DB(item, all_monday_contacts)
-                            # Suppose this returns the updated DB contact record or None
-
-                            # (B) If Monday is missing the tax form link, fetch a new one
-                            if db_contact and db_contact["vendor_type"] == "Vendor":
-                                monday_tax_link = self.monday_util._extract_tax_link_from_monday(
-                                    db_contact.get("pulse_id"),
-                                    all_monday_contacts
+                        db_contact = self.database_util.search_contacts(["id"], [item.get("contact_id")])
+                        if db_contact and db_contact["vendor_type"] == "Vendor":
+                            tax_link = db_contact["tax_form_link"]
+                            if not tax_link:
+                                # Contact has no link
+                                self.logger.debug(
+                                    f"Database is missing the tax form link for Contact {db_contact['id']}. "
+                                    f"Fetching a new link from Dropbox..."
                                 )
-                                if not monday_tax_link:
-                                    # Monday has no link → let’s fill it
-                                    self.logger.debug(
-                                        f"Monday is missing the tax form link for Contact {db_contact['id']}. "
-                                        f"Fetching a new link from Dropbox..."
-                                    )
-                                    monday_tax_link = self.update_po_tax_form_links(
-                                        item["project_number"],
-                                        item["po_number"]
-                                    )
-                                    if monday_tax_link:
-                                        self.monday_api._update_monday_tax_form_link(db_contact["pulse_id"], monday_tax_link)
-                                    else:
-                                        self.logger.error("❌ - Unable to get link from contact")
+                                tax_link = self.update_po_tax_form_links(
+                                    item["project_number"],
+                                    item["po_number"]
+                                )
+                                if tax_link:
+                                    self.monday_api.update_monday_tax_form_link(db_contact["pulse_id"], tax_link)
                                 else:
-                                    self.logger.debug(
-                                        f"✅ Monday tax_form_link is already present for {db_contact['name']}"
-                                    )
-
-                        except Exception as e:
-                            self.logger.exception(f"Exception processing contact '{cname}'", exc_info=e)
-
-                    self.logger.debug("Finished get_contact_data")
-
-                sync_contact_future = self.executor.submit(get_contact_data, processed_items, all_monday_contacts)
-
-                try:
-                    # If an exception was raised in get_contact_data, calling .result() will raise it here
-                    sync_contact_future.result()
-                    self.logger.info("Contact sync thread finished.")
-                except Exception as exc:
-                    self.logger.exception("Error occurred while syncing contacts", exc_info=exc)
+                                    self.logger.error("❌ - Unable to get link from contact")
+                            else:
+                                self.logger.debug(
+                                    f"✅ Tax Link is already present for {db_contact['name']}")
+                tax_links_future = self.executor.submit(get_tax_links, processed_items)
             #endregion
-
 
             futures_to_wait = []
 
             if  self.GET_FOLDER_LINKS and folder_links_future:
                 futures_to_wait.append(folder_links_future)
-            if  self.GET_CONTACTS and sync_contact_future:
-                futures_to_wait.append(sync_contact_future)
+            if  self.GET_TAX_LINKS and tax_links_future:
+                futures_to_wait.append(tax_links_future)
 
             # Block until both tasks are done
             if futures_to_wait:
@@ -577,6 +543,7 @@ class DropboxService(metaclass=SingletonMeta):
 
         except Exception as e:
             self.logger.error(f"❌ after_db_done encountered an error: {e}", exc_info=True)
+    #endregion
 
     #region   DROPBOX FOLDER LINK
     def update_po_folder_link(self, project_number, po_number):
@@ -646,7 +613,7 @@ class DropboxService(metaclass=SingletonMeta):
     #endregion
 
     #region CONTACT SYNC
-    def sync_contacts_to_DB(self, processed_item: dict, all_monday_contacts: list):
+    def sync_contacts_to_DB(self, processed_item: dict, all_db_contacts):
         """
         Example coordinator function that:
           1) Looks up (or creates) a DB Contact by name
@@ -659,79 +626,31 @@ class DropboxService(metaclass=SingletonMeta):
         if not contact_name:
             self.logger.warning("⚠️ No contact_name in po_data, skipping.")
             return None
-
         self.logger.info(f"📦 Handling new PO with contact_name='{contact_name}'.")
         # endregion
 
         # region 1) Find/Create DB Contact
-        db_contact = self.database_util.find_contact_by_name(contact_name)
+        db_contact = self.database_util.find_contact_close_match(contact_name, all_db_contacts)
         if not db_contact:
-            # db_contact is either None or a dict with serialized fields
+            self.logger.info(f"❌ No Monday contact found for '{contact_name}'. Creating new item...")
             db_contact = self.database_util.create_minimal_contact(contact_name)
             if not db_contact:
-                self.logger.error(
-                    f"💥 Could not create a new DB Contact for '{contact_name}'. Aborting."
-                )
-                return None
+                self.logger.error(f"💥 Could not create a new DB Contact for '{contact_name}'. Aborting.")
             else:
-                self.logger.info(f"✅ Created new DB contact (id={db_contact['id']}) for '{contact_name}'.")
-        else:
-            self.logger.info(f"✅ Found existing DB contact (id={db_contact['id']}) for '{contact_name}'.")
-        # endregion
-
-        # region 2) Check Monday (using the provided all_monday_contacts)
-        try:
-            matched_contact = self._find_monday_contact_match(contact_name, all_monday_contacts)
-        except Exception as e:
-            self.logger.error(f"Error finding match in Monday.com: {e}")
-            raise e
-        if matched_contact:
-            # region 3) If found, pull Monday fields => update DB
-            monday_fields = self.monday_api.extract_monday_contact_fields(matched_contact)
-
-            # Parse tax_number if any
-            tax_number_int = None
-            if monday_fields["tax_number_str"]:
-                tax_number_int = self.database_util.parse_tax_number(monday_fields["tax_number_str"])
-
-            # Only accept vendor_status if it's in your allowed set
-            vendor_status = monday_fields["vendor_status"]
-            if vendor_status not in ["PENDING", "TO VERIFY", "APPROVED", "ISSUE"]:
-                vendor_status = None  # or handle differently
-
-            # Now do the DB update — use contact_id, since db_contact is a dict
-            db_contact = self.database_util.update_contact_with_monday_data(
-                contact_id=db_contact["id"],
-                pulse_id=monday_fields["pulse_id"],
-                phone=monday_fields["phone"],
-                email=monday_fields["email"],
-                address_line_1=monday_fields["address_line_1"],
-                city=monday_fields["city"],
-                zip_code=monday_fields["zip_code"],
-                country=monday_fields["country"],
-                tax_type=monday_fields["tax_type"],
-                tax_number=tax_number_int,
-                payment_details=monday_fields["payment_details"],
-                vendor_status=vendor_status,
-                tax_form_link=monday_fields["tax_form_link"],
-            )
-            return db_contact
-            # endregion
-        else:
-            # region 4) If not found, create in Monday, store pulse_id
-            self.logger.info(f"❌ No Monday contact found/close match for '{contact_name}'. Creating new item...")
+                self.logger.info(f"✅ Created contact: '{contact_name}' in DB.")
             new_pulse_id = self.monday_api.create_contact_in_monday(contact_name)
-
+            self.logger.info(f"✅ Created contact: '{contact_name}' in Monday.")
             # Update DB with the new pulse_id — again, pass contact_id
             db_contact = self.database_util.update_contact_with_monday_data(
                 contact_id=db_contact["id"],
                 pulse_id=new_pulse_id
             )
+            self.logger.info(f"✅ Updated contact: '{contact_name}' with Pulse_ID.")
             return db_contact
-            # endregion
+        else:
+            self.logger.info(f"✅ Found existing DB contact (id={db_contact['id']}) for '{contact_name}'.")
+        #endregion
 
-        # endregion
-    #endregion
     #endregion
 
     #region Event Processing - PO Log - Step 4 - Monday Processing
@@ -905,8 +824,8 @@ class DropboxService(metaclass=SingletonMeta):
                         self.logger.debug(f"No changes for sub-item #{sdb['detail_number']} (PO {po_no}). Differences: None")
                         # Ensure pulse_id in DB
                         sub_pulse_id = monday_sub["id"]
-                        self.po_log_database_util.update_detail_item_pulse_ids(
-                            project_number, db_item["po_number"], sdb["detail_number"], sdb["line_id"],
+                        self.database_util.update_detail_item_by_keys(
+                            project_number=project_number, po_number=db_item["po_number"], detail_number=sdb["detail_number"], line_id=sdb["line_id"],
                             pulse_id=sub_pulse_id, parent_pulse_id=main_monday_id
                         )
                         sdb["pulse_id"] = sub_pulse_id
@@ -1009,132 +928,6 @@ class DropboxService(metaclass=SingletonMeta):
         project_number = all_digits[-4:]
         # endregion
         return project_number
-
-    def _levenshtein_distance(self, s1: str, s2: str) -> int:
-        """
-        Optimized Levenshtein distance calculation with early rejection if
-        the first letters differ. Returns the edit distance (number of single-character edits).
-
-        Requirements / Assumptions:
-          - If the first characters do not match, we immediately return
-            len(s1) + len(s2) (a large distance), effectively filtering out
-            strings that don't share the same first letter.
-          - Otherwise, use an iterative DP approach for speed.
-        """
-        original_s1, original_s2 = s1, s2  # Keep for logging
-        # Convert to lowercase for case-insensitive comparison
-        s1 = s1.lower()
-        s2 = s2.lower()
-
-        # Early exit if first letters differ
-        if s1 and s2 and s1[0] != s2[0]:
-            dist = len(s1) + len(s2)
-            self.logger.debug(
-                f"🚫 First-letter mismatch: '{original_s1}' vs '{original_s2}' "
-                f"(distance={dist})"
-            )
-            return dist
-
-        # If either is empty, distance is the length of the other
-        if not s1:
-            dist = len(s2)
-            # If both empty, it's distance=0 => exact match
-            if dist == 0:
-                self.logger.debug(
-                    f"🟢 EXACT MATCH: '{original_s1}' vs '{original_s2}' -> distance=0"
-                )
-            else:
-                self.logger.debug(
-                    f"🔎 '{original_s1}' vs '{original_s2}' -> distance={dist} (one empty)"
-                )
-            return dist
-        if not s2:
-            dist = len(s1)
-            # If both empty, it's distance=0 => exact match
-            if dist == 0:
-                self.logger.debug(
-                    f"🟢 EXACT MATCH: '{original_s1}' vs '{original_s2}' -> distance=0"
-                )
-            else:
-                self.logger.debug(
-                    f"🔎 '{original_s1}' vs '{original_s2}' -> distance={dist} (one empty)"
-                )
-            return dist
-
-        # Iterative dynamic programming
-        m, n = len(s1), len(s2)
-        # dp[i][j] = edit distance between s1[:i] and s2[:j]
-        dp = [[0] * (n + 1) for _ in range(m + 1)]
-
-        # Base cases: distance to transform from empty string
-        for i in range(m + 1):
-            dp[i][0] = i
-        for j in range(n + 1):
-            dp[0][j] = j
-
-        for i in range(1, m + 1):
-            for j in range(1, n + 1):
-                cost = 0 if s1[i - 1] == s2[j - 1] else 1
-                dp[i][j] = min(
-                    dp[i - 1][j] + 1,  # deletion
-                    dp[i][j - 1] + 1,  # insertion
-                    dp[i - 1][j - 1] + cost  # substitution (if needed)
-                )
-
-        dist = dp[m][n]
-        if dist == 0:
-            # Perfect match
-            self.logger.debug(
-                f"🟢 EXACT MATCH: '{original_s1}' vs '{original_s2}' -> distance=0"
-            )
-        else:
-            self.logger.debug(
-                f"🔎 '{original_s1}' vs '{original_s2}' -> distance={dist}"
-            )
-
-        return dist
-
-    def _find_monday_contact_match(
-            self, contact_name: str, all_monday_contacts: list, max_distance: int = 2
-    ) -> dict:
-        """
-        Find an exact or "close" match for contact_name among the list of Monday
-        contacts. Returns the matched contact dict if found, else None.
-        Logs if match is 'close'.
-        """
-        contact_name_lower = contact_name.lower()
-
-        # 1) Try exact matches first
-        for c in all_monday_contacts:
-            if c['name'].strip().lower() == contact_name_lower:
-                self.logger.info(f"✅ Exact Monday match found: '{c['name']}' for '{contact_name}'.")
-                return c
-
-        # 2) If no exact match, look for "close matches" within allowable distance
-        best_candidate = None
-        best_distance = max_distance + 1  # Initialize beyond the threshold
-
-        for i, c in enumerate(all_monday_contacts):
-            if i % 50 == 0:
-                self.logger.debug(
-                    f"Comparing '{contact_name}' to '{c['name']}', index {i} of {len(all_monday_contacts)}"
-                )
-            # Perform distance check
-            current_distance = self._levenshtein_distance(contact_name_lower, c['name'].strip().lower())
-            if current_distance < best_distance:
-                best_distance = current_distance
-                best_candidate = c
-
-        if best_candidate and best_distance <= max_distance:
-            self.logger.info(
-                f"⚠️ Close match found for '{contact_name}' → '{best_candidate['name']}', "
-                f"distance={best_distance}. Accepting as match."
-            )
-            return best_candidate
-
-        # No match or close match found
-        return None
-
     #endregion
 
 

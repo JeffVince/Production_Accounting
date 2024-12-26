@@ -6,6 +6,7 @@ from typing import Any
 
 import requests
 
+from database.database_util import DatabaseOperations
 from logger import setup_logging
 from utilities.singleton import SingletonMeta
 from utilities.config import Config
@@ -16,6 +17,9 @@ from monday_files.monday_api import monday_api
 
 class MondayService(metaclass=SingletonMeta):
     def __init__(self):
+
+        self.database_util = DatabaseOperations()
+
         if not hasattr(self, '_initialized'):
             # Set up logging
             self.logger = logging.getLogger("app_logger")
@@ -226,7 +230,7 @@ class MondayService(metaclass=SingletonMeta):
         """
         try:
             self.logger.info(f"Fetching contacts from board {self.contact_board_id}...")
-            all_contacts = self.monday_api.fetch_all_contacts(self.contact_board_id)
+            all_contacts = self.monday_api.fetch_all_contacts()
             self.logger.info(f"Total contacts fetched from board {self.contact_board_id}: {len(all_contacts)}")
         except Exception as e:
             self.logger.error(f"Error fetching contacts from Monday.com: {e}")
@@ -234,13 +238,62 @@ class MondayService(metaclass=SingletonMeta):
 
         try:
             for contact in all_contacts:
-                prepped_contact = self.db_util.prep_contact_event_for_db_creation(contact)
-                if prepped_contact:
-                    status = self.db_util.find_or_create_contact_item_in_db(prepped_contact)
-                    self.logger.info(f"Synced contact with pulse_id {prepped_contact.get('pulse_id')}: {status}")
+                monday_fields = self.monday_api.extract_monday_contact_fields(contact)
+
+                # Parse tax_number if any
+                tax_number_int = None
+
+                if monday_fields["tax_number_str"]:
+                    tax_number_int = self.database_util.parse_tax_number(monday_fields["tax_number_str"])
+
+                # Only accept vendor_status if it's in the allowed set
+                vendor_status = monday_fields["vendor_status"]
+
+                if vendor_status not in ["PENDING", "TO VERIFY", "APPROVED", "ISSUE"]:
+                    vendor_status = "PENDING"
+
+                # Now do the DB update — use contact_id, since db_contact is a dict
+                try:
+                    existing_contact = self.database_util.find_contact_by_name(contact_name=contact["name"])
+
+                    if not existing_contact:
+                        db_contact = self.database_util.create_contact(
+                            name=contact["name"],
+                            pulse_id=monday_fields["pulse_id"],
+                            phone=monday_fields["phone"],
+                            email=monday_fields["email"],
+                            address_line_1=monday_fields["address_line_1"],
+                            city=monday_fields["city"],
+                            zip=monday_fields["zip_code"],
+                            country=monday_fields["country"],
+                            tax_type=monday_fields["tax_type"],
+                            tax_number=tax_number_int,
+                            payment_details=monday_fields["payment_details"],
+                            vendor_status=vendor_status,
+                            tax_form_link=monday_fields["tax_form_link"]
+                        )
+                    else:
+                        db_contact = self.database_util.update_contact(
+                            contact_id=existing_contact["id"],
+                            name=contact["name"],
+                            pulse_id=monday_fields["pulse_id"],
+                            phone=monday_fields["phone"],
+                            email=monday_fields["email"],
+                            address_line_1=monday_fields["address_line_1"],
+                            city=monday_fields["city"],
+                            zip=monday_fields["zip_code"],
+                            country=monday_fields["country"],
+                            tax_type=monday_fields["tax_type"],
+                            tax_number=tax_number_int,
+                            payment_details=monday_fields["payment_details"],
+                            vendor_status=vendor_status,
+                            tax_form_link=monday_fields["tax_form_link"]
+                        )
+                    self.logger.info(f"Synced {contact['name']}")
+                except Exception as e:
+                    self.logger.error(f"Error adding contact to DB: {e}")
         except Exception as e:
             self.logger.error(f"Error syncing contacts to DB: {e}")
-
         self.logger.info("Contacts synchronization completed successfully.")
 
 

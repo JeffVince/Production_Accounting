@@ -5,14 +5,14 @@ from collections import defaultdict
 
 # Define the target folders and root files
 TARGET_FOLDERS = {
-    "AICP Code Map",
+    #"AICP Code Map",
     "Database",
     "dropbox_files",
-    "invoice_files",
+    #"invoice_files",
     "monday_files",
     "Orchestration",
     "po_log_files",
-    "utilities"
+    #"utilities"
 }
 
 ROOT_FILES = {

@@ -32,7 +32,7 @@ from models import (
     XeroBill
 )
 from database.db_util import get_db_session
-
+import logging
 
 class DatabaseOperations:
     """
@@ -44,8 +44,8 @@ class DatabaseOperations:
     by performing all relevant operations in the same session scope.
     """
 
-    def __init__(self, logger):
-        self.logger = logger
+    def __init__(self):
+        self.logger = logging.getLogger("app_logger")
         self.logger.debug("🌟 Hello from DatabaseOperations constructor! Ready to keep the DB in check!")
 
     # -------------------------------------------------------------------------
@@ -59,32 +59,47 @@ class DatabaseOperations:
         self.logger.debug(f"🤓 Pulling record: {record_values['id']} from table {record.__table__}")
         return record_values
 
-    def _search_records(self, model, column_names, values):
+    def _search_records(self, model, column_names=None, values=None):
         """
         🔍 Search for records of a given model based on multiple column filters.
+        If no column_names or values are provided, retrieves all records from the table.
         Returns:
             None if no records,
             a single dict if exactly one found,
             or a list if multiple found.
         Rolls back if an error occurs.
         """
-        self.logger.debug(f"🕵️ We're looking into {model.__name__} with these filters: {list(zip(column_names, values))}")
-        self.logger.info(f"🚦 Checking if there are any matches in {model.__name__} for columns & values: {list(zip(column_names, values))}")
+        # Initialize column_names and values to empty lists if None
+        column_names = column_names or []
+        values = values or []
 
-        if len(column_names) != len(values):
-            self.logger.warning("⚠️ Oops, mismatch: The number of column names and values do not match. Let's bail out.")
-            return []
+        if column_names and values:
+            self.logger.debug(
+                f"🕵️ We're looking into {model.__name__} with these filters: {list(zip(column_names, values))}")
+            self.logger.info(
+                f"🚦 Checking if there are any matches in {model.__name__} for columns & values: {list(zip(column_names, values))}")
+
+            if len(column_names) != len(values):
+                self.logger.warning(
+                    "⚠️ Oops, mismatch: The number of column names and values do not match. Let's bail out.")
+                return []
+        else:
+            self.logger.debug(f"🕵️ No filters provided. Retrieving all records from {model.__name__}.")
+            self.logger.info(f"🚦 Fetching the entire {model.__name__} table without any filters.")
 
         with get_db_session() as session:
             try:
                 query = session.query(model)
-                # Dynamically build the query filters
-                for col_name, val in zip(column_names, values):
-                    column_attr = getattr(model, col_name, None)
-                    if column_attr is None:
-                        self.logger.warning(f"😬 Hmm, '{col_name}' is not a valid column in {model.__name__}. No searching possible.")
-                        return []
-                    query = query.filter(column_attr == val)
+
+                # Dynamically build the query filters if any filters are provided
+                if column_names and values:
+                    for col_name, val in zip(column_names, values):
+                        column_attr = getattr(model, col_name, None)
+                        if column_attr is None:
+                            self.logger.warning(
+                                f"😬 Hmm, '{col_name}' is not a valid column in {model.__name__}. No searching possible.")
+                            return []
+                        query = query.filter(column_attr == val)
 
                 records = query.all()
                 if not records:
@@ -99,7 +114,8 @@ class DatabaseOperations:
 
             except Exception as e:
                 session.rollback()
-                self.logger.error(f"💥 Well, that didn't go smoothly. Error searching {model.__name__}: {e}", exc_info=True)
+                self.logger.error(f"💥 Well, that didn't go smoothly. Error searching {model.__name__}: {e}",
+                                  exc_info=True)
                 return []
 
     def _create_record(self, model, **kwargs):
@@ -150,6 +166,130 @@ class DatabaseOperations:
                 session.rollback()
                 self.logger.error(f"💥 Had an issue updating {model.__name__}: {e}", exc_info=True)
                 return None
+
+    def _levenshtein_distance(self, s1: str, s2: str) -> int:
+        """
+        Optimized Levenshtein distance calculation with early rejection if
+        the first letters differ. Returns the edit distance (number of single-character edits).
+
+        Requirements / Assumptions:
+          - If the first characters do not match, we immediately return
+            len(s1) + len(s2) (a large distance), effectively filtering out
+            strings that don't share the same first letter.
+          - Otherwise, use an iterative DP approach for speed.
+        """
+        original_s1, original_s2 = s1, s2  # Keep for logging
+        # Convert to lowercase for case-insensitive comparison
+        s1 = s1.lower()
+        s2 = s2.lower()
+
+        # Early exit if first letters differ
+        if s1 and s2 and s1[0] != s2[0]:
+            dist = len(s1) + len(s2)
+            self.logger.debug(
+                f"🚫 First-letter mismatch: '{original_s1}' vs '{original_s2}' "
+                f"(distance={dist})"
+            )
+            return dist
+
+        # If either is empty, distance is the length of the other
+        if not s1:
+            dist = len(s2)
+            # If both empty, it's distance=0 => exact match
+            if dist == 0:
+                self.logger.debug(
+                    f"🟢 EXACT MATCH: '{original_s1}' vs '{original_s2}' -> distance=0"
+                )
+            else:
+                self.logger.debug(
+                    f"🔎 '{original_s1}' vs '{original_s2}' -> distance={dist} (one empty)"
+                )
+            return dist
+        if not s2:
+            dist = len(s1)
+            # If both empty, it's distance=0 => exact match
+            if dist == 0:
+                self.logger.debug(
+                    f"🟢 EXACT MATCH: '{original_s1}' vs '{original_s2}' -> distance=0"
+                )
+            else:
+                self.logger.debug(
+                    f"🔎 '{original_s1}' vs '{original_s2}' -> distance={dist} (one empty)"
+                )
+            return dist
+
+        # Iterative dynamic programming
+        m, n = len(s1), len(s2)
+        # dp[i][j] = edit distance between s1[:i] and s2[:j]
+        dp = [[0] * (n + 1) for _ in range(m + 1)]
+
+        # Base cases: distance to transform from empty string
+        for i in range(m + 1):
+            dp[i][0] = i
+        for j in range(n + 1):
+            dp[0][j] = j
+
+        for i in range(1, m + 1):
+            for j in range(1, n + 1):
+                cost = 0 if s1[i - 1] == s2[j - 1] else 1
+                dp[i][j] = min(
+                    dp[i - 1][j] + 1,  # deletion
+                    dp[i][j - 1] + 1,  # insertion
+                    dp[i - 1][j - 1] + cost  # substitution (if needed)
+                )
+
+        dist = dp[m][n]
+        if dist == 0:
+            # Perfect match
+            self.logger.debug(
+                f"🟢 EXACT MATCH: '{original_s1}' vs '{original_s2}' -> distance=0"
+            )
+        else:
+            self.logger.debug(
+                f"🔎 '{original_s1}' vs '{original_s2}' -> distance={dist}"
+            )
+
+        return dist
+
+    def find_contact_close_match(
+            self, contact_name: str, all_contacts, max_distance: int = 2
+    ) -> dict:
+        """
+        Find an exact or "close" match for contact_name among the list of
+        contacts. Returns the matched contact dict if found, else None.
+        Logs if match is 'close'.
+        """
+        contact_name_lower = contact_name.lower()
+        # 1) Try exact matches first
+        for c in all_contacts:
+            if c['name'].strip().lower() == contact_name_lower:
+                self.logger.info(f"✅ Exact match found: '{c['name']}' for '{contact_name}'.")
+                return c
+
+        # 2) If no exact match, look for "close matches" within allowable distance
+        best_candidate = None
+        best_distance = max_distance + 1  # Initialize beyond the threshold
+
+        for i, c in enumerate(all_contacts):
+            if i % 50 == 0:
+                self.logger.debug(
+                    f"Comparing '{contact_name}' to '{c['name']}', index {i} of {len(all_contacts)}"
+                )
+            # Perform distance check
+            current_distance = self._levenshtein_distance(contact_name_lower, c['name'].strip().lower())
+            if current_distance < best_distance:
+                best_distance = current_distance
+                best_candidate = c
+
+        if best_candidate and best_distance <= max_distance:
+            self.logger.info(
+                f"⚠️ Close match found for '{contact_name}' → '{best_candidate['name']}', "
+                f"distance={best_distance}. Accepting as match."
+            )
+            return best_candidate
+
+        # No match or close match found
+        return None
 
     # -------------------------------------------------------------------------
     # AicpCodes
@@ -689,7 +829,7 @@ class DatabaseOperations:
             self.logger.warning(f"⚠️ We couldn't parse '{tax_str}' into an integer. Possibly invalid format.")
             return None
 
-    def search_contacts(self, column_names, values):
+    def search_contacts(self, column_names=None, values=None):
         self.logger.debug(f"💼 Searching for Contacts with column_names={column_names}, values={values}")
         return self._search_records(Contact, column_names, values)
 
