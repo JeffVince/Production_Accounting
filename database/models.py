@@ -173,7 +173,7 @@ class DetailItem(Base):
         nullable=False
     )
     state = Column(
-        Enum('PENDING','OVERDUE','ISSUE','RTP','RECONCILED','PAID','APPROVED'),
+        Enum('PENDING','OVERDUE','ISSUE','RTP','RECONCILED','PAID','APPROVED', 'SUBMITTED'),
         nullable=False,
         server_default='PENDING'
     )

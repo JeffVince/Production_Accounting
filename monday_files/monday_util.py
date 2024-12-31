@@ -432,7 +432,6 @@ class MondayUtil(metaclass=SingletonMeta):
             if isinstance(value, set):
                 column_values[key] = list(value)
 
-        self.logger.debug(f"Formatted PO column values: {column_values}")
         return json.dumps(column_values)
 
     def prep_po_log_item_for_monday(self, item):
@@ -545,7 +544,6 @@ class MondayUtil(metaclass=SingletonMeta):
             if isinstance(value, set):
                 column_values[key] = list(value)
 
-        self.logger.debug(f"Formatted subitem column values: {column_values}")
         return json.dumps(column_values)
 
     def create_subitem(self, parent_item_id, subitem_name, column_values):
@@ -845,22 +843,22 @@ class MondayUtil(metaclass=SingletonMeta):
             {
                 "field": "quantity",
                 "db_value": safe_str(db_sub_item.get("quantity")),
-                "monday_value": safe_str(col_vals.get(self.SUBITEM_QUANTITY_COLUMN_ID))
+                "monday_value": safe_str(col_vals.get(self.SUBITEM_QUANTITY_COLUMN_ID)['text'])
             },
             {
                 "field": "rate",
                 "db_value": safe_str(db_sub_item.get("rate")),
-                "monday_value": safe_str(col_vals.get(self.SUBITEM_RATE_COLUMN_ID))
+                "monday_value": safe_str(col_vals.get(self.SUBITEM_RATE_COLUMN_ID)['text'])
             },
             {
                 "field": "ot",
                 "db_value": safe_str(db_sub_item.get("ot")),
-                "monday_value": safe_str(col_vals.get(self.SUBITEM_OT_COLUMN_ID))
+                "monday_value": safe_str(col_vals.get(self.SUBITEM_OT_COLUMN_ID)['text'])
             },
             {
                 "field": "fringes",
                 "db_value": safe_str(db_sub_item.get("fringes")),
-                "monday_value": safe_str(col_vals.get(self.SUBITEM_FRINGE_COLUMN_ID))
+                "monday_value": safe_str(col_vals.get(self.SUBITEM_FRINGE_COLUMN_ID)['text'])
             },
             {
                 "field": "transaction_date",
@@ -870,9 +868,7 @@ class MondayUtil(metaclass=SingletonMeta):
                     else None
                 ),
                 "monday_value": safe_str(
-                    col_vals.get(self.SUBITEM_DATE_COLUMN_ID, {}).get("date")
-                    if isinstance(col_vals.get(self.SUBITEM_DATE_COLUMN_ID), dict)
-                    else col_vals.get(self.SUBITEM_DATE_COLUMN_ID)
+                    col_vals[self.SUBITEM_DATE_COLUMN_ID]["text"]
                 )
             },
             {
@@ -883,9 +879,9 @@ class MondayUtil(metaclass=SingletonMeta):
                     else None
                 ),
                 "monday_value": safe_str(
-                    col_vals.get(self.SUBITEM_DUE_DATE_COLUMN_ID, {}).get("date")
-                    if isinstance(col_vals.get(self.SUBITEM_DUE_DATE_COLUMN_ID), dict)
-                    else col_vals.get(self.SUBITEM_DUE_DATE_COLUMN_ID)
+                    col_vals[self.SUBITEM_DUE_DATE_COLUMN_ID]["text"]
+                    if isinstance(col_vals[self.SUBITEM_DUE_DATE_COLUMN_ID], dict)
+                    else col_vals[self.SUBITEM_DUE_DATE_COLUMN_ID]
                 )
             }
         ]
@@ -910,10 +906,10 @@ class MondayUtil(metaclass=SingletonMeta):
             except (ValueError, TypeError):
                 return None
 
-        project_id = safe_int(float(col_vals.get(self.SUBITEM_PROJECT_ID_COLUMN_ID)))
-        po_number = safe_int(float(col_vals.get(self.SUBITEM_PO_COLUMN_ID)))
-        detail_num = safe_int(float(col_vals.get(self.SUBITEM_ID_COLUMN_ID)))
-        line_id = safe_int(float(col_vals.get(self.SUBITEM_LINE_NUMBER_COLUMN_ID)))
+        project_id = safe_int(float(col_vals[self.SUBITEM_PROJECT_ID_COLUMN_ID]['text']))
+        po_number = safe_int(float(col_vals[self.SUBITEM_PO_COLUMN_ID]['text']))
+        detail_num = safe_int(float(col_vals[self.SUBITEM_ID_COLUMN_ID]['text']))
+        line_id = safe_int(float(col_vals[self.SUBITEM_LINE_NUMBER_COLUMN_ID]['text']))
 
         if project_id is not None and po_number is not None and detail_num is not None and line_id is not None:
             return project_id, po_number, detail_num, line_id

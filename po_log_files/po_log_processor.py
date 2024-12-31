@@ -40,10 +40,50 @@ class POLogProcessor(metaclass=SingletonMeta):
         else:
             return "INV"
 
-    def _determine_status(self, pay_id: str) -> str:
-        status = "PAID" if "PAID" in (pay_id or "").upper() else "PENDING"
-        self.logger.debug(f"📝 Status determined as '{status}' for pay_id='{pay_id}'")
-        return status
+    def _determine_status_and_due_date(self, pay_id: str, payment_type: str, transaction_date: datetime) -> (
+    str, datetime):
+        """
+        Determines the status and due_date based on the rules:
+          - If status = "PAID" and payment type = CC or PC => status=PAID,  due_date=transaction_date
+          - If status = "RTP"  and payment type = INV     => status=RTP,   due_date=current_date
+          - If status = "NET0" and payment type = INV     => status=RTP,   due_date=transaction_date
+          - If status = "NET(some number)" and payment type = INV
+                 => status=RTP, due_date=transaction_date + that number of days
+          - If status = "PAID" and payment type = INV     => status=PAID,  due_date=current_date
+          - If none of the above and payment type = INV   => status=PENDING, due_date=transaction_date + 30 days
+          - Otherwise, default to status=PENDING, due_date=transaction_date
+        """
+        pay_id_upper = (pay_id or "").strip().upper()
+        current_date = datetime.today()
+
+        # 1) "PAID" + CC/PC
+        if payment_type in ["CC", "PC"]:
+            return "SUBMITTED", transaction_date
+
+        # 2) "RTP" + INV
+        if pay_id_upper == "RTP" and payment_type == "INV":
+            return "RTP", current_date
+
+        # 3) "NET0" + INV
+        if pay_id_upper == "NET0" and payment_type == "INV":
+            return "RTP", transaction_date
+
+        # 4) "NET(some number)" + INV
+        net_match = re.match(r"^NET(\d+)$", pay_id_upper)
+        if net_match and payment_type == "INV":
+            net_days = int(net_match.group(1))
+            return "RTP", transaction_date + timedelta(days=net_days)
+
+        # 5) "PAID" + INV
+        if pay_id_upper == "PAID" and payment_type == "INV":
+            return "PAID", current_date
+
+        # 6) None of the above + INV => PENDING + 30 days
+        if payment_type == "INV":
+            return "PENDING", transaction_date + timedelta(days=30)
+
+        # If not one of the above conditions, just default
+        return "PENDING", transaction_date
 
     def _parse_date(self, date_str: str) -> datetime:
         self.logger.debug(f"⏰ Parsing date from '{date_str}'")
@@ -170,7 +210,13 @@ class POLogProcessor(metaclass=SingletonMeta):
                 else:
                     po_number = po_number.lstrip("0")
 
-                status = self._determine_status(pay_id)
+                try:
+                    transaction_date = self._parse_date(transaction_date_str)
+                except Exception as e:
+                    self.logger.warning(f"❗️ Invalid date at row {row_number}: {transaction_date_str}, error: {e}")
+                    transaction_date = datetime.today()
+
+                status, due_date = self._determine_status_and_due_date(pay_id, payment_type, transaction_date)
 
                 # Determine contact name
                 if payment_type == "PC":
@@ -182,7 +228,6 @@ class POLogProcessor(metaclass=SingletonMeta):
                 else:
                     contact_name = vendor if vendor else "UNKNOWN CONTACT"
                     vendor_type = "Vendor"
-
 
                 po_key = (project_number, po_number)
                 if po_key not in po_map:
@@ -370,7 +415,6 @@ class POLogProcessor(metaclass=SingletonMeta):
         detail_items = []
         self.logger.debug("🔄 Creating detail_items from raw_entries...")
         for entry in raw_entries:
-
             quantity, rate, ot = self._parse_factors(entry['factors'], entry['subtotal'])
             detail_item = {
                 'project_number': entry['project_number'],
@@ -396,7 +440,8 @@ class POLogProcessor(metaclass=SingletonMeta):
         # Sum amounts for main items
         self.logger.debug("🔢 Summing up amounts for main items...")
         for m in main_items:
-            rel_details = [d for d in detail_items if d['po_number'] == m['po_number'] and d['project_number'] == m['project_number']]
+            rel_details = [d for d in detail_items if
+                           d['po_number'] == m['po_number'] and d['project_number'] == m['project_number']]
             total_amount = sum(d['total'] for d in rel_details)
             m['amount'] = total_amount
             self.logger.debug(f"📈 PO='{m['po_number']}' total amount='{total_amount}'")

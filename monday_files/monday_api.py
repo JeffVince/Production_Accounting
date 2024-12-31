@@ -3,6 +3,8 @@
 import json
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 from dotenv import load_dotenv
 import requests
 
@@ -449,6 +451,248 @@ class MondayAPI(metaclass=SingletonMeta):
             self.logger.info(f"📄 Fetched {len(valid_items)} valid subitems from board {self.SUBITEM_BOARD_ID}. Continuing...")
 
         return all_items
+
+    def get_subitems_in_board(self, project_number=None):
+        """
+        Fetches subitems from the subitem board (self.SUBITEM_BOARD_ID).
+
+        - If project_number is None, returns all subitems from the subitem board.
+        - If project_number is provided, returns all subitems whose
+          project_id column (self.monday_util.SUBITEM_PROJECT_ID_COLUMN_ID)
+          matches the given project_number.
+
+        For each subitem, we transform its 'column_values' list into a dict:
+          "column_values": {
+              <column_id>: {
+                  "text": <string>,
+                  "value": <raw JSON string or None>
+              },
+              ...
+          }
+
+        Returns: a list of subitem dicts like:
+        [
+          {
+            "id": <subitem_id>,
+            "name": <subitem_name>,
+            "parent_item": {
+                "id": <parent_item_id>,
+                "name": <parent_item_name>
+            },
+            "column_values": {
+                "<col_id>": { "text": ..., "value": ... },
+                ...
+            }
+          },
+          ...
+        ]
+        """
+        board_id = self.SUBITEM_BOARD_ID
+        column_id = self.monday_util.SUBITEM_PROJECT_ID_COLUMN_ID
+        limit = 200
+
+        self.logger.info(
+            f"📥 Fetching subitems from board_id={board_id}, project_number={project_number}"
+        )
+
+        all_items = []
+        cursor = None
+
+        # ---------------------------
+        # If no project_number, fetch everything
+        # ---------------------------
+        if project_number is None:
+            while True:
+                if cursor:
+                    query = """
+                    query ($cursor: String!, $limit: Int!) {
+                        complexity { query before after }
+                        next_items_page(cursor: $cursor, limit: $limit) {
+                            cursor
+                            items {
+                                id
+                                name
+                                parent_item {
+                                    id
+                                    name
+                                }
+                                column_values {
+                                    id
+                                    text
+                                    value
+                                }
+                            }
+                        }
+                    }
+                    """
+                    variables = {"cursor": cursor, "limit": limit}
+                else:
+                    query = """
+                    query ($board_id: [ID!]!, $limit: Int!) {
+                        complexity { query before after }
+                        boards(ids: $board_id) {
+                            items_page(limit: $limit) {
+                                cursor
+                                items {
+                                    id
+                                    name
+                                    parent_item {
+                                        id
+                                        name
+                                    }
+                                    column_values {
+                                        id
+                                        text
+                                        value
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    """
+                    variables = {"board_id": str(board_id), "limit": limit}
+
+                try:
+                    response = self._make_request(query, variables)
+                except Exception as e:
+                    self.logger.error(f"❌ Error fetching subitems: {e}")
+                    break
+
+                if cursor:
+                    items_data = response.get("data", {}).get("next_items_page", {})
+                else:
+                    boards_data = response.get("data", {}).get("boards", [])
+                    if not boards_data:
+                        self.logger.warning(f"⚠️ No boards found for board_id={board_id}.")
+                        break
+                    items_data = boards_data[0].get("items_page", {})
+
+                items = items_data.get("items", [])
+                # Optional: exclude subitems that don't have a parent
+                valid_items = [item for item in items if item.get("parent_item") is not None]
+
+                # Convert column_values from a list to a dict
+                for item in valid_items:
+                    # Replace the list with a dict version
+                    item["column_values"] = {
+                        cv["id"]: {
+                            "text": cv["text"],
+                            "value": cv["value"]
+                        }
+                        for cv in item.get("column_values", [])
+                    }
+
+                all_items.extend(valid_items)
+                cursor = items_data.get("cursor")
+
+                if not cursor:
+                    self.logger.debug("✅ No more subitem pages to fetch.")
+                    break
+
+                self.logger.info(
+                    f"🔄 Fetched {len(valid_items)} subitems so far, continuing pagination..."
+                )
+
+            return all_items
+
+        # ---------------------------
+        # If project_number is provided, fetch only matching subitems
+        # ---------------------------
+        else:
+            while True:
+                if cursor:
+                    query = """
+                    query ($cursor: String!, $limit: Int!) {
+                        complexity { query before after }
+                        next_items_page(cursor: $cursor, limit: $limit) {
+                            cursor
+                            items {
+                                id
+                                name
+                                parent_item {
+                                    id
+                                    name
+                                }
+                                column_values {
+                                    id
+                                    text
+                                    value
+                                }
+                            }
+                        }
+                    }
+                    """
+                    variables = {"cursor": cursor, "limit": limit}
+                else:
+                    # Filter using items_page_by_column_values with project_number
+                    query = """
+                    query ($board_id: ID!, $column_id: String!, $project_number: String!, $limit: Int!) {
+                        complexity { query before after }
+                        items_page_by_column_values(
+                            board_id: $board_id, 
+                            columns: [{column_id: $column_id, column_values: [$project_number]}],
+                            limit: $limit
+                        ) {
+                            cursor
+                            items {
+                                id
+                                name
+                                parent_item {
+                                    id
+                                    name
+                                }
+                                column_values {
+                                    id
+                                    text
+                                    value
+                                }
+                            }
+                        }
+                    }
+                    """
+                    variables = {
+                        "board_id": str(board_id),
+                        "column_id": column_id,
+                        "project_number": str(project_number),
+                        "limit": limit
+                    }
+
+                try:
+                    response = self._make_request(query, variables)
+                except Exception as e:
+                    self.logger.error(f"❌ Error fetching subitems by project_number: {e}")
+                    break
+
+                if cursor:
+                    items_data = response.get("data", {}).get("next_items_page", {})
+                else:
+                    items_data = response.get("data", {}).get("items_page_by_column_values", {})
+
+                items = items_data.get("items", [])
+                valid_items = [item for item in items if item.get("parent_item") is not None]
+
+                # Convert column_values from a list to a dict
+                for item in valid_items:
+                    item["column_values"] = {
+                        cv["id"]: {
+                            "text": cv["text"],
+                            "value": cv["value"]
+                        }
+                        for cv in item.get("column_values", [])
+                    }
+
+                all_items.extend(valid_items)
+                cursor = items_data.get("cursor")
+
+                if not cursor:
+                    self.logger.debug("✅ No more pages for filtered subitems.")
+                    break
+
+                self.logger.info(
+                    f"🔄 Fetched {len(valid_items)} matching subitems so far, continuing pagination..."
+                )
+
+            return all_items
 
     def fetch_all_contacts(self, limit: int = 250) -> list:
         """
@@ -910,14 +1154,56 @@ class MondayAPI(metaclass=SingletonMeta):
         :param create: True -> create new items. False -> update existing.
         :return: The updated batch with "monday_item_id" filled as needed.
         """
-        self.logger.info(f"⚙️ Processing a batch of {len(batch)} items for project_id='{project_id}', create={create}...")
+        self.logger.info(
+            f"⚙️ Processing a batch of {len(batch)} items for project_id='{project_id}', create={create}..."
+        )
+
+        # Helper function to process one sub-batch
+        def create_sub_batch(sub_batch):
+            """Create items in Monday from a sub-batch."""
+            return self.create_items_batch(sub_batch, project_id)
 
         if create:
-            # Create items in bulk
-            updated_batch = self.create_items_batch(batch, project_id)
-            return updated_batch
+            # 1. Split into chunks of 10 items each
+            chunk_size = 10
+            sub_batches = [
+                batch[i: i + chunk_size] for i in range(0, len(batch), chunk_size)
+            ]
+
+            self.logger.info(
+                f"Splitting batch into {len(sub_batches)} sub-batches of up to {chunk_size} items each."
+            )
+
+            # 2. Dispatch parallel creation tasks
+            results = []
+            with ThreadPoolExecutor() as executor:
+                future_to_index = {}
+                for idx, sub_batch in enumerate(sub_batches):
+                    self.logger.debug(
+                        f"Submitting sub-batch #{idx + 1} with {len(sub_batch)} items."
+                    )
+                    future = executor.submit(create_sub_batch, sub_batch)
+                    future_to_index[future] = idx
+
+                # 3. Gather results (wait for all sub-batches to complete)
+                for future in as_completed(future_to_index):
+                    idx = future_to_index[future]
+                    try:
+                        sub_result = future.result()  # This is the returned list of items
+                        self.logger.debug(f"Sub-batch #{idx + 1} completed.")
+                        results.extend(sub_result)
+                    except Exception as e:
+                        self.logger.exception(
+                            f"❌ Error creating sub-batch #{idx + 1}: {e}"
+                        )
+                        # Optionally raise here if you want to stop everything upon failure
+                        raise
+
+            return results
+
         else:
-            # Update items individually
+            # If we're updating items, do them one by one (or you could similarly
+            # batch these if that is needed/desired).
             updated_batch = []
             for itm in batch:
                 db_item = itm["db_item"]
@@ -926,16 +1212,21 @@ class MondayAPI(metaclass=SingletonMeta):
                 item_id = itm["monday_item_id"]
 
                 if not item_id:
-                    self.logger.warning(f"⚠️ No monday_item_id provided for update. Skipping item: {db_item}")
+                    self.logger.warning(
+                        f"⚠️ No monday_item_id provided for update. Skipping item: {db_item}"
+                    )
                     continue
 
                 try:
-                    self.logger.debug(f"🔄 Updating item {item_id} with new column values...")
+                    self.logger.debug(
+                        f"🔄 Updating item {item_id} with new column values..."
+                    )
                     self.update_item(item_id, column_values_json, type="main")
                     updated_batch.append(itm)
                 except Exception as e:
                     self.logger.exception(f"❌ Error updating item {item_id}: {e}")
                     raise
+
             return updated_batch
 
     def batch_create_or_update_subitems(self, subitems_batch, parent_item_id, create=True):
@@ -943,7 +1234,7 @@ class MondayAPI(metaclass=SingletonMeta):
         🔁 Batch create or update multiple subitems under a given parent_item_id.
         :param subitems_batch: List of dicts -> each has:
             {
-              "db_sub_item": ...,
+              "db_sub_item": ...,nnb
               "column_values": {...},
               "monday_subitem_id": maybe_id,
               "parent_id": parent_item_id

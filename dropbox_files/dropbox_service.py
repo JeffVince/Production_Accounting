@@ -17,7 +17,7 @@ import os
 import re
 import traceback
 import logging
-from concurrent.futures import ThreadPoolExecutor, wait, ALL_COMPLETED
+from concurrent.futures import ThreadPoolExecutor, wait, ALL_COMPLETED, as_completed
 from typing import Optional
 
 from models import Contact
@@ -59,8 +59,8 @@ class DropboxService(metaclass=SingletonMeta):
     DEBUG_STARTING_PO_NUMBER = 0 # If set, skip POs below this number
     SKIP_DATABASE = False
     ADD_PO_TO_MONDAY = True
-    GET_FOLDER_LINKS = True
-    GET_TAX_LINKS = True
+    GET_FOLDER_LINKS = False
+    GET_TAX_LINKS = False
     GET_CONTACTS = False
 
     executor = ThreadPoolExecutor(max_workers=5)
@@ -273,6 +273,7 @@ class DropboxService(metaclass=SingletonMeta):
         processed_items = []
         all_db_contacts = self.database_util.search_contacts()
 
+        # --- 1) PROCESS MAIN ITEMS (Purchase Orders) ---
         for i, item in enumerate(main_items):
             try:
                 # 1) Debug skip check
@@ -299,7 +300,8 @@ class DropboxService(metaclass=SingletonMeta):
                     new_contact = self.database_util.create_minimal_contact(contact_name)
                     contact_id = new_contact["id"] if new_contact else None
                 if not contact_id:
-                    self.logger.warning(f"⚠️ Could not determine contact_id for contact '{contact_name}'; skipping PO creation.")
+                    self.logger.warning(
+                        f"⚠️ Could not determine contact_id for contact '{contact_name}'; skipping PO creation.")
                     continue
 
                 # 3) Convert the PO's 'project_number' -> real Project.id
@@ -315,9 +317,7 @@ class DropboxService(metaclass=SingletonMeta):
                         name=f"Project {project_number_str}",
                         status="Active"
                     )
-                    if new_proj:
-                        continue
-                    else:
+                    if not new_proj:
                         self.logger.warning(f"⚠️ No valid project row created for {project_number_str}. Skipping.")
                         continue
 
@@ -344,17 +344,17 @@ class DropboxService(metaclass=SingletonMeta):
                 elif isinstance(po_search, list):
                     existing_po = po_search[0]
                     po_surrogate_id = existing_po["id"]
-                    updated_po = self.database_util.update_purchase_order_by_keys(
+                    self.database_util.update_purchase_order_by_keys(
                         project_number=item["project_number"],
                         po_number=item["po_number"],
                         description=item.get("description"),
                         po_type=item.get("po_type"),
-                        contact_id=contact_id # Link to the contact
+                        contact_id=contact_id  # Link to the contact
                     )
                 else:
                     # Single record found
                     po_surrogate_id = po_search["id"]
-                    updated_po = self.database_util.update_purchase_order_by_keys(
+                    self.database_util.update_purchase_order_by_keys(
                         project_number=item["project_number"],
                         po_number=item["po_number"],
                         description=item.get("description"),
@@ -372,12 +372,13 @@ class DropboxService(metaclass=SingletonMeta):
                     exc_info=True
                 )
 
-        # 5) Create or update Detail Items
+        # --- 2) CREATE OR UPDATE DETAIL ITEMS ---
         self.logger.info("🔧 Creating/Updating Detail Items for each PO...")
         for sub_item in detail_items:
             try:
                 if self.DEBUG_STARTING_PO_NUMBER and int(sub_item["po_number"]) < self.DEBUG_STARTING_PO_NUMBER:
-                    self.logger.debug(f"⏭ Skipping detail item for PO '{sub_item['po_number']}' due to debug start number.")
+                    self.logger.debug(
+                        f"⏭ Skipping detail item for PO '{sub_item['po_number']}' due to debug start number.")
                     continue
 
                 main_match = next((m for m in processed_items if m["po_number"] == sub_item["po_number"]), None)
@@ -394,10 +395,17 @@ class DropboxService(metaclass=SingletonMeta):
                     line_id=sub_item["line_id"]
                 )
 
-                parent_status = main_match.get("status", "PENDING")
-                final_detail_state = "RTP" if parent_status == "RTP" else "PENDING"
+
+
+                # -----------------------
+                # NEW: Check Payment Status
+                # -----------------------
+                # If existing detail item already has a payment status in ["PAID", "Logged", "Reconciled"],
+                # we want to skip any further DB or Monday.com update.
+                PAYMENT_COMPLETE_STATUSES = ["PAID", "LOGGED", "RECONCILED"]
 
                 if not existing_detail:
+                    # Not in DB yet -> create it
                     created_di = self.database_util.create_detail_item_by_keys(
                         project_number=sub_item["project_number"],
                         po_number=sub_item["po_number"],
@@ -412,14 +420,21 @@ class DropboxService(metaclass=SingletonMeta):
                         transaction_date=sub_item.get("date"),
                         due_date=sub_item.get("due date"),
                         aicp_code=sub_item.get("account"),
-                        state=final_detail_state
+                        state=sub_item["state"]
                     )
                     if created_di:
-                        self.logger.debug(
-                            f"✔️ Created DetailItem id={created_di['id']} for PO={sub_item['po_number']}"
-                        )
+                        self.logger.debug(f"✔️ Created DetailItem id={created_di['id']} for PO={sub_item['po_number']}")
+
                 elif isinstance(existing_detail, list):
+                    # Multiple found; typically you’d handle merging or pick one.
                     first_detail = existing_detail[0]
+                    payment_status = first_detail.get("payment_status", "").upper()
+                    if payment_status in [s.upper() for s in PAYMENT_COMPLETE_STATUSES]:
+                        self.logger.debug(
+                            f"⚠️ DetailItem id={first_detail['id']} has payment_status={payment_status}, skipping update."
+                        )
+                        continue
+                    # Otherwise, proceed with update
                     self.logger.debug(
                         f"🔎 Found multiple detail items, updating the first (id={first_detail['id']})."
                     )
@@ -436,10 +451,18 @@ class DropboxService(metaclass=SingletonMeta):
                         description=sub_item.get("description"),
                         transaction_date=sub_item.get("date"),
                         due_date=sub_item.get("due date"),
-                        state=final_detail_state
+                        state=sub_item["state"]
                     )
+
                 else:
                     # Exactly one found
+                    payment_status = existing_detail.get("payment_status", "").upper()
+                    if payment_status in [s.upper() for s in PAYMENT_COMPLETE_STATUSES]:
+                        self.logger.debug(
+                            f"⚠️ DetailItem id={existing_detail['id']} has payment_status={payment_status}, skipping update."
+                        )
+                        continue
+
                     self.logger.debug(
                         f"🔎 Found existing detail item, updating id={existing_detail['id']}."
                     )
@@ -456,8 +479,9 @@ class DropboxService(metaclass=SingletonMeta):
                         description=sub_item.get("description"),
                         transaction_date=sub_item.get("date"),
                         due_date=sub_item.get("due date"),
-                        state=final_detail_state
+                        state=sub_item["state"]
                     )
+
             except Exception as ex:
                 self.logger.error(
                     f"💥 Error processing DetailItem for PO={sub_item['po_number']}: {ex}",
@@ -466,7 +490,7 @@ class DropboxService(metaclass=SingletonMeta):
 
         self.logger.info("✅ Database processing of PO data complete.")
         return processed_items
-    #endregion
+        #endregion
 
     #region Event Processing - PO Log - Step 2 -  Add Folder & Tax Links + Contact Data
     def callback_add_po_data_to_DB(self, fut):
@@ -553,7 +577,6 @@ class DropboxService(metaclass=SingletonMeta):
 
         except Exception as e:
             self.logger.error(f"❌ after_db_done encountered an error: {e}", exc_info=True)
-    #endregion
 
     #region   DROPBOX FOLDER LINK
     def update_po_folder_link(self, project_number, po_number):
@@ -621,58 +644,26 @@ class DropboxService(metaclass=SingletonMeta):
                               exc_info=True)
         # endregion
     #endregion
-
-    #region CONTACT SYNC
-    def sync_contacts_to_DB(self, processed_item: dict, all_db_contacts):
-        """
-        Example coordinator function that:
-          1) Looks up (or creates) a DB Contact by name
-          2) Checks for any near-match in the given all_monday_contacts
-          3) If found, update DB with Monday columns
-          4) If not found, create in Monday & store pulse_id
-        """
-        # region 🏁 Setup
-        contact_name = processed_item.get("contact_name", "").strip()
-        if not contact_name:
-            self.logger.warning("⚠️ No contact_name in po_data, skipping.")
-            return None
-        self.logger.info(f"📦 Handling new PO with contact_name='{contact_name}'.")
-        # endregion
-
-        # region 1) Find/Create DB Contact
-        db_contact = self.database_util.find_contact_close_match(contact_name, all_db_contacts)
-        if not db_contact:
-            self.logger.info(f"❌ No Monday contact found for '{contact_name}'. Creating new item...")
-            db_contact = self.database_util.create_minimal_contact(contact_name)
-            if not db_contact:
-                self.logger.error(f"💥 Could not create a new DB Contact for '{contact_name}'. Aborting.")
-            else:
-                self.logger.info(f"✅ Created contact: '{contact_name}' in DB.")
-            new_pulse_id = self.monday_api.create_contact_in_monday(contact_name)
-            self.logger.info(f"✅ Created contact: '{contact_name}' in Monday.")
-            # Update DB with the new pulse_id — again, pass contact_id
-            db_contact = self.database_util.update_contact_with_monday_data(
-                contact_id=db_contact["id"],
-                pulse_id=new_pulse_id
-            )
-            self.logger.info(f"✅ Updated contact: '{contact_name}' with Pulse_ID.")
-            return db_contact
-        else:
-            self.logger.info(f"✅ Found existing DB contact (id={db_contact['id']}) for '{contact_name}'.")
-        #endregion
-
     #endregion
 
-    #region Event Processing - PO Log - Step 4 - Monday Processing
+    #region Event Processing - PO Log - Step 3 - Monday Processing
     def create_pos_in_monday(self, project_number):
+        """
+        Demonstrates how to fetch all subitems once from Monday,
+        then process them locally to avoid multiple queries.
+        """
+
         self.logger.info("🌐 Processing PO data in Monday.com...")
-        # Fetch all items in the project
+
+        # -------------------------------------------------------------------------
+        # 1) FETCH MAIN ITEMS FROM MONDAY & FROM DB
+        # -------------------------------------------------------------------------
         monday_items = monday_api.get_items_in_project(project_id=project_number)
+        processed_items = self.database_util.search_purchase_order_by_keys(
+            project_number=project_number
+        )
 
-        # Fetch all po's from DB
-        processed_items = self.database_util.search_purchase_order_by_keys(project_number = project_number)
-
-        # Build a map from (project_id, po_number) to Monday item
+        # Build a map for main items
         monday_items_map = {}
         for mi in monday_items:
             pid = mi["column_values"].get(monday_util.PO_PROJECT_ID_COLUMN)["text"]
@@ -680,16 +671,49 @@ class DropboxService(metaclass=SingletonMeta):
             if pid and pono:
                 monday_items_map[(int(pid), int(pono))] = mi
 
-        # Determine items to create or update
+        # -------------------------------------------------------------------------
+        # 2) FETCH ALL SUBITEMS AT ONCE (FOR ENTIRE SUBITEM BOARD)
+        # -------------------------------------------------------------------------
+        # Let's assume you have a method like monday_api.get_subitems_in_board()
+        # that returns all subitems in one shot from the subitem board.
+        # Or you could call a special query if Monday supports this for you.
+        # You need to have a “subitem board” or some method to get all subitems.
+        all_subitems = monday_api.get_subitems_in_board(project_number=project_number)
+        # Example structure of each subitem: {
+        #   "id": "...",
+        #   "column_values": {...},
+        #   "parent_id": "...",
+        #   ...
+        # }
+
+        # -------------------------------------------------------------------------
+        # 3) BUILD A GLOBAL DICTIONARY FOR SUBITEM LOOKUP
+        #    Keyed by (project_number, po_number, detail_number, line_id)
+        # -------------------------------------------------------------------------
+        global_subitem_map = {}
+        for msub in all_subitems:
+            # Extract your custom identifiers (like project_number, po_number, detail_number, line_id)
+            # from the msub's column_values or however you store them.
+            # For instance, if you store them in “column_values”, you might do:
+            identifiers = monday_util.extract_subitem_identifiers(msub)
+            # Suppose that returns (project_number, po_number, detail_number, line_id)
+            # Or you might store them in columns or in the item name, etc.
+
+            if identifiers is not None:
+                global_subitem_map[identifiers] = msub
+
+        # -------------------------------------------------------------------------
+        # 4) DETERMINE WHICH MAIN ITEMS NEED CREATION/UPDATE
+        # -------------------------------------------------------------------------
         items_to_create = []
         items_to_update = []
 
         for db_item in processed_items:
-
-            contact_item = self.database_util.search_contacts(['id'],[db_item["contact_id"]])
+            contact_item = self.database_util.search_contacts(['id'], [db_item["contact_id"]])
             db_item["contact_pulse_id"] = contact_item["pulse_id"]
             db_item["contact_name"] = contact_item["name"]
             db_item["project_number"] = project_number
+
             p_id = project_number
             po_no = int(db_item["po_number"])
 
@@ -706,6 +730,7 @@ class DropboxService(metaclass=SingletonMeta):
 
             key = (p_id, po_no)
             if key in monday_items_map:
+                # This main item exists in Monday => check if an update is needed
                 monday_item = monday_items_map[key]
                 differences = monday_util.is_main_item_different(db_item, monday_item)
                 if differences:
@@ -716,19 +741,23 @@ class DropboxService(metaclass=SingletonMeta):
                         "monday_item_id": monday_item["id"]
                     })
                 else:
-                    self.logger.debug(f"No changes for PO {po_no}, skipping update. Differences: None")
+                    self.logger.debug(f"No changes for PO {po_no}, skipping update.")
             else:
-                self.logger.debug(f"PO {po_no} does not exist on Monday, scheduling creation.")
+                # Not in Monday => schedule creation
                 items_to_create.append({
                     "db_item": db_item,
                     "column_values": new_vals,
                     "monday_item_id": None
                 })
 
-        # Batch create main items
+        # -------------------------------------------------------------------------
+        # 5) CREATE/UPDATE MAIN ITEMS
+        # -------------------------------------------------------------------------
         if items_to_create:
             self.logger.info(f"🆕 Need to create {len(items_to_create)} main items on Monday.")
-            created_mapping = monday_api.batch_create_or_update_items(items_to_create, project_id=project_number, create=True)
+            created_mapping = monday_api.batch_create_or_update_items(
+                items_to_create, project_id=project_number, create=True
+            )
             for itm in created_mapping:
                 db_item = itm["db_item"]
                 monday_item_id = itm["monday_item_id"]
@@ -742,16 +771,19 @@ class DropboxService(metaclass=SingletonMeta):
                     "column_values": itm["column_values"]
                 }
 
-        # Batch update main items
         if items_to_update:
             self.logger.info(f"✏️ Need to update {len(items_to_update)} main items on Monday.")
-            updated_mapping = monday_api.batch_create_or_update_items(items_to_update, project_id=project_number, create=False)
+            updated_mapping = monday_api.batch_create_or_update_items(
+                items_to_update, project_id=project_number, create=False
+            )
             for itm in updated_mapping:
                 db_item = itm["db_item"]
                 monday_item_id = itm["monday_item_id"]
-                self.database_util.update_purchase_order_by_keys(project_number, db_item["po_number"], pulse_id=monday_item_id)
+                self.database_util.update_purchase_order_by_keys(
+                    project_number, db_item["po_number"], pulse_id=monday_item_id
+                )
                 db_item["pulse_id"] = monday_item_id
-                p =project_number
+                p = project_number
                 po = int(db_item["po_number"])
                 monday_items_map[(p, po)]["column_values"] = itm["column_values"]
 
@@ -762,13 +794,16 @@ class DropboxService(metaclass=SingletonMeta):
             main_monday_item = monday_items_map.get((p_id, po_no))
             if main_monday_item and not db_item.get("pulse_id"):
                 monday_item_id = main_monday_item["id"]
-                updated = self.database_util.update_purchase_order_by_keys(project_number, db_item["po_number"], pulse_id=monday_item_id)
-
+                updated = self.database_util.update_purchase_order_by_keys(
+                    project_number, db_item["po_number"], pulse_id=monday_item_id
+                )
                 if updated:
                     db_item["pulse_id"] = monday_item_id
-                    self.logger.info(f"🗂 Ensured main item PO {po_no} now has pulse_id {monday_item_id} in DB and processed_items.")
+                    self.logger.info(f"🗂 PO {po_no} now has pulse_id {monday_item_id} in DB")
 
-        # Handle sub-items
+        # -------------------------------------------------------------------------
+        # 6) CREATE/UPDATE SUBITEMS WITHOUT FETCHING FROM MONDAY AGAIN
+        # -------------------------------------------------------------------------
         for db_item in processed_items:
             p_id = project_number
             po_no = int(db_item["po_number"])
@@ -780,26 +815,18 @@ class DropboxService(metaclass=SingletonMeta):
             main_monday_id = main_monday_item["id"]
             sub_items_db = self.database_util.search_detail_item_by_keys(project_number, db_item["po_number"])
 
-            monday_subitems = monday_api.get_subitems_for_item(main_monday_id)
-            monday_sub_map = {}
-            for msub in monday_subitems:
-                identifiers = monday_util.extract_subitem_identifiers(msub)
-                if identifiers is not None:
-                    monday_sub_map[identifiers] = msub
-
+            # Build subitems_to_create and subitems_to_update from the *global* subitem map
             subitems_to_create = []
             subitems_to_update = []
-            subitems_list = []
 
+            # Normalize to a list
             if isinstance(sub_items_db, dict):
-                subitems_list.append(sub_items_db)
-            else:
-                subitems_list = sub_items_db
+                sub_items_db = [sub_items_db]
 
-            for sdb in subitems_list:
+            for sdb in sub_items_db:
                 sub_col_values_str = monday_util.subitem_column_values_formatter(
                     project_id=project_number,
-                    po_number= db_item["po_number"],
+                    po_number=db_item["po_number"],
                     detail_item_number=sdb["detail_number"],
                     line_id=sdb["line_id"],
                     notes=sdb.get("payment_type"),
@@ -815,67 +842,164 @@ class DropboxService(metaclass=SingletonMeta):
                     fringes=sdb.get("fringes")
                 )
                 new_sub_vals = json.loads(sub_col_values_str)
-                sub_key = (project_number, db_item["po_number"], sdb["detail_number"], sdb["line_id"])
 
-                if sub_key in monday_sub_map:
-                    monday_sub = monday_sub_map[sub_key]
+                sub_key = (
+                    project_number,
+                    db_item["po_number"],
+                    sdb["detail_number"],
+                    sdb["line_id"]
+                )
+
+                # Check if it exists in the global map
+                if sub_key in global_subitem_map:
+                    # Subitem already exists in Monday => see if there's a difference
+                    msub = global_subitem_map[sub_key]
                     sdb["project_number"] = db_item["project_number"]
                     sdb["po_number"] = db_item["po_number"]
-                    differences = monday_util.is_sub_item_different(sdb, monday_sub)
+                    differences = monday_util.is_sub_item_different(sdb, msub)
                     if differences:
-                        self.logger.info(f"Sub-item differs for detail #{sdb['detail_number']} (PO {po_no}). Differences: {differences}")
+                        self.logger.debug(
+                            f"Sub-item differs for detail #{sdb['detail_number']} (PO {po_no}). {differences}"
+                        )
                         subitems_to_update.append({
                             "db_sub_item": sdb,
                             "column_values": new_sub_vals,
                             "parent_id": main_monday_id,
-                            "monday_item_id": monday_sub["id"]
+                            "monday_item_id": msub["id"]
                         })
                     else:
-                        self.logger.debug(f"No changes for sub-item #{sdb['detail_number']} (PO {po_no}). Differences: None")
-                        # Ensure pulse_id in DB
-                        sub_pulse_id = monday_sub["id"]
+                        # No changes, but ensure pulse_id in DB
+                        sub_pulse_id = msub["id"]
                         self.database_util.update_detail_item_by_keys(
-                            project_number=project_number, po_number=db_item["po_number"], detail_number=sdb["detail_number"], line_id=sdb["line_id"],
-                            pulse_id=sub_pulse_id, parent_pulse_id=main_monday_id
+                            project_number=project_number,
+                            po_number=db_item["po_number"],
+                            detail_number=sdb["detail_number"],
+                            line_id=sdb["line_id"],
+                            pulse_id=sub_pulse_id,
+                            parent_pulse_id=main_monday_id
                         )
                         sdb["pulse_id"] = sub_pulse_id
                         sdb["parent_pulse_id"] = main_monday_id
                 else:
-                    self.logger.debug(f"Sub-item #{sdb['detail_number']} (PO {po_no}) does not exist on Monday, scheduling creation.")
+                    # Need to create it
                     subitems_to_create.append({
                         "db_sub_item": sdb,
                         "column_values": new_sub_vals,
                         "parent_id": main_monday_id
                     })
 
+            # -----------------------
+            # SUB-ITEM CREATE (BATCH)
+            # -----------------------
             if subitems_to_create:
                 self.logger.info(f"🆕 Need to create {len(subitems_to_create)} sub-items for PO {po_no}.")
-                created_subs = monday_api.batch_create_or_update_subitems(subitems_to_create, parent_item_id=main_monday_id, create=True)
-                for csub in created_subs:
-                    db_sub_item = csub["db_sub_item"]
-                    monday_subitem_id = csub["monday_item_id"]
-                    self.database_util.update_detail_item_by_keys(
-                        project_number, db_item["po_number"], db_sub_item["detail_number"], db_sub_item["line_id"],
-                        pulse_id=monday_subitem_id, parent_pulse_id=main_monday_id
-                    )
-                    db_sub_item["pulse_id"] = monday_subitem_id
-                    db_sub_item["parent_pulse_id"] = main_monday_id
+                self._batch_create_subitems(subitems_to_create, main_monday_id, project_number, db_item)
 
+            # -----------------------
+            # SUB-ITEM UPDATE (BATCH)
+            # -----------------------
             if subitems_to_update:
                 self.logger.info(f"✏️ Need to update {len(subitems_to_update)} sub-items for PO {po_no}.")
-                updated_subs = monday_api.batch_create_or_update_subitems(subitems_to_update, parent_item_id=main_monday_id, create=False)
-                for usub in updated_subs:
-                    db_sub_item = usub["db_sub_item"]
-                    monday_subitem_id = usub["monday_item_id"]
-                    self.database_util.update_detail_item_by_keys(
-                        project_number, db_item["po_number"], db_sub_item["detail_number"], db_sub_item["line_id"],
-                        pulse_id=monday_subitem_id, parent_pulse_id=main_monday_id
-                    )
-                    db_sub_item["pulse_id"] = monday_subitem_id
-                    db_sub_item["parent_pulse_id"] = main_monday_id
+                self._batch_update_subitems(subitems_to_update, main_monday_id, project_number, db_item)
 
         self.logger.info("✅ Monday.com processing of PO data complete.")
         return processed_items
+
+    # ---------------------------------------------------------------------
+    # Below: same subitem batch-creation code from your snippet (unchanged)
+    # ---------------------------------------------------------------------
+    def _batch_create_subitems(self, subitems_to_create, parent_item_id, project_number, db_item):
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        chunk_size = 10
+        create_chunks = [
+            subitems_to_create[i: i + chunk_size]
+            for i in range(0, len(subitems_to_create), chunk_size)
+        ]
+
+        all_created_subs = []
+        with ThreadPoolExecutor() as executor:
+            future_to_index = {}
+            for idx, chunk in enumerate(create_chunks):
+                future = executor.submit(
+                    self.monday_api.batch_create_or_update_subitems,
+                    chunk,
+                    parent_item_id=parent_item_id,
+                    create=True
+                )
+                future_to_index[future] = idx
+
+            for future in as_completed(future_to_index):
+                idx = future_to_index[future]
+                try:
+                    chunk_result = future.result()
+                    self.logger.debug(f"Subitems create-chunk #{idx + 1} completed.")
+                    all_created_subs.extend(chunk_result)
+                except Exception as e:
+                    self.logger.exception(f"❌ Error creating subitems in chunk {idx + 1}: {e}")
+                    raise
+
+        # Update DB
+        for csub in all_created_subs:
+            db_sub_item = csub["db_sub_item"]
+            monday_subitem_id = csub["monday_item_id"]
+            self.database_util.update_detail_item_by_keys(
+                project_number,
+                db_item["po_number"],
+                db_sub_item["detail_number"],
+                db_sub_item["line_id"],
+                pulse_id=monday_subitem_id,
+                parent_pulse_id=parent_item_id
+            )
+            db_sub_item["pulse_id"] = monday_subitem_id
+            db_sub_item["parent_pulse_id"] = parent_item_id
+
+    def _batch_update_subitems(self, subitems_to_update, parent_item_id, project_number, db_item):
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        chunk_size = 10
+        update_chunks = [
+            subitems_to_update[i: i + chunk_size]
+            for i in range(0, len(subitems_to_update), chunk_size)
+        ]
+
+        all_updated_subs = []
+        with ThreadPoolExecutor() as executor:
+            future_to_index = {}
+            for idx, chunk in enumerate(update_chunks):
+                future = executor.submit(
+                    self.monday_api.batch_create_or_update_subitems,
+                    chunk,
+                    parent_item_id=parent_item_id,
+                    create=False
+                )
+                future_to_index[future] = idx
+
+            for future in as_completed(future_to_index):
+                idx = future_to_index[future]
+                try:
+                    chunk_result = future.result()
+                    self.logger.debug(f"Subitems update-chunk #{idx + 1} completed.")
+                    all_updated_subs.extend(chunk_result)
+                except Exception as e:
+                    self.logger.exception(f"❌ Error updating subitems in chunk {idx + 1}: {e}")
+                    raise
+
+        # Update DB
+        for usub in all_updated_subs:
+            db_sub_item = usub["db_sub_item"]
+            monday_subitem_id = usub["monday_item_id"]
+            self.database_util.update_detail_item_by_keys(
+                project_number,
+                db_item["po_number"],
+                db_sub_item["detail_number"],
+                db_sub_item["line_id"],
+                pulse_id=monday_subitem_id,
+                parent_pulse_id=parent_item_id
+            )
+            db_sub_item["pulse_id"] = monday_subitem_id
+            db_sub_item["parent_pulse_id"] = parent_item_id
+
     #endregion
 
     #region Helpers
@@ -939,7 +1063,6 @@ class DropboxService(metaclass=SingletonMeta):
         # endregion
         return project_number
     #endregion
-
 
 # Singleton instance
 dropbox_service = DropboxService()
