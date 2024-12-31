@@ -428,7 +428,7 @@ class DropboxService(metaclass=SingletonMeta):
                 elif isinstance(existing_detail, list):
                     # Multiple found; typically you’d handle merging or pick one.
                     first_detail = existing_detail[0]
-                    payment_status = first_detail.get("payment_status", "").upper()
+                    payment_status = first_detail.get("state", "").upper()
                     if payment_status in [s.upper() for s in PAYMENT_COMPLETE_STATUSES]:
                         self.logger.debug(
                             f"⚠️ DetailItem id={first_detail['id']} has payment_status={payment_status}, skipping update."
@@ -456,7 +456,7 @@ class DropboxService(metaclass=SingletonMeta):
 
                 else:
                     # Exactly one found
-                    payment_status = existing_detail.get("payment_status", "").upper()
+                    payment_status = existing_detail.get("state", "").upper()
                     if payment_status in [s.upper() for s in PAYMENT_COMPLETE_STATUSES]:
                         self.logger.debug(
                             f"⚠️ DetailItem id={existing_detail['id']} has payment_status={payment_status}, skipping update."
