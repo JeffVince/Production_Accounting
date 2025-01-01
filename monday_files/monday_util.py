@@ -846,6 +846,16 @@ class MondayUtil(metaclass=SingletonMeta):
                 "monday_value": safe_str(col_vals.get(self.SUBITEM_QUANTITY_COLUMN_ID)['text'])
             },
             {
+                "field": "detail_number",
+                "db_value": safe_str(db_sub_item.get("detail_number")),
+                "monday_value": safe_str(col_vals.get(self.SUBITEM_ID_COLUMN_ID)['text'])
+            },
+            {
+                "field": "line_id",
+                "db_value": safe_str(db_sub_item.get("line_id")),
+                "monday_value": safe_str(col_vals.get(self.SUBITEM_LINE_NUMBER_COLUMN_ID)['text'])
+            },
+            {
                 "field": "rate",
                 "db_value": safe_str(db_sub_item.get("rate")),
                 "monday_value": safe_str(col_vals.get(self.SUBITEM_RATE_COLUMN_ID)['text'])
@@ -859,6 +869,11 @@ class MondayUtil(metaclass=SingletonMeta):
                 "field": "ot",
                 "db_value": safe_str(db_sub_item.get("ot")),
                 "monday_value": safe_str(col_vals.get(self.SUBITEM_OT_COLUMN_ID)['text'])
+            },
+            {
+                "field": "state",
+                "db_value": safe_str(db_sub_item.get("state")),
+                "monday_value": safe_str(col_vals.get(self.SUBITEM_STATUS_COLUMN_ID)['text'])
             },
             {
                 "field": "fringes",

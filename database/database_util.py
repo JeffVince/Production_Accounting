@@ -500,7 +500,6 @@ class DatabaseOperations:
         description=None,
         transaction_date=None,
         due_date=None,
-        file_link=None,
         state=None,
         aicp_code=None
     ):
@@ -583,7 +582,6 @@ class DatabaseOperations:
                     description=description,
                     transaction_date=transaction_date,
                     due_date=due_date,
-                    file_link=file_link
                 )
                 if state:
                     new_detail_item.state = state
@@ -930,6 +928,34 @@ class DatabaseOperations:
 
     def update_receipt_by_id(self, receipt_id, **kwargs):
         self.logger.debug(f"🧾 update_receipt_by_id for id={receipt_id} with {kwargs}")
+        return self._update_record(Receipt, receipt_id, **kwargs)
+
+    def update_receipt_by_keys(self, project_number, po_number, detail_item_number, **kwargs):
+        """
+        Update the first matching Receipt via (project_number, po_number, detail_item_number),
+        then pass its `id` to _update_record for the actual update.
+        """
+        self.logger.debug(
+            f"🧾 update_receipt_by_keys for (project_number={project_number}, "
+            f"po_number={po_number}, detail_item_number={detail_item_number}) with {kwargs}"
+        )
+
+        # 1) Find the matching receipt
+        found = self.search_receipts(
+            ["project_number", "po_number", "detail_item_number"],
+            [project_number, po_number, detail_item_number]
+        )
+        if not found:
+            self.logger.warning("❌ No matching receipt found. Cannot update.")
+            return None
+
+        # Handle the possibility of multiple matches
+        if isinstance(found, list):
+            found = found[0]  # just update the first match
+
+        receipt_id = found["id"]
+
+        # 2) Perform the update using the exact same approach as update_receipt_by_id
         return self._update_record(Receipt, receipt_id, **kwargs)
 
     # -- SpendMoney

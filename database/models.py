@@ -173,7 +173,7 @@ class DetailItem(Base):
         nullable=False
     )
     state = Column(
-        Enum('PENDING','OVERDUE','ISSUE','RTP','RECONCILED','PAID','APPROVED', 'SUBMITTED'),
+        Enum('PENDING','OVERDUE','ISSUE','RTP','RECONCILED','PAID','APPROVED', 'REVIEWED', 'SUBMITTED', 'PO MISMATCH'),
         nullable=False,
         server_default='PENDING'
     )
@@ -377,7 +377,7 @@ class Receipt(Base):
 
     id = Column(MYSQL_INTEGER(unsigned=True), primary_key=True, autoincrement=True)
     total = Column(MYSQL_DECIMAL(15, 2), nullable=True, server_default='0.00')
-    receipt_description = Column(String(45), nullable=True)
+    receipt_description = Column(String(255), nullable=True)
     purchase_date = Column(DateTime, nullable=True)
     file_link = Column(String(255), nullable=False)
     created_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
@@ -387,14 +387,20 @@ class Receipt(Base):
         MYSQL_INTEGER(unsigned=True),
         nullable=True
     )
-    detail_item_id = Column(
+    project_number = Column(
         MYSQL_INTEGER(unsigned=True),
-        ForeignKey('detail_item.id', onupdate='NO ACTION', ondelete='NO ACTION'),
+        nullable=False
+    )
+    po_number = Column(
+        MYSQL_INTEGER(unsigned=True),
+        nullable=False
+    )
+    detail_number = Column(
+        MYSQL_INTEGER(unsigned=True),
         nullable=False
     )
 
-    # Relationships
-    detail_item = relationship('DetailItem')
+
 
 
 # -------------------------------------------------------------------
