@@ -1012,18 +1012,6 @@ class MondayAPI(metaclass=SingletonMeta):
         Useful if the value doesn't exist or is None.
         """
         return vals_dict.get(col_id, {}).get("text", "")
-
-    def update_detail_items_with_invoice_link(self, detail_item_ids: list, file_link: str):
-        """
-        🔗 (Pseudocode) Example for updating Monday detail items with a file link (e.g., an invoice PDF).
-        """
-        self.logger.debug("⚠️ The method 'update_detail_items_with_invoice_link' is not yet fully implemented.")
-        for detail_id in detail_item_ids:
-            # Example structure:
-            # column_values = {"files_column": [{"url": file_link, "name": "Invoice"}]}
-            # self.update_item(detail_id, column_values)
-            # self.logger.info(f"🔗 Updated detail item {detail_id} with file link.")
-            pass
     # endregion
 
     # region 💼 Get Items in Project + Subitems

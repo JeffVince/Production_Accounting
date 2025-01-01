@@ -851,6 +851,11 @@ class MondayUtil(metaclass=SingletonMeta):
                 "monday_value": safe_str(col_vals.get(self.SUBITEM_RATE_COLUMN_ID)['text'])
             },
             {
+                "field": "account_code",
+                "db_value": safe_str(db_sub_item.get("account_code")),
+                "monday_value": safe_str(col_vals.get(self.SUBITEM_ACCOUNT_NUMBER_COLUMN_ID)['text'])
+            },
+            {
                 "field": "ot",
                 "db_value": safe_str(db_sub_item.get("ot")),
                 "monday_value": safe_str(col_vals.get(self.SUBITEM_OT_COLUMN_ID)['text'])

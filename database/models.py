@@ -199,7 +199,6 @@ class DetailItem(Base):
         Computed("ROUND(((rate * quantity) + IFNULL(ot,0) + IFNULL(fringes,0)),2)", persisted=True),
         nullable=False
     )
-    file_link = Column(String(255), nullable=True)
     created_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
     updated_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'))
 
@@ -380,14 +379,13 @@ class Receipt(Base):
     total = Column(MYSQL_DECIMAL(15, 2), nullable=True, server_default='0.00')
     receipt_description = Column(String(45), nullable=True)
     purchase_date = Column(DateTime, nullable=True)
-    file_link = Column(String(255), nullable=True)
+    file_link = Column(String(255), nullable=False)
     created_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
     updated_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'))
 
     spend_money_id = Column(
         MYSQL_INTEGER(unsigned=True),
-        ForeignKey('spend_money.id', onupdate='NO ACTION', ondelete='NO ACTION'),
-        nullable=False
+        nullable=True
     )
     detail_item_id = Column(
         MYSQL_INTEGER(unsigned=True),
@@ -396,7 +394,6 @@ class Receipt(Base):
     )
 
     # Relationships
-    spend_money = relationship('SpendMoney')
     detail_item = relationship('DetailItem')
 
 
