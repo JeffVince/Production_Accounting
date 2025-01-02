@@ -57,7 +57,7 @@ class DropboxService(metaclass=SingletonMeta):
     SHOWBIZ_REGEX = r".mbb"
     PROJECT_NUMBER = ""
 
-    USE_TEMP_FILE = True         # Whether to use a local temp file
+    USE_TEMP_FILE = False         # Whether to use a local temp file
     DEBUG_STARTING_PO_NUMBER = 42  # If set, skip POs below this number
     SKIP_DATABASE = False
     ADD_PO_TO_MONDAY = True

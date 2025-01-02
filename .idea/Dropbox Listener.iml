@@ -15,6 +15,7 @@
       <sourceFolder url="file://$MODULE_DIR$/budget_files" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/invoice_files" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/utilities/AICP Code Map" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/xero_files" isTestSource="false" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />

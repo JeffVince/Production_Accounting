@@ -6,15 +6,15 @@ import time
 import logging
 import re
 
+from xero_files.xero_api import xero_api
 from config import Config
 from dropbox_files.dropbox_service import dropbox_service
 from ocr_service import OCRService
 from monday_files.monday_service import monday_service
 
-from utilities.logger import setup_logging
 
-logger = logging.getLogger(__name__)
-setup_logging()
+
+
 
 
 
@@ -28,10 +28,12 @@ class Orchestrator:
         self.config = Config()
         self.monday_service = monday_service
         self.ocr_service = OCRService()
+        self.xero_api = xero_api
+        self.logger = logging.getLogger("app_logger")
 
     def start_background_tasks(self):
         """Start any necessary background tasks."""
-        logger.info("Starting background tasks...")
+        self.logger.info("Starting background tasks...")
         #self.schedule_po_log_check()
 
         if dropbox_service.USE_TEMP_FILE:
@@ -63,29 +65,34 @@ class Orchestrator:
         #self.schedule_monday_sub_items_sync()
         #self.schedule_monday_contact_sync()
         #self.coordinate_state_transitions()
+        self.sync_spend_money_items()
 
     def schedule_monday_main_items_sync(self, interval=90000):
 
         def sync_monday_to_main_items():
             while True:
-                logger.info("Fetching Main Item entries")
+                self.logger.info("Fetching Main Item entries")
                 try:
                     self.monday_service.sync_main_items_from_monday_board()
                 except Exception as e:
-                    logger.error(f"Error fetching Main Item entries: {e}")
+                    self.logger.error(f"Error fetching Main Item entries: {e}")
                 time.sleep(interval)
 
         threading.Thread(target=sync_monday_to_main_items, daemon=True).start()
+
+    def sync_spend_money_items(self):
+        result = self.xero_api.get_spend_money_by_reference("2416")
+        return result
 
     def schedule_monday_sub_items_sync(self, interval=90000):
 
         def sync_monday_to_sub_items():
             while True:
-                logger.info("Fetching Sub Item entries")
+                self.logger.info("Fetching Sub Item entries")
                 try:
                     self.monday_service.sync_sub_items_from_monday_board()
                 except Exception as e:
-                    logger.error(f"Error fetching Sub Item entries and syncing them to DB: {e}")
+                    self.logger.error(f"Error fetching Sub Item entries and syncing them to DB: {e}")
                 time.sleep(interval)
 
         threading.Thread(target=sync_monday_to_sub_items, daemon=True).start()
@@ -94,11 +101,11 @@ class Orchestrator:
 
         def sync_contacts_from_monday_board():
             while True:
-                logger.info("Fetching Sub Item entries")
+                self.logger.info("Fetching Sub Item entries")
                 try:
                     self.monday_service.sync_contacts_from_monday_board()
                 except Exception as e:
-                    logger.error(f"Error fetching Sub Item entries and syncing them to DB: {e}")
+                    self.logger.error(f"Error fetching Sub Item entries and syncing them to DB: {e}")
                 time.sleep(interval)
 
 
