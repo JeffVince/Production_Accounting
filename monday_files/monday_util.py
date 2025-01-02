@@ -525,7 +525,7 @@ class MondayUtil(metaclass=SingletonMeta):
                 column_values[self.SUBITEM_ACCOUNT_NUMBER_COLUMN_ID] = None
 
         if link:
-            column_values[self.SUBITEM_LINK_COLUMN_ID] = {'url': link, 'text': 'Link'}
+            column_values[self.SUBITEM_LINK_COLUMN_ID] = {'url': link, 'text': '🧾'}
 
         if po_number is not None:
             column_values[self.SUBITEM_PO_COLUMN_ID] = po_number

@@ -512,6 +512,7 @@ class MondayAPI(metaclass=SingletonMeta):
                             items {
                                 id
                                 name
+                                state
                                 parent_item {
                                     id
                                     name
@@ -536,6 +537,7 @@ class MondayAPI(metaclass=SingletonMeta):
                                 items {
                                     id
                                     name
+                                    state
                                     parent_item {
                                         id
                                         name
@@ -569,8 +571,10 @@ class MondayAPI(metaclass=SingletonMeta):
 
                 items = items_data.get("items", [])
                 # Optional: exclude subitems that don't have a parent
-                valid_items = [item for item in items if item.get("parent_item") is not None]
-
+                valid_items = [
+                    item for item in items
+                    if item.get("parent_item") is not None and item.get("state") not in ["archived", "deleted"]
+                ]
                 # Convert column_values from a list to a dict
                 for item in valid_items:
                     # Replace the list with a dict version
@@ -609,6 +613,7 @@ class MondayAPI(metaclass=SingletonMeta):
                             items {
                                 id
                                 name
+                                state
                                 parent_item {
                                     id
                                     name
@@ -637,6 +642,7 @@ class MondayAPI(metaclass=SingletonMeta):
                             items {
                                 id
                                 name
+                                state
                                 parent_item {
                                     id
                                     name
@@ -669,8 +675,10 @@ class MondayAPI(metaclass=SingletonMeta):
                     items_data = response.get("data", {}).get("items_page_by_column_values", {})
 
                 items = items_data.get("items", [])
-                valid_items = [item for item in items if item.get("parent_item") is not None]
-
+                valid_items = [
+                    item for item in items
+                    if item.get("parent_item") is not None and item.get("state") not in ["archived", "deleted"]
+                ]
                 # Convert column_values from a list to a dict
                 for item in valid_items:
                     item["column_values"] = {

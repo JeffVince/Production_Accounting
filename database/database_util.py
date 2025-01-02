@@ -930,20 +930,20 @@ class DatabaseOperations:
         self.logger.debug(f"🧾 update_receipt_by_id for id={receipt_id} with {kwargs}")
         return self._update_record(Receipt, receipt_id, **kwargs)
 
-    def update_receipt_by_keys(self, project_number, po_number, detail_item_number, **kwargs):
+    def update_receipt_by_keys(self, project_number, po_number, detail_number, line_id, **kwargs):
         """
         Update the first matching Receipt via (project_number, po_number, detail_item_number),
         then pass its `id` to _update_record for the actual update.
         """
         self.logger.debug(
             f"🧾 update_receipt_by_keys for (project_number={project_number}, "
-            f"po_number={po_number}, detail_item_number={detail_item_number}) with {kwargs}"
+            f"po_number={po_number}, detail_item_number={detail_number}) with {kwargs}"
         )
 
         # 1) Find the matching receipt
         found = self.search_receipts(
-            ["project_number", "po_number", "detail_item_number"],
-            [project_number, po_number, detail_item_number]
+            ["project_number", "po_number", "detail_number", "line_id"],
+            [project_number, po_number, detail_number, line_id]
         )
         if not found:
             self.logger.warning("❌ No matching receipt found. Cannot update.")

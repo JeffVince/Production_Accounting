@@ -399,7 +399,10 @@ class Receipt(Base):
         MYSQL_INTEGER(unsigned=True),
         nullable=False
     )
-
+    line_id = Column(
+        MYSQL_INTEGER(unsigned=True),
+        nullable=False
+    )
 
 
 
