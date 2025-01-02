@@ -11,7 +11,7 @@ Key Flow for PO Logs:
    (with contact_id), then create/update the DetailItems.
 """
 
-#region Imports
+# region Imports
 import json
 import os
 import re
@@ -37,7 +37,9 @@ from ocr_service import OCRService
 
 # Import the updated DB ops:
 from database.database_util import DatabaseOperations
-#endregion
+
+
+# endregion
 
 
 class DropboxService(metaclass=SingletonMeta):
@@ -48,7 +50,7 @@ class DropboxService(metaclass=SingletonMeta):
     a strong focus on PO logs, contacts, and purchase orders.
     """
 
-    #region Class/Static Members
+    # region Class/Static Members
     PO_LOG_FOLDER_NAME = "1.5 PO Logs"
     PO_NUMBER_FORMAT = "{:02}"
     INVOICE_REGEX = r"invoice"
@@ -57,8 +59,8 @@ class DropboxService(metaclass=SingletonMeta):
     SHOWBIZ_REGEX = r".mbb"
     PROJECT_NUMBER = ""
 
-    USE_TEMP_FILE = False         # Whether to use a local temp file
-    DEBUG_STARTING_PO_NUMBER = 42  # If set, skip POs below this number
+    USE_TEMP_FILE = False  # Whether to use a local temp file
+    DEBUG_STARTING_PO_NUMBER = 0  # If set, skip POs below this number
     SKIP_DATABASE = False
     ADD_PO_TO_MONDAY = True
     GET_FOLDER_LINKS = True
@@ -66,9 +68,10 @@ class DropboxService(metaclass=SingletonMeta):
     GET_CONTACTS = True
 
     executor = ThreadPoolExecutor(max_workers=5)
-    #endregion
 
-    #region Initialization
+    # endregion
+
+    # region Initialization
     def __init__(self):
         """
         Initializes the DropboxService singleton, setting up logging, external
@@ -89,9 +92,10 @@ class DropboxService(metaclass=SingletonMeta):
 
             self.logger.info("📦 Dropbox Service initialized 🌟")
             self._initialized = True
-    #endregion
 
-    #region Type Determination
+    # endregion
+
+    # region Type Determination
     def determine_file_type(self, path: str):
         """
         Determine the file type by matching patterns in its name,
@@ -146,9 +150,10 @@ class DropboxService(metaclass=SingletonMeta):
         except Exception as e:
             self.logger.exception(f"💥 Error determining file type for {filename}: {e}", exc_info=True)
             return None
-    #endregion
 
-    #region Event Processing - Budget
+    # endregion
+
+    # region Event Processing - Budget
     def process_budget(self, dropbox_path: str):
         self.logger.info(f"💼 Processing budget: {dropbox_path}")
         filename = os.path.basename(dropbox_path)
@@ -208,16 +213,18 @@ class DropboxService(metaclass=SingletonMeta):
                 job_id = response.json().get("job_id")
                 self.logger.info(f"🎉 Triggered server job with job_id: {job_id}")
             else:
-                self.logger.error(f"❌ Failed to trigger server job. Status: {response.status_code}, Response: {response.text}")
+                self.logger.error(
+                    f"❌ Failed to trigger server job. Status: {response.status_code}, Response: {response.text}")
                 return
         except Exception as e:
             self.logger.exception(f"💥 Error triggering server job: {e}", exc_info=True)
             return
 
         self.logger.info("✅ process_budget completed successfully, server job triggered with file URL.")
-    #endregion
 
-    #region  Event Processing - PO Log - Step 1 -  Add PO LOG data to DB
+    # endregion
+
+    # region  Event Processing - PO Log - Step 1 -  Add PO LOG data to DB
     def po_log_orchestrator(self, path: str):
         """
         Process a PO log file from Dropbox, parse it, then store the results in the DB.
@@ -376,6 +383,10 @@ class DropboxService(metaclass=SingletonMeta):
 
         # --- 2) CREATE OR UPDATE DETAIL ITEMS ---
         self.logger.info("🔧 Creating/Updating Detail Items for each PO...")
+
+        # A convenience set to treat as "complete" and skip normal detail updates
+        PAYMENT_COMPLETE_STATUSES = ["PAID", "LOGGED", "RECONCILED", "REVIEWED"]
+
         for sub_item in detail_items:
             try:
                 if self.DEBUG_STARTING_PO_NUMBER and int(sub_item["po_number"]) < self.DEBUG_STARTING_PO_NUMBER:
@@ -390,6 +401,63 @@ class DropboxService(metaclass=SingletonMeta):
                     )
                     continue
 
+                # ------------------------------------------------------------------
+                # 1) Before we do anything, check spend_money records to see if
+                #    there's an RECONCILED record. If so => We'll mark RECONCILED
+                #    and skip normal detail updates. Also ignore "DELETED" spend_money.
+                # ------------------------------------------------------------------
+
+                # Build possible references for xero_spend_monday_reference_number
+                # e.g. "2416_54" or "2416_54_01"
+                project_str = str(sub_item["project_number"])
+                po_str = str(sub_item["po_number"]).zfill(2)  # Pad PO number
+                detail_str = str(sub_item["detail_item_id"]).zfill(2)  # Pad Detail Item number
+
+                possible_refs = [
+                    f"{project_str}_{po_str}_{detail_str}",  # full match
+                    f"{project_str}_{po_str}"  # fallback if detail-level record not found
+                ]
+
+                spend_money_record = None
+                for ref in possible_refs:
+                    sm = self.database_util.search_spend_money(column_names=['xero_spend_money_reference_number'], values=[ref])
+                    # e.g. a custom method you'd implement in your DB ops
+                    # that returns None or a record. We'll break on the first
+                    # valid record that isn't DELETED.
+                    if sm and sm["state"] != "DELETED":
+                        spend_money_record = sm
+                        break
+
+                # If we found a valid spend_money record that is RECONCILED =>
+                # set detail state=RECONCILED in DB & Monday, then skip normal updates.
+                if spend_money_record and spend_money_record["state"] == "RECONCILED":
+                    self.logger.info(
+                        f"SpendMoney found with state=RECONCILED for ref='{spend_money_record['xero_spend_money_reference_number']}'. "
+                        f"Marking detail {detail_str} as RECONCILED."
+                    )
+                    updated_di = self.database_util.update_detail_item_by_keys(
+                        project_number=sub_item["project_number"],
+                        po_number=sub_item["po_number"],
+                        detail_number=sub_item["detail_item_id"],
+                        line_id=sub_item["line_id"],
+                        state="RECONCILED"
+                    )
+                    # We can also push the update to Monday (subitem) if needed
+                    # if updated_di and updated_di.get("pulse_id"):
+                    #     self.logger.info("Updating Monday subitem to RECONCILED as well.")
+                    #     subitem_pulse_id = updated_di["pulse_id"]
+                    #     col_values = monday_util.subitem_column_values_formatter(status="RECONCILED")
+                    #     self.monday_api.update_item(
+                    #         item_id=subitem_pulse_id,
+                    #         column_values=col_values,
+                    #         type="subitem"
+                    #     )
+                    # Now skip normal PO detail logic for this sub_item
+                    continue
+
+                # ------------------------------------------------------------------
+                # 2) If there's no spend_money "AUTHORIZED" record, proceed as normal
+                # ------------------------------------------------------------------
                 existing_detail = self.database_util.search_detail_item_by_keys(
                     project_number=sub_item["project_number"],
                     po_number=sub_item["po_number"],
@@ -397,10 +465,7 @@ class DropboxService(metaclass=SingletonMeta):
                     line_id=sub_item["line_id"]
                 )
 
-                # -----------------------
-                # NEW: Check Payment Status
-                # -----------------------
-                PAYMENT_COMPLETE_STATUSES = ["PAID", "LOGGED", "RECONCILED", "REVIEWED"]
+                created_or_updated_detail = None
 
                 if not existing_detail:
                     # Not in DB yet -> create it
@@ -479,7 +544,6 @@ class DropboxService(metaclass=SingletonMeta):
                         due_date=sub_item.get("due date"),
                         state=sub_item["state"]
                     )
-
                     created_or_updated_detail = updated_di if updated_di else existing_detail
 
                 # -----------------------
@@ -508,7 +572,7 @@ class DropboxService(metaclass=SingletonMeta):
                         )
                         try:
                             receipt_total = float(first_receipt.get("total", 0.0))
-                        except TypeError  as e:
+                        except TypeError as e:
                             receipt_total = 0.0
 
                         if receipt_total == detail_subtotal:
@@ -575,10 +639,11 @@ class DropboxService(metaclass=SingletonMeta):
 
         self.logger.info("✅ Database processing of PO data complete.")
         return processed_items
-        #endregion
-    #endregion
+        # endregion
 
-    #region Event Processing - PO Log - Step 2 -  Add Folder & Tax Links + Contact Data
+    # endregion
+
+    # region Event Processing - PO Log - Step 2 -  Add Folder & Tax Links + Contact Data
     def callback_add_po_data_to_DB(self, fut):
         """
         Callback for when the DB process is complete.
@@ -587,26 +652,30 @@ class DropboxService(metaclass=SingletonMeta):
         try:
             processed_items = fut.result()
 
-            #region GET DROPBOX FOLDER LINK
+            # region GET DROPBOX FOLDER LINK
             if self.GET_FOLDER_LINKS:
                 self.logger.info("SYNCING PO FOLDER LINKS")
+
                 def get_folder_links(processed_items):
                     for item in processed_items:
                         db_project = self.database_util.search_projects(["project_number"], [item["project_number"]])
                         if isinstance(db_project, list):
                             db_project = db_project[0]
-                        db_po = self.database_util.search_purchase_orders(["project_id", "po_number"], [db_project["id"], item["po_number"]])
+                        db_po = self.database_util.search_purchase_orders(["project_id", "po_number"],
+                                                                          [db_project["id"], item["po_number"]])
                         if isinstance(db_po, list):
                             db_po = db_po[0]
                         if db_po["folder_link"]:
-                            self.logger.debug(f"✅Folder Link is already present for {db_project['project_number']}_{db_po['po_number']}")
+                            self.logger.debug(
+                                f"✅Folder Link is already present for {db_project['project_number']}_{db_po['po_number']}")
                         else:
                             self.logger.debug(f"Folder link not found in DB -- retrieving from Dropbox")
                             self.update_po_folder_link(item["project_number"], item["po_number"])
-                folder_links_future = self.executor.submit(get_folder_links, processed_items)
-            #endregion
 
-            #region TAX LINKS
+                folder_links_future = self.executor.submit(get_folder_links, processed_items)
+            # endregion
+
+            # region TAX LINKS
             if self.GET_TAX_LINKS:
                 def get_tax_links(processed_items):
                     for idx, item in enumerate(processed_items):
@@ -629,14 +698,15 @@ class DropboxService(metaclass=SingletonMeta):
                             else:
                                 self.logger.debug(
                                     f"✅ Tax Link is already present for {db_contact['name']}")
+
                 tax_links_future = self.executor.submit(get_tax_links, processed_items)
-            #endregion
+            # endregion
 
             futures_to_wait = []
 
-            if  self.GET_FOLDER_LINKS and 'folder_links_future' in locals():
+            if self.GET_FOLDER_LINKS and 'folder_links_future' in locals():
                 futures_to_wait.append(folder_links_future)
-            if  self.GET_TAX_LINKS and 'tax_links_future' in locals():
+            if self.GET_TAX_LINKS and 'tax_links_future' in locals():
                 futures_to_wait.append(tax_links_future)
 
             # Block until both tasks are done
@@ -662,7 +732,7 @@ class DropboxService(metaclass=SingletonMeta):
         except Exception as e:
             self.logger.error(f"❌ after_db_done encountered an error: {e}", exc_info=True)
 
-    #region   DROPBOX FOLDER LINK
+    # region   DROPBOX FOLDER LINK
     def update_po_folder_link(self, project_number, po_number):
         logger = self.logger
         logger.info(f"🚀Finding folder link for PO: {project_number}_{str(po_number).zfill(2)}")
@@ -678,7 +748,8 @@ class DropboxService(metaclass=SingletonMeta):
                 logger.debug("Link already present: skipping")
                 return
 
-            project_item = dropbox_api.get_project_po_folders_with_link(project_number=project_number, po_number=po_number)
+            project_item = dropbox_api.get_project_po_folders_with_link(project_number=project_number,
+                                                                        po_number=po_number)
             if not project_item or len(project_item) < 1:
                 logger.warning(
                     f"⚠️ Could not determine project folder name for {project_number}, no links will be found.")
@@ -700,9 +771,10 @@ class DropboxService(metaclass=SingletonMeta):
         except Exception as e:
             logger.error("💥 Error linking dropbox folder:", exc_info=True)
             traceback.print_exc()
-    #endregion
 
-    #region   TAX FORM LINK
+    # endregion
+
+    # region   TAX FORM LINK
     def update_po_tax_form_links(self, project_number, po_number):
         """
         🚀 Update or set the tax_form_link for a PurchaseOrder in Dropbox if needed.
@@ -719,17 +791,20 @@ class DropboxService(metaclass=SingletonMeta):
             else:
                 return None
 
-            new_tax_form_link = self.dropbox_api.get_po_tax_form_link(project_number=project_number, po_number=po_number)[0]["po_tax_form_link"]
+            new_tax_form_link = \
+            self.dropbox_api.get_po_tax_form_link(project_number=project_number, po_number=po_number)[0][
+                "po_tax_form_link"]
             self.database_util.update_contact(contact_id, tax_form_link=new_tax_form_link)
             self.logger.info(f"📑 Updated tax form link for PO {project_number}_{po_number} => {new_tax_form_link}")
             return new_tax_form_link
         except Exception as e:
             self.logger.error(f"💥 Could not update PO tax form link for {project_number}_{po_number}: {e}",
                               exc_info=True)
-    #endregion
-    #endregion
 
-    #region Event Processing - PO Log - Step 3 - Monday Processing
+    # endregion
+    # endregion
+
+    # region Event Processing - PO Log - Step 3 - Monday Processing
     def create_pos_in_monday(self, project_number):
         """
         Demonstrates how to fetch all subitems once from Monday,
@@ -889,7 +964,8 @@ class DropboxService(metaclass=SingletonMeta):
             if po_no == 43:
                 pass
             for sdb in sub_items_db:
-                sdb["account_code"] = self.database_util.search_aicp_codes(["id"], [sdb.get("aicp_code_id")])["aicp_code"]
+                sdb["account_code"] = self.database_util.search_aicp_codes(["id"], [sdb.get("aicp_code_id")])[
+                    "aicp_code"]
 
                 file_link_for_subitem = ""
                 try:
@@ -908,7 +984,8 @@ class DropboxService(metaclass=SingletonMeta):
                                     f"🔗 Found existing receipt link for detail_item_number {sdb['detail_number']}: {possible_link}"
                                 )
                 except Exception as re_ex:
-                    self.logger.warning(f"❗ Error searching receipts for detail_item_number {sdb['detail_number']}: {re_ex}")
+                    self.logger.warning(
+                        f"❗ Error searching receipts for detail_item_number {sdb['detail_number']}: {re_ex}")
 
                 sub_col_values_str = monday_util.subitem_column_values_formatter(
                     project_id=project_number,
@@ -1077,9 +1154,9 @@ class DropboxService(metaclass=SingletonMeta):
             db_sub_item["pulse_id"] = monday_subitem_id
             db_sub_item["parent_pulse_id"] = parent_item_id
 
-    #endregion
+    # endregion
 
-    #region Event Processing - Receipts
+    # region Event Processing - Receipts
     def process_receipt(self, dropbox_path: str):
         """
         🧾 process_receipt
@@ -1213,9 +1290,6 @@ class DropboxService(metaclass=SingletonMeta):
                 file_link = None
 
             # 6) Look up detail item
-            # -- ADDED FOR PETTY CASH --
-            # If we're petty cash, we also search by line_id (line_id_number).
-            # If it’s a standard CC approach, line_id is 0 and your DB search should handle that gracefully.
             existing_detail = self.database_util.search_detail_item_by_keys(
                 str(project_number),
                 po_number,
@@ -1296,7 +1370,6 @@ class DropboxService(metaclass=SingletonMeta):
                 except Exception as e:
                     state = "ISSUE"
 
-
             # Update the detail_item’s state in DB
             self.database_util.update_detail_item_by_keys(
                 project_number=str(project_number),
@@ -1333,9 +1406,10 @@ class DropboxService(metaclass=SingletonMeta):
         except Exception as e:
             self.logger.exception(f"💥 Error processing receipt {filename}: {e}", exc_info=True)
             return
-    #endregion
 
-    #region Helpers
+    # endregion
+
+    # region Helpers
     def download_file_from_dropbox(self, path: str, temp_file_path: str) -> bool:
         """
         Download a file from Dropbox to a local temp_file_path.
@@ -1509,7 +1583,7 @@ class DropboxService(metaclass=SingletonMeta):
         ocr_service = OCRService()
         return ocr_service.extract_text_from_receipt(file_data)
 
-    #endregion
+    # endregion
 
 
 # Singleton instance

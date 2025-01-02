@@ -15,6 +15,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from xero import Xero
 from xero.auth import OAuth2Credentials
 from xero.constants import XeroScopes
+# In some PyXero versions, XeroUnauthorized handles 401 (including expired tokens).
+# If your version doesn't have it, fallback to the more generic XeroException.
+from xero.exceptions import XeroException, XeroUnauthorized
 # endregion
 
 # region Local Imports
@@ -50,7 +53,7 @@ class XeroAPI(metaclass=SingletonMeta):
         # Make sure "offline_access" is included if you need token refreshes
         self.scope = (
             os.getenv("XERO_SCOPE")
-            or "offline_access accounting.transactions accounting.settings"
+            or "accounting.contacts accounting.settings accounting.transactions offline_access"
         )
 
         # Setup logging
@@ -65,10 +68,9 @@ class XeroAPI(metaclass=SingletonMeta):
             "access_token": self.access_token,
             "refresh_token": self.refresh_token,
             "expires_in": default_expires_in,
-            "expires_at": current_time + default_expires_in,  # <-- Important to avoid KeyError
+            "expires_at": current_time + default_expires_in,  # Avoid KeyError
             "token_type": "Bearer",
             "scope": self.scope.split(),  # Convert space-delimited string into list
-            # If you have an ID token from openid scopes, you'd include "id_token" here too
         }
 
         # 1) Create OAuth2Credentials
@@ -86,18 +88,24 @@ class XeroAPI(metaclass=SingletonMeta):
         # 3) Create the Xero client
         self.xero = Xero(self.credentials)
 
-        # Force a refresh check so we can set the tenant if it’s not set
+        # Force an initial refresh check so we can set the tenant if not yet set
         self._refresh_token_if_needed()
 
         self.logger.info("XeroAPI (PyXero) initialized.")
         self._initialized = True
 
-    def _refresh_token_if_needed(self):
+    def _refresh_token_if_needed(self, force=False):
         """
         Refresh the Xero token if it’s expired or about to expire.
+        If 'force=True', we attempt a refresh no matter what.
         """
-        if self.credentials.expired():
-            self.logger.debug("Token expired or close to expiring; refreshing now...")
+        # If not forcing, only refresh if credentials show expired
+        if not force and not self.credentials.expired():
+            self.logger.debug("Token is still valid, no refresh necessary.")
+            return
+
+        try:
+            self.logger.debug("Token expired or force-refresh requested; refreshing now...")
             self.credentials.refresh()
             self.logger.info("Successfully refreshed Xero tokens with PyXero!")
 
@@ -114,11 +122,28 @@ class XeroAPI(metaclass=SingletonMeta):
             new_token = self.credentials.token
             os.environ["XERO_ACCESS_TOKEN"] = new_token["access_token"]
             os.environ["XERO_REFRESH_TOKEN"] = new_token["refresh_token"]
-        else:
-            self.logger.debug("Token is still valid, no refresh necessary.")
 
-        # Re-create the Xero client in case credentials updated
-        self.xero = Xero(self.credentials)
+            # Re-create the Xero client in case credentials updated
+            self.xero = Xero(self.credentials)
+
+        except XeroException as e:
+            # If the refresh token is also invalid or too old, it might raise XeroUnauthorized or similar.
+            self.logger.error(
+                "Encountered an error (possibly expired refresh token). Re-auth may be required."
+            )
+            raise e
+
+    def _retry_on_unauthorized(self, func, *args, **kwargs):
+        """
+        Helper method to retry a PyXero call if a XeroUnauthorized occurs (401 error),
+        indicating the token might be expired or invalid.
+        """
+        try:
+            return func(*args, **kwargs)
+        except XeroUnauthorized:
+            self.logger.warning("XeroUnauthorized caught mid-operation, attempting a force-refresh...")
+            self._refresh_token_if_needed(force=True)
+            return func(*args, **kwargs)
 
     # region Utility Methods
 
@@ -157,6 +182,7 @@ class XeroAPI(metaclass=SingletonMeta):
         """
         Create a SPEND bank transaction in Xero based on a local DetailItem.
         """
+        # Attempt a refresh if needed
         self._refresh_token_if_needed()
 
         detail_item = session.query(DetailItem).get(detail_item_id)
@@ -189,10 +215,11 @@ class XeroAPI(metaclass=SingletonMeta):
         self.logger.info("Creating spend money transaction in Xero (PyXero)...")
 
         try:
-            created = self.xero.banktransactions.put([new_transaction])
+            # Use our retry helper to handle token issues
+            created = self._retry_on_unauthorized(self.xero.banktransactions.put, [new_transaction])
             self.logger.debug(f"Xero create response: {created}")
             return created
-        except Exception as e:
+        except XeroException as e:
             self.logger.error(f"Failed to create spend money transaction in Xero: {str(e)}")
             return None
 
@@ -204,7 +231,10 @@ class XeroAPI(metaclass=SingletonMeta):
         self.logger.info(f"Updating spend money transaction {xero_spend_money_id} to {new_state}...")
 
         try:
-            existing_list = self.xero.banktransactions.filter(BankTransactionID=xero_spend_money_id)
+            existing_list = self._retry_on_unauthorized(
+                self.xero.banktransactions.filter,
+                BankTransactionID=xero_spend_money_id
+            )
             if not existing_list:
                 self.logger.warning(f"No bank transaction found with ID {xero_spend_money_id}")
                 return None
@@ -212,10 +242,10 @@ class XeroAPI(metaclass=SingletonMeta):
             bank_tx = existing_list[0]
             bank_tx["Status"] = new_state
 
-            updated = self.xero.banktransactions.save(bank_tx)
+            updated = self._retry_on_unauthorized(self.xero.banktransactions.save, bank_tx)
             self.logger.debug(f"Updated spend money transaction: {updated}")
             return updated
-        except Exception as e:
+        except XeroException as e:
             self.logger.error(f"Failed to update spend money transaction in Xero: {str(e)}")
             return None
 
@@ -231,9 +261,9 @@ class XeroAPI(metaclass=SingletonMeta):
             "Status": "VOIDED"
         }
         try:
-            response = self.xero.banktransactions.put([voided_transaction])
+            response = self._retry_on_unauthorized(self.xero.banktransactions.put, [voided_transaction])
             return response
-        except Exception as e:
+        except XeroException as e:
             self.logger.error(f"Failed to create voided spend money transaction: {str(e)}")
             return None
 
@@ -287,10 +317,10 @@ class XeroAPI(metaclass=SingletonMeta):
         self.logger.info(f"Creating Xero bill for reference {reference}...")
 
         try:
-            created_invoice = self.xero.invoices.put([new_invoice])
+            created_invoice = self._retry_on_unauthorized(self.xero.invoices.put, [new_invoice])
             self.logger.debug(f"Xero create invoice response: {created_invoice}")
             return created_invoice
-        except Exception as e:
+        except XeroException as e:
             self.logger.error(f"Failed to create bill (ACCPAY) in Xero: {str(e)}")
             return None
 
@@ -302,7 +332,10 @@ class XeroAPI(metaclass=SingletonMeta):
         self.logger.info(f"Updating bill (invoice_id={invoice_id}) to status {new_status}...")
 
         try:
-            existing_list = self.xero.invoices.filter(InvoiceID=invoice_id)
+            existing_list = self._retry_on_unauthorized(
+                self.xero.invoices.filter,
+                InvoiceID=invoice_id
+            )
             if not existing_list:
                 self.logger.warning(f"No invoice found with ID {invoice_id}")
                 return None
@@ -310,10 +343,10 @@ class XeroAPI(metaclass=SingletonMeta):
             invoice_obj = existing_list[0]
             invoice_obj["Status"] = new_status
 
-            updated_invoices = self.xero.invoices.save(invoice_obj)
+            updated_invoices = self._retry_on_unauthorized(self.xero.invoices.save, invoice_obj)
             self.logger.debug(f"Updated invoice: {updated_invoices}")
             return updated_invoices
-        except Exception as e:
+        except XeroException as e:
             self.logger.error(f"Failed to update bill in Xero: {str(e)}")
             return None
 
@@ -340,28 +373,27 @@ class XeroAPI(metaclass=SingletonMeta):
 
             if len(ref_parts) == 3:
                 reference_str = "_".join(ref_parts)
+                filter_clauses.append('Reference!=null')
                 filter_clauses.append(f'Reference=="{reference_str}"')
             else:
                 partial_str = "_".join(ref_parts)
-                # Include a null guard if you're doing .StartsWith
                 filter_clauses.append('Reference!=null')
                 filter_clauses.append(f'Reference.StartsWith("{partial_str}")')
 
-        # Always want ACCPAY type
         filter_clauses.append('Type=="ACCPAY"')
         raw_filter = "&&".join(filter_clauses)
 
         self.logger.info(f"Retrieving bills (ACCPAY) from Xero with filter: {raw_filter}")
 
         try:
-            results = self.xero.invoices.filter(raw=raw_filter)
+            results = self._retry_on_unauthorized(self.xero.invoices.filter, raw=raw_filter)
             if results:
                 self.logger.debug(f"Found {len(results)} invoice(s) with filter '{raw_filter}'.")
                 return results
             else:
                 self.logger.info(f"No invoices found with filter '{raw_filter}'.")
                 return []
-        except Exception as e:
+        except XeroException as e:
             self.logger.error(f"Failed to retrieve bills from Xero: {str(e)}")
             return []
 
@@ -370,13 +402,11 @@ class XeroAPI(metaclass=SingletonMeta):
         Fetch Spend Money transactions (bankTransactions of type 'SPEND') from Xero
         by matching the 'Reference' in {projectId}_{poNumber}_{detailNumber}.
 
-        Note the added `Reference != null` guard to avoid QueryParseException.
+        Note the added `Reference!=null` guard to avoid QueryParseException.
         """
         self._refresh_token_if_needed()
 
-        # Always need to filter by Type
         filter_clauses = ['Type=="SPEND"']
-
         ref_parts = []
         if project_id:
             ref_parts.append(str(project_id))
@@ -387,12 +417,10 @@ class XeroAPI(metaclass=SingletonMeta):
 
         if len(ref_parts) == 3:
             exact_ref = "_".join(ref_parts)
-            # Include a null guard AND the exact match
             filter_clauses.append('Reference!=null')
             filter_clauses.append(f'Reference=="{exact_ref}"')
         elif len(ref_parts) > 0:
             partial_ref = "_".join(ref_parts)
-            # Include a null guard AND the .StartsWith
             filter_clauses.append('Reference!=null')
             filter_clauses.append(f'Reference.StartsWith("{partial_ref}")')
 
@@ -400,7 +428,7 @@ class XeroAPI(metaclass=SingletonMeta):
         self.logger.info(f"Retrieving SPEND money transactions with filter: {raw_filter}")
 
         try:
-            results = self.xero.banktransactions.filter(raw=raw_filter)
+            results = self._retry_on_unauthorized(self.xero.banktransactions.filter, raw=raw_filter)
             if results:
                 self.logger.debug(
                     f"Found {len(results)} spend money transaction(s) with filter '{raw_filter}'."
@@ -409,7 +437,7 @@ class XeroAPI(metaclass=SingletonMeta):
             else:
                 self.logger.info(f"No spend money transactions found with filter '{raw_filter}'.")
                 return []
-        except Exception as e:
+        except XeroException as e:
             self.logger.error(f"Failed to retrieve spend money from Xero: {str(e)}")
             return []
 

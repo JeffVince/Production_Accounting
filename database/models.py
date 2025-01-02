@@ -417,9 +417,8 @@ class SpendMoney(Base):
 
     id = Column(MYSQL_INTEGER(unsigned=True), primary_key=True, autoincrement=True)
     xero_spend_money_reference_number = Column(String(100), nullable=True, unique=True)
-    file_link = Column(String(255), nullable=True)
+    xero_link = Column(String(255), nullable=True)
     state = Column(String(45), nullable=False, server_default='Draft')
-    spend_moneycol = Column(String(45), nullable=True)
     created_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
     updated_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'))
 

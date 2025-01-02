@@ -11,12 +11,7 @@ from config import Config
 from dropbox_files.dropbox_service import dropbox_service
 from ocr_service import OCRService
 from monday_files.monday_service import monday_service
-
-
-
-
-
-
+from xero_services import xero_services
 
 
 class Orchestrator:
@@ -30,6 +25,7 @@ class Orchestrator:
         self.ocr_service = OCRService()
         self.xero_api = xero_api
         self.logger = logging.getLogger("app_logger")
+        self.xero_services = xero_services
 
     def start_background_tasks(self):
         """Start any necessary background tasks."""
@@ -81,7 +77,7 @@ class Orchestrator:
         threading.Thread(target=sync_monday_to_main_items, daemon=True).start()
 
     def sync_spend_money_items(self):
-        result = self.xero_api.get_spend_money_by_reference("2416")
+        result = self.xero_services.load_spend_money_transactions(project_id="2416")
         return result
 
     def schedule_monday_sub_items_sync(self, interval=90000):
