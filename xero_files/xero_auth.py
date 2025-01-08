@@ -16,7 +16,9 @@ from xero.auth import OAuth2Credentials
 from xero.constants import XeroScopes
 
 # For writing tokens to .env
-from dotenv import set_key
+from dotenv import load_dotenv, set_key
+load_dotenv("../.env")
+
 
 # 1) Allow http:// for local dev (not for production)
 os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"

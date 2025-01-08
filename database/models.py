@@ -52,11 +52,6 @@ class Project(Base):
         back_populates='project',
         cascade="all, delete-orphan"
     )
-    invoices = relationship(
-        'Invoice',
-        back_populates='project',
-        cascade="all, delete-orphan"
-    )
 
 
 # -------------------------------------------------------------------
@@ -81,6 +76,7 @@ class Contact(Base):
     zip = Column(String(20), nullable=True)
     tax_form_link = Column(String(255), nullable=True)
     vendor_status = Column(Enum('PENDING', 'TO VERIFY', 'APPROVED', 'ISSUE'), nullable=False, server_default='PENDING')
+    region = Column(String(45), nullable=True)
     country = Column(String(100), nullable=True)
     tax_type = Column(String(45), nullable=True, server_default='SSN')
     created_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
@@ -138,11 +134,6 @@ class PurchaseOrder(Base):
     contact = relationship('Contact', back_populates='purchase_orders')
     detail_items = relationship(
         'DetailItem',
-        back_populates='purchase_order',
-        cascade="all, delete-orphan"
-    )
-    invoices = relationship(
-        'Invoice',
         back_populates='purchase_order',
         cascade="all, delete-orphan"
     )
@@ -220,27 +211,19 @@ class Invoice(Base):
     term = Column(MYSQL_INTEGER, nullable=True)
     total = Column(MYSQL_DECIMAL(15, 2), nullable=True, server_default='0.00')
     file_link = Column(String(255), nullable=True)
-    po_id = Column(
+    po_number = Column(
         MYSQL_INTEGER(unsigned=True),
-        ForeignKey('purchase_order.id', onupdate='CASCADE', ondelete='CASCADE'),
         nullable=False
     )
-    project_id = Column(
+    project_number = Column(
         MYSQL_INTEGER(unsigned=True),
-        ForeignKey('project.id', onupdate='CASCADE', ondelete='CASCADE'),
         nullable=False
     )
     invoice_number = Column(MYSQL_INTEGER(unsigned=True), nullable=False)
     created_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
     updated_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'))
 
-    __table_args__ = (
-        UniqueConstraint('po_id', 'invoice_number', name='po_id_invoice_number_UNIQUE'),
-    )
 
-    # Relationships
-    purchase_order = relationship('PurchaseOrder', back_populates='invoices')
-    project = relationship('Project', back_populates='invoices')
 
 
 # -------------------------------------------------------------------

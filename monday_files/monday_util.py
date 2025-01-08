@@ -63,6 +63,7 @@ class MondayUtil(metaclass=SingletonMeta):
     CONTACT_ADDRESS_LINE_1 = 'text1'
     CONTACT_ADDRESS_CITY = 'text3'
     CONTACT_ADDRESS_ZIP = 'text84'
+    CONTACT_REGION = "text19"
     CONTACT_ADDRESS_COUNTRY = 'text6'
     CONTACT_TAX_TYPE = 'text14'
     CONTACT_TAX_NUMBER = 'text2'
@@ -103,6 +104,8 @@ class MondayUtil(metaclass=SingletonMeta):
         CONTACT_ADDRESS_LINE_1: 'address_line_1',
         CONTACT_ADDRESS_CITY: 'city',
         CONTACT_ADDRESS_ZIP: 'zip',
+        CONTACT_REGION: 'region',
+        CONTACT_ADDRESS_COUNTRY: 'country',
         CONTACT_TAX_TYPE: 'tax_type',
         CONTACT_TAX_NUMBER: 'tax_ID',
         CONTACT_PAYMENT_DETAILS: 'payment_details'
@@ -837,13 +840,21 @@ class MondayUtil(metaclass=SingletonMeta):
                 # Fallback to string comparison
                 return db_val == monday_val
 
-        # Example field mapping for sub-items:
+        # mapping for sub-items:
         # Adjust these mappings to your actual column IDs for sub-items
         field_map = [
             {
                 "field": "quantity",
                 "db_value": safe_str(db_sub_item.get("quantity")),
                 "monday_value": safe_str(col_vals.get(self.SUBITEM_QUANTITY_COLUMN_ID)['text'])
+            },
+            {
+                "field": "file_link",
+                "db_value": safe_str(db_sub_item.get("file_link")),
+                "monday_value":
+                    safe_str(json.loads(col_vals.get(self.SUBITEM_LINK_COLUMN_ID)['value'])["url"])
+                    if col_vals.get(self.SUBITEM_LINK_COLUMN_ID)['value']
+                    else ''
             },
             {
                 "field": "detail_number",

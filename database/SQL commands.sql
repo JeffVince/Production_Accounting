@@ -357,7 +357,7 @@ CREATE UNIQUE INDEX `id_UNIQUE`
   ON `invoice` (`id` ASC);
 
 CREATE INDEX `po_id`
-  ON `invoice` (`po_id` ASC);
+  ON `invoice` (po_number ASC);
 
 -- -----------------------------------------------------
 -- Table: receipt
@@ -454,7 +454,7 @@ BEGIN
         i.transaction_date AS invoice_date,
         DATEDIFF(i.transaction_date, po.created_at) AS days_to_invoice
     FROM invoice i
-    JOIN purchase_order po ON i.po_id = po.id
+    JOIN purchase_order po ON i.po_number = po.id
     JOIN project p ON p.id = po.project_id;
 
     -- 4. Project Vendor Distribution

@@ -1,7 +1,7 @@
 # services/ocr_service.py
 import json
 import os
-
+import pdfplumber
 import pytesseract
 from PIL import Image
 import io
@@ -80,10 +80,8 @@ class OCRService(metaclass=SingletonMeta):
             {
                 "role": "system",
                 "content": """You are an AI assistant that extracts information from financial documents for a production company / digital creative studio. Extract the following details from the text:
-                   Invoice Date (Formatted as YYYY-MM-DD),  Quantity (consider multipliers like days, weeks, hours, x, X, and any other units that may have separate columns to quantity but need to be considered for the total), Rate, Date (You must format the date  as YYYY-MM-DD and if no date found then leave empty), Item Description (summarize to 30 characters maximum, only include roles or item names, exclude project names or other fluff), Account Number (where 5300 is US Labor, 5000 is Cost of Goods Sold, and 5330 is Foreign Contractor). 
-                   Invoice Description (use all of the line items you gather to generate a description of the vendor like Location Rental, Gaffer, Director of Photography, Rental House, etc. Use concise descriptions that are common in the creative industry)
-                   Some invoices have a separate line for tax, for these situations quantity is 1, description is Tax, rate is the tax amount. Make sure to add this as if it was just another line in the invoice. Some invoices have separate line for discount. for these situations quantity is 1, description is Discount, rate is the discount amount in dollars(if it's only marked as a % use context clues to figure out the dollar amount). Make sure to add this as if it was just another line in the invoice.
-                   Respond with pure, parsable, JSON (no leading or trailing apostrophes) with keys: 'invoice_date', 'due_date', 'description' and 'line_items' (where 'line items' is an array of objects where each object in the array has 'quantity', 'rate', 'date', 'item_description', and 'account_number'. Ensure that the total amount for all line items (quantity * rate) matches the invoice's total amount'. If any fields are empty do not include them in the JSON"""
+                   Invoice Date (Formatted as YYYY-MM-DD),  Total Amount, Payment Term.
+                   Respond with pure, parsable, JSON (no leading or trailing apostrophes) with keys: 'invoice_date', 'total_amount', 'payment_term' If any fields are empty make their value None"""
             },
             {"role": "user", "content": text}
         ]
@@ -144,3 +142,33 @@ class OCRService(metaclass=SingletonMeta):
         except json.JSONDecodeError:
             logging.error("Failed to parse JSON from OpenAI response")
             return None
+
+
+    def extract_text(self, local_file_path: str) -> str:
+        """
+        Extracts text from a PDF or image file using OCR or direct PDF text extraction.
+
+        :param local_file_path: The local file path of the document or image.
+        :return: A string containing all text extracted from the file.
+        """
+        # Basic file extension check
+        _, ext = os.path.splitext(local_file_path.lower())
+        text_content = ""
+
+        try:
+            # If it's a PDF, try using pdfplumber
+            if ext == ".pdf":
+                logging.info(f"🔎 [OCRService] Processing PDF with pdfplumber: {local_file_path}")
+                with pdfplumber.open(local_file_path) as pdf:
+                    for page in pdf.pages:
+                        page_text = page.extract_text() or ""
+                        text_content += page_text + "\n"
+            else:
+                # Otherwise, treat it as an image and use pytesseract
+                logging.info(f"🔎 [OCRService] Processing image with pytesseract: {local_file_path}")
+                image = Image.open(local_file_path)
+                text_content = pytesseract.image_to_string(image)
+        except Exception as e:
+            logging.error(f"❌ [OCRService] Failed to extract text from file {local_file_path}: {e}", exc_info=True)
+
+        return text_content.strip()

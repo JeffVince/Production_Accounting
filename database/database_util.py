@@ -917,6 +917,62 @@ class DatabaseOperations:
         self.logger.debug(f"🧾 update_invoice for id={invoice_id} with {kwargs}")
         return self._update_record(Invoice, invoice_id, **kwargs)
 
+    def search_invoice_by_keys(self, project_number, po_number=None, invoice_number=None):
+        """
+        🔍 Search for Invoices based on provided keys.
+
+        - If only project_number is provided, return all Invoices under that project.
+        - If project_number and po_number are provided, return all Invoices under that PO.
+        - If project_number, po_number, and invoice_number are provided, return just that Invoice.
+
+        Args:
+            project_number (str): The project number to filter by.
+            po_number (str, optional): The purchase order number to filter by.
+            invoice_number (int, optional): The invoice number to filter by.
+
+        Returns:
+            Serialized Invoice(s) or None if no matches found.
+        """
+        search_criteria = f"project_number='{project_number}'"
+        if po_number:
+            search_criteria += f", po_number='{po_number}'"
+        if invoice_number:
+            search_criteria += f", invoice_number='{invoice_number}'"
+
+        self.logger.debug(f"❓ Checking for Invoices with ({search_criteria}).")
+        self.logger.info(f"🔎 Searching Invoices with {search_criteria}")
+
+        with get_db_session() as session:
+            try:
+                query = (
+                    session.query(Invoice)
+                        .join(PurchaseOrder, Invoice.po_number == PurchaseOrder.po_number)
+                        .join(Project, PurchaseOrder.project_id == Project.id)
+                        .filter(Project.project_number == project_number)
+                )
+
+                if po_number:
+                    query = query.filter(PurchaseOrder.po_number == po_number)
+                if invoice_number:
+                    query = query.filter(Invoice.invoice_number == invoice_number)
+
+                results = query.all()
+
+                if not results:
+                    self.logger.info("🙅 No Invoices matched the provided keys.")
+                    return None
+                elif len(results) == 1:
+                    self.logger.info("✅ Found exactly 1 matching Invoice.")
+                    return self._serialize_record(results[0])
+                else:
+                    self.logger.info(f"✅ Found {len(results)} matching Invoices. Returning list.")
+                    return [self._serialize_record(r) for r in results]
+
+            except Exception as e:
+                session.rollback()
+                self.logger.error(f"💥 Error searching for Invoices: {e}", exc_info=True)
+                return None
+
     # -- Receipts
     def search_receipts(self, column_names, values):
         self.logger.debug(f"🧾 search_receipts with columns={column_names}, values={values}")

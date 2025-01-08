@@ -89,7 +89,7 @@ class DropboxService(metaclass=SingletonMeta):
             self.dropbox_api = dropbox_api
             self.po_log_database_util = po_log_database_util
             self.database_util = DatabaseOperations()
-
+            self.ocr_service = OCRService()
             self.logger.info("📦 Dropbox Service initialized 🌟")
             self._initialized = True
 
@@ -972,8 +972,8 @@ class DropboxService(metaclass=SingletonMeta):
                     # Only do a receipt lookup if this PO type suggests a card or petty cash transaction
                     if db_item.get("po_type") in ["CC", "PC"]:
                         receipts_found = self.database_util.search_receipts(
-                            ["project_number", "po_number", "detail_number"],
-                            [db_item["project_number"], db_item["po_number"], sdb["detail_number"]]
+                            ["project_number", "po_number", "detail_number", "line_id"],
+                            [db_item["project_number"], db_item["po_number"], sdb["detail_number"], sdb["line_id"]]
                         )
                         if receipts_found:
                             first_receipt = receipts_found[0] if isinstance(receipts_found, list) else receipts_found
@@ -1017,6 +1017,7 @@ class DropboxService(metaclass=SingletonMeta):
                     msub = global_subitem_map[sub_key]
                     sdb["project_number"] = db_item["project_number"]
                     sdb["po_number"] = db_item["po_number"]
+                    sdb["file_link"] = file_link_for_subitem
                     differences = monday_util.is_sub_item_different(sdb, msub)
                     if differences:
                         self.logger.debug(
@@ -1291,8 +1292,8 @@ class DropboxService(metaclass=SingletonMeta):
 
             # 6) Look up detail item
             existing_detail = self.database_util.search_detail_item_by_keys(
-                str(project_number),
-                po_number,
+                project_number=str(project_number),
+                po_number=po_number,
                 detail_number=detail_item_number,
                 line_id=line_id_number
             )
@@ -1351,24 +1352,26 @@ class DropboxService(metaclass=SingletonMeta):
             # 7) Determine state (ISSUE, REVIEWED, PO MISMATCH, etc.)
             state = "PENDING"
             detail_subtotal = existing_detail.get("sub_total", 0.0)
-
-            if parse_failed:
-                state = "ISSUE"
-                self.logger.info(f"Marking this receipt as ISSUE because parsing failed for {filename}.")
-            else:
-                try:
-                    if float(total_amount) == float(detail_subtotal):
-                        state = "REVIEWED"
-                        self.logger.info(
-                            "Receipt total matches the detail item subtotal. Setting state to REVIEWED."
-                        )
-                    else:
-                        self.logger.info(
-                            "Receipt total does not match the detail item subtotal. Setting state to PO MISMATCH."
-                        )
-                        state = "PO MISMATCH"
-                except Exception as e:
+            if not existing_detail["state"] == "RECONCILED":
+                if parse_failed:
                     state = "ISSUE"
+                    self.logger.info(f"Marking this receipt as ISSUE because parsing failed for {filename}.")
+                else:
+                    try:
+                        if float(total_amount) == float(detail_subtotal):
+                            state = "REVIEWED"
+                            self.logger.info(
+                                "Receipt total matches the detail item subtotal. Setting state to REVIEWED."
+                            )
+                        else:
+                            self.logger.info(
+                                "Receipt total does not match the detail item subtotal. Setting state to PO MISMATCH."
+                            )
+                            state = "PO MISMATCH"
+                    except Exception as e:
+                        state = "ISSUE"
+            else:
+                state = "RECONCILED"
 
             # Update the detail_item’s state in DB
             self.database_util.update_detail_item_by_keys(
@@ -1408,6 +1411,202 @@ class DropboxService(metaclass=SingletonMeta):
             return
 
     # endregion
+
+    #region Event Processing - Invoices
+    def process_invoice(self, dropbox_path: str):
+        """
+        Processes an invoice file from Dropbox. The filename is expected to match
+        the pattern "{project_number}_{po_number}" or "{project_number}_{po_number}_{invoice_number}".
+        If no invoice number is in the filename, defaults to 1.
+
+        Steps:
+        1) Parse filename to extract project_number, po_number, and invoice_number.
+        2) Download the file from Dropbox to a local temp path.
+        3) Use OCRService + OpenAI to extract total amount, transaction date, and term from the file.
+           - If no date is found, set None.
+           - If no term is found, set NET30 (i.e., 30).
+           - If no total is found, set 0.0.
+        4) Locate the corresponding purchase_order (and project) in the DB.
+        5) Create or update the 'invoice' record with the parsed info.
+        6) Store the Dropbox share link in 'file_link'.
+        7) Optionally push data to Monday (create or update invoice pulse).
+
+        :param dropbox_path: The full Dropbox path to the invoice file.
+        """
+        self.logger.info(f"📄 Processing invoice: {dropbox_path}")
+        filename = os.path.basename(dropbox_path)
+
+        # 1) Extract project_number, po_number, invoice_number
+        try:
+            match = re.match(r"^(\d{4})_(\d{1,2})(?:_(\d{1,2}))?", filename)
+            if not match:
+                self.logger.warning(f"⚠️ Invoice filename '{filename}' doesn't match the expected pattern.")
+                return
+            project_number_str = match.group(1)
+            po_number_str = match.group(2)
+            invoice_number_str = match.group(3) or "1"  # default to 1 if missing
+
+            project_number = int(project_number_str)
+            po_number = int(po_number_str)
+            invoice_number = int(invoice_number_str)
+        except Exception as e:
+            self.logger.exception(f"💥 Error parsing invoice filename '{filename}': {e}", exc_info=True)
+            return
+
+        # 2) Download file from Dropbox
+        temp_file_path = f"./temp_files/{filename}"
+        try:
+            self.logger.info(f"⬇️ Downloading invoice file to {temp_file_path}")
+            if not self.download_file_from_dropbox(dropbox_path, temp_file_path):
+                self.logger.error(f"❌ Could not download invoice file: {dropbox_path}")
+                return
+        except Exception as e:
+            self.logger.exception(f"💥 Failed to download invoice file: {e}", exc_info=True)
+            return
+
+        # 3) Extract data with OCR + OpenAI
+        try:
+            self.logger.info("🔎 Scanning invoice file for data with OCRService + OpenAI...")
+            extracted_text = self.ocr_service.extract_text(temp_file_path)
+            info, err = self.ocr_service.extract_info_with_openai(extracted_text)
+
+            if err or not info:
+                self.logger.error(f"❌ Failed to parse invoice data from OpenAI. Error: {err}")
+                transaction_date = None
+                term = 30
+                total = 0.0
+            else:
+                # Attempt to parse the date (expected format: YYYY-MM-DD)
+                date_str = info.get("invoice_date")
+                try:
+                    transaction_date = datetime.strptime(date_str, "%Y-%m-%d") if date_str else None
+                except (ValueError, TypeError):
+                    transaction_date = None
+
+                # Attempt to parse total as float
+                total_str = info.get("total_amount")
+                try:
+                    total = float(total_str) if total_str else 0.0
+                except (ValueError, TypeError):
+                    total = 0.0
+
+                # Attempt to parse the payment term
+                term_str = info.get("payment_term")
+                # If the returned string looks like 'NET30' or '30', extract digits
+                if term_str:
+                    # Remove non-digit characters
+                    digits_only = re.sub(r"[^0-9]", "", term_str)
+                    try:
+                        term = int(digits_only) if digits_only else 30
+                    except (ValueError, TypeError):
+                        term = 30
+                else:
+                    term = 30
+
+        except Exception as e:
+            self.logger.exception(f"💥 Error extracting invoice data: {e}", exc_info=True)
+            transaction_date, term, total = None, 30, 0.0
+
+        # 4) Find or create the purchase_order and project
+        try:
+            po_data = self.database_util.search_purchase_order_by_keys(project_number, po_number)
+            if not po_data:
+                self.logger.warning(f"⚠️ PO {project_number}_{po_number} not found; cannot create invoice.")
+                return
+            if isinstance(po_data, list):
+                po_data = po_data[0]
+        except Exception as e:
+            self.logger.exception(f"💥 Error locating PO or project in DB: {e}", exc_info=True)
+            return
+
+        # 5) Create or update the invoice record
+        try:
+            existing_invoice = self.database_util.search_invoice_by_keys(project_number, po_number, invoice_number)
+            if existing_invoice is None:
+                self.logger.info(
+                    f"🆕 Creating new invoice #{invoice_number} for PO {po_number} (project {project_number}).")
+                new_invoice = self.database_util.create_invoice(
+                    project_number=project_number,
+                    po_number=po_number,
+                    invoice_number=invoice_number,
+                    transaction_date=transaction_date,
+                    term=term,
+                    total=total
+                )
+                invoice_id = new_invoice["id"] if new_invoice else None
+            else:
+                # existing_invoice might be a single dict or a list of dicts
+                if isinstance(existing_invoice, list):
+                    invoice_id = existing_invoice[0]["id"]
+                else:
+                    invoice_id = existing_invoice["id"]
+
+                self.logger.info(f"🔄 Updating existing invoice #{invoice_number} for PO {po_number}.")
+                self.database_util.update_invoice(
+                    invoice_id=invoice_id,
+                    transaction_date=transaction_date,
+                    term=term,
+                    total=total
+                )
+        except Exception as e:
+            self.logger.exception(f"💥 Error creating/updating invoice in DB: {e}", exc_info=True)
+            return
+
+        # 6) Update the invoice file_link with Dropbox share link
+        try:
+            file_share_link = self.dropbox_util.get_file_link(dropbox_path)
+            self.logger.info(f"🔗 Obtained Dropbox link for invoice: {file_share_link}")
+            self.database_util.update_invoice(
+                invoice_id=invoice_id,
+                file_link=file_share_link
+            )
+        except Exception as e:
+            self.logger.exception(f"💥 Error retrieving or storing Dropbox link: {e}", exc_info=True)
+
+        # 7) Update any Monday subitems that match this invoice (by project_number, po_number, detail_item_number == invoice_number)
+        try:
+            self.logger.info(
+                f"🌐 Updating Monday subitems link for invoice #{invoice_number} (project {project_number}, PO {po_number}).")
+
+            # Retrieve all subitems from your DB that correspond to this (project, PO, invoice_number)
+            # Make sure the DB function aligns with your actual implementation
+            matching_subitems = self.database_util.search_detail_items(
+                ["po_id", "detail_number"], [po_data["id"], invoice_number]
+            )
+
+            # If no matching subitems, we can skip or just log
+            if not matching_subitems:
+                self.logger.info("No subitems found in DB that link to this invoice.")
+            else:
+                # Ensure it's a list if your DB utility can sometimes return a single dict
+                if not isinstance(matching_subitems, list):
+                    matching_subitems = [matching_subitems]
+
+                updated_count = 0
+                for sub in matching_subitems:
+                    subitem_id = sub.get("pulse_id")
+                    if not subitem_id:
+                        self.logger.warning(f"Missing subitem_id (pulse_id) in DB record: {sub}")
+                        continue
+
+                    # Prepare column values (just the link in this case)
+                    col_vals_str = self.monday_util.subitem_column_values_formatter(link=file_share_link)
+                    col_vals_dict = json.loads(col_vals_str)
+
+                    # Update the subitem columns on Monday
+                    success = self.monday_util.update_subitem_columns(subitem_id, col_vals_dict)
+                    if success:
+                        updated_count += 1
+                        self.logger.info(f"🔗 Successfully updated subitem {subitem_id} with invoice link.")
+                    else:
+                        self.logger.warning(f"❌ Failed to update subitem {subitem_id} with invoice link.")
+
+                self.logger.info(f"🔗 Updated link for {updated_count} Monday subitems.")
+
+        except Exception as e:
+            self.logger.exception(f"💥 Error updating invoice link in Monday subitems: {e}", exc_info=True)
+        self.logger.info(
+            f"✅ Finished processing invoice #{invoice_number} for PO {po_number} (project {project_number}).")    #endregion
 
     # region Helpers
     def download_file_from_dropbox(self, path: str, temp_file_path: str) -> bool:
@@ -1580,10 +1779,62 @@ class DropboxService(metaclass=SingletonMeta):
 
     def _extract_text_via_ocr(self, file_data: bytes) -> str:
         from ocr_service import OCRService
-        ocr_service = OCRService()
-        return ocr_service.extract_text_from_receipt(file_data)
+        return self.ocr_service.extract_text_from_receipt(file_data)
+
+    def parse_invoice_data_with_openai(self, local_file_path: str):
+        """
+        Uses OCRService to extract text from the given file path, then
+        calls the extract_info_with_openai method to parse out invoice_date,
+        total_amount, and payment_term from the text.
+
+        :param local_file_path: Path to the local invoice file
+        :return: (transaction_date, term, total) - with term defaulting to 30 if None,
+                 and total defaulting to 0.0 if not parseable.
+        """
+        # Extract raw text from file
+        extracted_text = self.ocr_service.extract_text(local_file_path)
+
+        # Use OpenAI to parse date, amount, and term
+        info, err = self.ocr_service.extract_info_with_openai(extracted_text)
+        if err or not info:
+            self.logger.error(f"❌ OpenAI extraction error: {err} - Falling back to defaults.")
+            return None, 30, 0.0  # Default transaction_date=None, term=30, total=0.0
+
+        date_str = info.get("invoice_date")
+        total_str = info.get("total_amount")
+        term_str = info.get("payment_term")
+
+        # Attempt to parse the date (expected format: YYYY-MM-DD)
+        try:
+            transaction_date = datetime.strptime(date_str, "%Y-%m-%d") if date_str else None
+        except (ValueError, TypeError):
+            transaction_date = None
+
+        # Attempt to parse total as float
+        try:
+            total = float(total_str) if total_str else 0.0
+        except (ValueError, TypeError):
+            total = 0.0
+
+        # Attempt to parse the payment term (if it's something like "NET30", we strip out digits)
+        # If no term found, we default to 30
+        try:
+            # If the returned string looks like 'NET30', extract the digits
+            if term_str and re.search(r"(?i)\bNET\s*\d+\b", term_str):
+                term = int(re.sub(r"[^0-9]", "", term_str))
+            else:
+                term = int(term_str) if term_str else None
+        except (ValueError, TypeError):
+            term = None
+
+        if not term:
+            term = 30
+
+        return transaction_date, term, total
+
 
     # endregion
+
 
 
 # Singleton instance

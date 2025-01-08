@@ -10,6 +10,7 @@ import os
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dotenv import load_dotenv
 
 # region PyXero Imports
 from xero import Xero
@@ -17,7 +18,7 @@ from xero.auth import OAuth2Credentials
 from xero.constants import XeroScopes
 # In some PyXero versions, XeroUnauthorized handles 401 (including expired tokens).
 # If your version doesn't have it, fallback to the more generic XeroException.
-from xero.exceptions import XeroException, XeroUnauthorized
+from xero.exceptions import XeroException, XeroUnauthorized, XeroRateLimitExceeded
 # endregion
 
 # region Local Imports
@@ -48,7 +49,7 @@ class XeroAPI(metaclass=SingletonMeta):
         self.access_token = os.getenv("XERO_ACCESS_TOKEN")
         self.refresh_token = os.getenv("XERO_REFRESH_TOKEN")
         self.tenant_id = os.getenv("XERO_TENANT_ID")
-
+        load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
         # Default scope if not specified in env
         # Make sure "offline_access" is included if you need token refreshes
         self.scope = (
@@ -118,7 +119,7 @@ class XeroAPI(metaclass=SingletonMeta):
                 else:
                     self.logger.warning("No tenants found for this user/token.")
 
-            # Save updated tokens back to environment if desired
+            # Save updated tokens back to environment (ENV is now our single source of truth)
             new_token = self.credentials.token
             os.environ["XERO_ACCESS_TOKEN"] = new_token["access_token"]
             os.environ["XERO_REFRESH_TOKEN"] = new_token["refresh_token"]
@@ -135,15 +136,32 @@ class XeroAPI(metaclass=SingletonMeta):
 
     def _retry_on_unauthorized(self, func, *args, **kwargs):
         """
-        Helper method to retry a PyXero call if a XeroUnauthorized occurs (401 error),
-        indicating the token might be expired or invalid.
+        Helper method to call a PyXero function with retries if:
+         - XeroUnauthorized occurs (token expired/invalid), or
+         - XeroRateLimitExceeded occurs (429 rate limit).
+        We will retry up to three times, sleeping between retries on rate limits.
         """
-        try:
-            return func(*args, **kwargs)
-        except XeroUnauthorized:
-            self.logger.warning("XeroUnauthorized caught mid-operation, attempting a force-refresh...")
-            self._refresh_token_if_needed(force=True)
-            return func(*args, **kwargs)
+        max_retries = 3
+        for attempt in range(1, max_retries + 1):
+            try:
+                return func(*args, **kwargs)
+            except XeroUnauthorized:
+                self.logger.warning("XeroUnauthorized caught mid-operation, attempting a force-refresh...")
+                self._refresh_token_if_needed(force=True)
+            except XeroRateLimitExceeded:
+                self.logger.warning(
+                    f"Rate limit hit. Attempt {attempt} of {max_retries}. "
+                    f"Sleeping for 65 seconds before retry..."
+                )
+                time.sleep(65)
+            except XeroException as e:
+                # If it's some other XeroException that isn't Unauthorized or RateLimit, re-raise
+                self.logger.error(f"XeroException occurred: {str(e)}")
+                raise e
+
+        # If we exhaust all retries (e.g., repeated 429 or 401 issues)
+        self.logger.error("Failed to call Xero API after multiple retry attempts.")
+        return None
 
     # region Utility Methods
 
@@ -215,7 +233,7 @@ class XeroAPI(metaclass=SingletonMeta):
         self.logger.info("Creating spend money transaction in Xero (PyXero)...")
 
         try:
-            # Use our retry helper to handle token issues
+            # Use our retry helper to handle token issues & rate limits
             created = self._retry_on_unauthorized(self.xero.banktransactions.put, [new_transaction])
             self.logger.debug(f"Xero create response: {created}")
             return created
@@ -442,6 +460,140 @@ class XeroAPI(metaclass=SingletonMeta):
             return []
 
     # endregion
+
+    # region  CONTACT FUNCTIONS
+    def get_contact_by_name(self, name: str):
+        """
+        Retrieve a Xero contact by name. Returns the first match if multiple are found.
+        If none exist, returns None.
+        """
+        self._refresh_token_if_needed()
+        self.logger.info(f"Attempting to retrieve Xero contact by name: {name}")
+
+        try:
+            # Use our retry helper to handle token expiration & rate limits
+            results = self._retry_on_unauthorized(self.xero.contacts.filter, Name=name)
+            if results:
+                self.logger.debug(f"Found Xero contact(s) for '{name}': {results}")
+                return results[0]
+            self.logger.info(f"No matching contact found for '{name}' in Xero.")
+            return None
+        except XeroException as e:
+            self.logger.error(f"Error retrieving contact by name '{name}': {str(e)}")
+            return None
+
+    def get_all_contacts(self):
+        """
+        Fetch all contacts from Xero. This may be large for bigger organizations,
+        so consider pagination or filtering if performance is a concern.
+        """
+        self._refresh_token_if_needed()
+        self.logger.info("Fetching all contacts from Xero...")
+
+        try:
+            contacts = self._retry_on_unauthorized(self.xero.contacts.all)
+            self.logger.debug(f"Retrieved {len(contacts)} contact(s) from Xero.")
+            return contacts
+        except XeroException as e:
+            self.logger.error(f"Error retrieving all contacts: {str(e)}")
+            return []
+
+    def create_contact(self, contact_data: dict):
+        """
+        Create a new contact in Xero using the provided contact_data.
+
+        contact_data should match PyXero's expected structure, e.g.:
+        {
+            "Name": "Vendor Name",
+            "EmailAddress": "vendor@example.com",
+            "TaxNumber": "123456789",
+            ...
+        }
+        """
+        self._refresh_token_if_needed()
+        self.logger.info(f"Creating a new Xero contact with data: {contact_data}")
+
+        try:
+            created = self._retry_on_unauthorized(self.xero.contacts.put, [contact_data])
+            self.logger.debug(f"Successfully created contact in Xero: {created}")
+            return created
+        except XeroException as e:
+            self.logger.error(f"Failed to create contact in Xero: {str(e)}")
+            return None
+
+    def update_contact(self, contact_data: dict):
+        """
+        Update an existing contact in Xero. The contact_data must include ContactID.
+
+        :param contact_data: Dictionary containing contact details to update.
+        :return: Updated contact data if successful, raises exception otherwise.
+        """
+        self.logger.info(f"Attempting to update contact with ContactID={contact_data.get('ContactID')}")
+        try:
+            updated_contacts = self.xero.contacts.save(contact_data)
+            self.logger.debug(f"Updated contact data: {updated_contacts}")
+            if not updated_contacts:
+                self.logger.error("Xero returned an empty response for contact update.")
+                raise XeroException("Empty response from Xero during contact update.")
+            return updated_contacts
+        except XeroException as e:
+            self.logger.error(f"XeroException occurred: {str(e)}")
+            raise
+        except Exception as e:
+            self.logger.error(f"Unexpected error during contact update: {str(e)}")
+            raise
+
+    def update_contact_with_retry(self, contact_data, max_retries=3):
+        """
+        Attempts to update a Xero contact, retrying if we encounter rate-limit errors.
+        This is an explicit example; the _retry_on_unauthorized wrapper approach
+        can also cover this if we adjust it to handle XeroRateLimitExceeded.
+        """
+        for attempt in range(1, max_retries + 1):
+            try:
+                updated = self.xero.contacts.save(contact_data)
+                return updated  # Xero returns a list of updated contacts
+            except XeroRateLimitExceeded as e:
+                self.logger.warning(
+                    f"Rate limit hit. Attempt {attempt} of {max_retries}. "
+                    f"Sleeping for 65 seconds before retry..."
+                )
+                time.sleep(65)  # Sleep a bit over a minute to let the limit reset
+            except XeroException as xe:
+                self.logger.error(f"XeroException while updating contact: {xe}")
+                return None
+        # If we exhaust all retries
+        self.logger.error("Failed to update contact after multiple rate-limit retries.")
+        return None
+    # endregion
+
+    def update_contacts_with_retry(self, contacts_data: list[dict], max_retries=3):
+        """
+        Attempts to update multiple Xero contacts, retrying if we encounter rate-limit errors.
+
+        :param contacts_data: A list of contact dictionaries, each containing at least a 'ContactID'.
+        :param max_retries: How many times to retry in the event of a rate-limit error.
+        :return: List of updated contacts if successful, or None on failure.
+        """
+        for attempt in range(1, max_retries + 1):
+            try:
+                # PyXero's .save() can handle a list of contact objects
+                updated = self.xero.contacts.save(contacts_data)
+                return updated  # Xero returns a list of updated contacts
+            except XeroRateLimitExceeded as e:
+                self.logger.warning(
+                    f"Rate limit hit. Attempt {attempt} of {max_retries}. "
+                    f"Sleeping for 65 seconds before retry..."
+                )
+                time.sleep(65)  # Sleep a bit over a minute to let the limit reset
+            except XeroException as xe:
+                self.logger.error(f"XeroException while updating contacts in batch: {xe}")
+                return None
+
+        # If we exhaust all retries
+        self.logger.error("Failed to update contacts after multiple rate-limit retries.")
+        return None
+
 
     # region Concurrency Example
 
