@@ -63,6 +63,7 @@ class Orchestrator:
         #self.coordinate_state_transitions()
         #self.sync_spend_money_items()
         #self.sync_contacts()
+        self.sync_xero_bills()
 
     def schedule_monday_main_items_sync(self, interval=90000):
 
@@ -79,6 +80,10 @@ class Orchestrator:
 
     def sync_spend_money_items(self):
         result = self.xero_services.load_spend_money_transactions(project_id="2416")
+        return result
+
+    def sync_xero_bills(self):
+        result = self.xero_services.load_bills("2416")
         return result
 
     def sync_contacts(self):

@@ -289,6 +289,17 @@ class XeroAPI(metaclass=SingletonMeta):
 
     # region BILLS CRUD
 
+    def search_xero_bills(self, column_names=None, values=None):
+        """
+        Search for XeroBill records by arbitrary columns (e.g. xero_reference_number).
+        Returns:
+          - None if no records
+          - a single dict if exactly one found
+          - a list of dicts if multiple found
+        """
+        self.logger.debug(f"🔎 search_xero_bills: columns={column_names}, values={values}")
+        return self._search_records(XeroBill, column_names, values)
+
     def create_bill(self, session, project_id: int, po_number: int, detail_number: int):
         """
         Create a Bill (Invoice type='ACCPAY') in Xero for a specific project/PO/detail combo.
@@ -368,6 +379,40 @@ class XeroAPI(metaclass=SingletonMeta):
             self.logger.error(f"Failed to update bill in Xero: {str(e)}")
             return None
 
+    def get_all_bills(self):
+        """
+    Retrieve all Invoices from Xero of Type='ACCPAY'.
+    Returns:
+        list: A list of ACCPAY invoice dicts.
+        """
+        self._refresh_token_if_needed()
+
+        self.logger.info("Retrieving all ACCPAY invoices from Xero...")
+        filter_str = 'Type=="ACCPAY"'  # Only fetch bills
+        try:
+            invoices = self._retry_on_unauthorized(self.xero.invoices.filter, raw=filter_str)
+            if not invoices:
+                self.logger.info("No ACCPAY invoices found in Xero.")
+                return []
+            self.logger.info(f"Retrieved {len(invoices)} ACCPAY invoices from Xero.")
+            return invoices
+        except XeroException as e:
+            self.logger.error(f"Failed to retrieve ACCPAY invoices: {str(e)}")
+            return []
+
+    def extract_detail_item_id_from_xero_line(self, line_item: dict) -> int:
+        """
+        Tries to parse or derive a detail_item_id from the Xero line_item dict.
+        Replace with your real logic.
+        """
+        description = line_item.get("Description", "")
+        # For example, if your line item description is "DetailItemID=123":
+        if "DetailItemID=" in description:
+            try:
+                return int(description.split("DetailItemID=")[1].strip())
+            except (ValueError, IndexError):
+                return 0
+        return 0
     # endregion
 
     # region Retrieval Methods
@@ -616,6 +661,8 @@ class XeroAPI(metaclass=SingletonMeta):
         return results
 
     # endregion
+
+
 
 
 # Instantiate a global `XeroAPI` object you can import throughout your app
