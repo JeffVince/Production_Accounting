@@ -61,6 +61,7 @@ class MondayUtil(metaclass=SingletonMeta):
     CONTACT_PHONE = 'phone'
     CONTACT_EMAIL = 'email'
     CONTACT_ADDRESS_LINE_1 = 'text1'
+    CONTACT_ADDRESS_LINE_2 = 'text_mkm0s5w9'
     CONTACT_ADDRESS_CITY = 'text3'
     CONTACT_ADDRESS_ZIP = 'text84'
     CONTACT_REGION = "text19"
@@ -102,6 +103,7 @@ class MondayUtil(metaclass=SingletonMeta):
         CONTACT_PHONE: 'phone',
         CONTACT_EMAIL: 'email',
         CONTACT_ADDRESS_LINE_1: 'address_line_1',
+        CONTACT_ADDRESS_LINE_2: 'address_line_2',
         CONTACT_ADDRESS_CITY: 'city',
         CONTACT_ADDRESS_ZIP: 'zip',
         CONTACT_REGION: 'region',

@@ -15,7 +15,7 @@ from utilities.config import Config
 from monday import MondayClient
 from monday_files.monday_util import monday_util
 
-load_dotenv()
+load_dotenv("../.env")
 
 # region 🔧 Global Configuration and Constants
 # ============================================
@@ -1513,6 +1513,7 @@ class MondayAPI(metaclass=SingletonMeta):
             "phone": parsed_values.get(self.monday_util.CONTACT_PHONE),
             "email": parsed_values.get(self.monday_util.CONTACT_EMAIL),
             "address_line_1": parsed_values.get(self.monday_util.CONTACT_ADDRESS_LINE_1),
+            "address_line_2": parsed_values.get(self.monday_util.CONTACT_ADDRESS_LINE_2),
             "city": parsed_values.get(self.monday_util.CONTACT_ADDRESS_CITY),
             "zip_code": parsed_values.get(self.monday_util.CONTACT_ADDRESS_ZIP),
             "region": parsed_values.get(self.monday_util.CONTACT_REGION),
@@ -1551,6 +1552,7 @@ class MondayAPI(metaclass=SingletonMeta):
             self.monday_util.CONTACT_PHONE: db_contact.phone or "",
             self.monday_util.CONTACT_EMAIL: db_contact.email or "",
             self.monday_util.CONTACT_ADDRESS_LINE_1: db_contact.address_line_1 or "",
+            self.monday_util.CONTACT_ADDRESS_LINE_2: db_contact.address_line_2 or "",
             self.monday_util.CONTACT_CITY: db_contact.city or "",
             self.monday_util.CONTACT_STATE: db_contact.state or "",
             self.monday_util.CONTACT_COUNTRY: db_contact.country or "",

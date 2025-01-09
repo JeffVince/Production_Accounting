@@ -1,3 +1,5 @@
+# database.models.py
+
 import logging
 
 from sqlalchemy import (
@@ -70,8 +72,9 @@ class Contact(Base):
     payment_details = Column(String(255), nullable=False, server_default='PENDING')
     email = Column(String(100), nullable=True)
     phone = Column(String(45), nullable=True)
-    tax_number = Column(MYSQL_BIGINT, nullable=True)
+    tax_number = Column(String(45), nullable=True)
     address_line_1 = Column(String(255), nullable=True)
+    address_line_2 = Column(String(255), nullable=True)
     city = Column(String(100), nullable=True)
     zip = Column(String(20), nullable=True)
     tax_form_link = Column(String(255), nullable=True)
@@ -185,6 +188,7 @@ class DetailItem(Base):
     fringes = Column(MYSQL_DECIMAL(15, 2), nullable=True, server_default='0.00')
     pulse_id = Column(MYSQL_BIGINT, nullable=True)
     parent_pulse_id = Column(MYSQL_BIGINT, nullable=True)
+    receipt_id = Column(MYSQL_INTEGER(unsigned=True))
     sub_total = Column(
         MYSQL_DECIMAL(15, 2),
         Computed("ROUND(((rate * quantity) + IFNULL(ot,0) + IFNULL(fringes,0)),2)", persisted=True),
@@ -238,6 +242,7 @@ class XeroBill(Base):
     id = Column(MYSQL_INTEGER(unsigned=True), primary_key=True, autoincrement=True)
     state = Column(String(45), nullable=False, server_default='Draft')
     xero_reference_number = Column(String(45), nullable=True, unique=True)
+    xero_link = Column(String(255))
     created_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
     updated_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'))
 
@@ -338,15 +343,19 @@ class BillLineItem(Base):
     )
     detail_item_id = Column(
         MYSQL_INTEGER(unsigned=True),
-        ForeignKey('detail_item.id', onupdate='NO ACTION', ondelete='NO ACTION'),
-        nullable=False
+        nullable=True
     )
+    description = Column(String(255), nullable=True)
+    quantity = Column(MYSQL_DECIMAL, nullable=True)
+    unit_amount = Column(MYSQL_DECIMAL, nullable=True)
+    line_amount = Column(MYSQL_DECIMAL, nullable=True)
+    account_code = Column(MYSQL_INTEGER, nullable=True)
+    xero_id = Column(String(255), nullable=False)
     created_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
     updated_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'))
 
     # Relationship
     xero_bill = relationship('XeroBill', back_populates='bill_line_items')
-    detail_item = relationship('DetailItem')  # no explicit back_populates in final schema
 
 
 # -------------------------------------------------------------------

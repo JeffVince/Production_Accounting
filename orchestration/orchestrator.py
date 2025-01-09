@@ -17,7 +17,6 @@ from xero_services import xero_services
 class Orchestrator:
     def __init__(self):
         # Initialize Services
-        # Set up logging
         self.logger = logging.getLogger(self.__class__.__name__)
         self.dropbox_service = dropbox_service
         self.config = Config()
@@ -28,92 +27,82 @@ class Orchestrator:
         self.xero_services = xero_services
 
     def start_background_tasks(self):
-        """Start any necessary background tasks."""
+        """
+        Start any necessary background tasks that should run automatically.
+        Currently this includes an example of checking PO Log files in Dropbox (if needed).
+        """
         self.logger.info("Starting background tasks...")
-        #self.schedule_po_log_check()
 
         if dropbox_service.USE_TEMP_FILE:
-            # Specify the directory containing the log files
             log_dir = "./temp_files/"
-
-            # Debugging: Print the resolved absolute path
             absolute_log_dir = os.path.abspath(log_dir)
 
             # Identify all PO_LOG files with a matching pattern
             log_files = glob.glob(os.path.join(absolute_log_dir, "PO_LOG_2416-*.txt"))
 
-            # Debugging: Print found files
-
             if log_files:
-                # Find the most recently modified log file
                 latest_log_file = max(log_files, key=os.path.getmtime)
-
-                # Debugging: Print the selected log file
-
-                # Pass the most recent file to the process_po_log function
                 self.dropbox_service.po_log_orchestrator(latest_log_file)
             else:
-                # Handle the case where no PO_LOG files are found
                 self.logger.error("No PO LOG FILES FOUND FOR TESTING")
 
-        #MAIN STUFF
-        #self.schedule_monday_main_items_sync()
-        #self.schedule_monday_sub_items_sync()
-        #self.schedule_monday_contact_sync()
-        #self.coordinate_state_transitions()
-        #self.sync_spend_money_items()
-        #self.sync_contacts()
-        self.sync_xero_bills()
+        # If you previously scheduled tasks here, those calls have been removed.
 
-    def schedule_monday_main_items_sync(self, interval=90000):
+    # --------------------------------------------------
+    # Single-run methods (replacing previously scheduled tasks)
+    # --------------------------------------------------
 
-        def sync_monday_to_main_items():
-            while True:
-                self.logger.info("Fetching Main Item entries")
-                try:
-                    self.monday_service.sync_main_items_from_monday_board()
-                except Exception as e:
-                    self.logger.error(f"Error fetching Main Item entries: {e}")
-                time.sleep(interval)
+    def sync_monday_main_items(self):
+        """
+        Fetch Main Item entries from Monday.com and handle them immediately (one-time run).
+        """
+        self.logger.info("Fetching Main Item entries")
+        try:
+            self.monday_service.sync_main_items_from_monday_board()
+        except Exception as e:
+            self.logger.error(f"Error fetching Main Item entries: {e}")
 
-        threading.Thread(target=sync_monday_to_main_items, daemon=True).start()
+    def sync_monday_sub_items(self):
+        """
+        Fetch Sub Item entries from Monday.com and handle them immediately (one-time run).
+        """
+        self.logger.info("Fetching Sub Item entries")
+        try:
+            self.monday_service.sync_sub_items_from_monday_board()
+        except Exception as e:
+            self.logger.error(f"Error fetching Sub Item entries and syncing them to DB: {e}")
+
+    def sync_monday_contacts(self):
+        """
+        Fetch contact entries from Monday.com and handle them immediately (one-time run).
+        """
+        self.logger.info("Fetching Contact entries")
+        try:
+            self.monday_service.sync_contacts_from_monday_board()
+        except Exception as e:
+            self.logger.error(f"Error fetching Contact entries and syncing them to DB: {e}")
+
 
     def sync_spend_money_items(self):
+        """
+        Retrieve spend money transactions from Xero for a single run.
+        """
+        self.logger.info("Syncing spend money transactions...")
         result = self.xero_services.load_spend_money_transactions(project_id="2416")
         return result
 
-    def sync_xero_bills(self):
-        result = self.xero_services.load_bills("2416")
-        return result
-
     def sync_contacts(self):
+        """
+        Retrieve and populate Xero contacts in a single run.
+        """
+        self.logger.info("Syncing Xero contacts...")
         result = self.xero_services.populate_xero_contacts()
         return result
 
-    def schedule_monday_sub_items_sync(self, interval=90000):
-
-        def sync_monday_to_sub_items():
-            while True:
-                self.logger.info("Fetching Sub Item entries")
-                try:
-                    self.monday_service.sync_sub_items_from_monday_board()
-                except Exception as e:
-                    self.logger.error(f"Error fetching Sub Item entries and syncing them to DB: {e}")
-                time.sleep(interval)
-
-        threading.Thread(target=sync_monday_to_sub_items, daemon=True).start()
-
-    def schedule_monday_contact_sync(self, interval=90000):
-
-        def sync_contacts_from_monday_board():
-            while True:
-                self.logger.info("Fetching Sub Item entries")
-                try:
-                    self.monday_service.sync_contacts_from_monday_board()
-                except Exception as e:
-                    self.logger.error(f"Error fetching Sub Item entries and syncing them to DB: {e}")
-                time.sleep(interval)
-
-
-        threading.Thread(target=sync_contacts_from_monday_board, daemon=True).start()
-
+    def sync_xero_bills(self):
+        """
+        Retrieve Xero bills in a single run.
+        """
+        self.logger.info("Syncing Xero bills...")
+        result = self.xero_services.load_bills("2416")
+        return result

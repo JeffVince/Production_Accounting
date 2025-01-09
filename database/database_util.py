@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 """
+database.database_uti.py
+
 💻 Database Operations Module
 =============================
 This module provides flexible, DRY (Don't Repeat Yourself) functions for searching,
@@ -11,6 +13,8 @@ Key modifications:
 - `create_detail_item_by_keys(...)` fully handles any `aicp_code` argument (int or str).
 - We avoid DetachedInstanceError by always accessing `po.id` in the same session
   that loads the PurchaseOrder, storing the numeric ID, and then creating the DetailItem.
+
+
 """
 
 from contextlib import contextmanager
@@ -486,6 +490,51 @@ class DatabaseOperations:
                 session.rollback()
                 self.logger.error(f"💥 Error searching for DetailItems: {e}", exc_info=True)
                 return None
+
+    # In database.database_uti.py (within the DatabaseOperations class)
+
+    def search_detail_items_by_project_po_qty_rate(self, project_number: int, po_number: int, quantity: float,
+                                                   rate: float):
+        """
+        Search for DetailItems by matching the same project_number, po_number,
+        quantity, and rate. Returns a list of matching DetailItems (serialized as dicts)
+        or None if no matches.
+        """
+        self.logger.debug(
+            f"search_detail_items_by_project_po_qty_rate called with "
+            f"project_number={project_number}, po_number={po_number}, quantity={quantity}, rate={rate}"
+        )
+
+        with get_db_session() as session:
+            try:
+                query = (
+                    session.query(DetailItem)
+                        .join(PurchaseOrder, DetailItem.po_id == PurchaseOrder.id)
+                        .join(Project, PurchaseOrder.project_id == Project.id)
+                        .filter(Project.project_number == project_number)
+                        .filter(PurchaseOrder.po_number == po_number)
+                        .filter(DetailItem.sub_total == quantity * rate)
+                )
+
+                results = query.all()
+                if not results:
+                    self.logger.info(
+                        f"No DetailItems found matching qty={quantity}, rate={rate} "
+                        f"for project_number={project_number}, po_number={po_number}"
+                    )
+                    return None
+
+                self.logger.info(
+                    f"Found {len(results)} DetailItem(s) matching qty={quantity}, rate={rate}, "
+                    f"project_number={project_number}, po_number={po_number}."
+                )
+                # Return a list of serialized records
+                return [self._serialize_record(r) for r in results]
+
+            except Exception as e:
+                session.rollback()
+                self.logger.error(f"Error searching DetailItems by qty/rate: {e}", exc_info=True)
+                return None
     def create_detail_item_by_keys(
         self,
         project_number,
@@ -714,6 +763,7 @@ class DatabaseOperations:
             phone: str = None,
             email: str = None,
             address_line_1: str = None,
+            address_line_2: str = None,
             city: str = None,
             zip_code: str = None,
             country: str = None,
@@ -758,6 +808,10 @@ class DatabaseOperations:
 
             if address_line_1 is not None:
                 contact.address_line_1 = address_line_1
+                changed = True
+
+            if address_line_2 is not None:
+                contact.address_line_2 = address_line_2
                 changed = True
 
             if city is not None:
@@ -822,7 +876,7 @@ class DatabaseOperations:
 
         cleaned = tax_str.replace("-", "")
         try:
-            return int(cleaned)
+            return str(cleaned)
         except ValueError:
             self.logger.warning(f"⚠️ We couldn't parse '{tax_str}' into an integer. Possibly invalid format.")
             return None
@@ -1015,9 +1069,26 @@ class DatabaseOperations:
         return self._update_record(Receipt, receipt_id, **kwargs)
 
     # -- SpendMoney
-    def search_spend_money(self, column_names, values):
-        self.logger.debug(f"💵 search_spend_money: columns={column_names}, values={values}")
-        return self._search_records(SpendMoney, column_names, values)
+    def search_spend_money(self, column_names, values, deleted=False):
+        self.logger.debug(f"💵 search_spend_money: columns={column_names}, values={values}, deleted={deleted}")
+
+        records = self._search_records(SpendMoney, column_names, values)
+
+        # If we received nothing back, just return it as is (None, empty dict, or empty list)
+        if not records:
+            return records
+
+        # If the user wants to exclude deleted items
+        if not deleted:
+            # If it's a single dictionary
+            if isinstance(records, dict):
+                if records.get('status') == "DELETED":
+                    return None  # or return {} if you prefer
+            # If it's a list of dictionaries
+            elif isinstance(records, list):
+                records = [rec for rec in records if rec.get('status') != "DELETED"]
+
+        return records
 
     def create_spend_money(self, **kwargs):
         self.logger.debug(f"💸 create_spend_money with {kwargs}")

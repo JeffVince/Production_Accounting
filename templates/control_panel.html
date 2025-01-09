@@ -1,0 +1,44 @@
+<!-- templates/control_panel.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Control Panel</title>
+  <!-- Example using Bootstrap 5 CDN -->
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+  >
+</head>
+<body class="bg-light">
+
+<div class="container py-4">
+  <h1 class="mb-4">Orchestrator Control Panel</h1>
+
+  <!-- Each button posts the name of the function you want to trigger -->
+  <form action="/trigger_function" method="POST" class="mb-3">
+    <input type="hidden" name="function_name" value="schedule_monday_contact_sync" />
+    <button type="submit" class="btn btn-primary">Sync Monday Contact from Monday -> DB</button>
+  </form>
+
+  <form action="/trigger_function" method="POST" class="mb-3">
+    <input type="hidden" name="function_name" value="sync_spend_money_items" />
+    <button type="submit" class="btn btn-primary">Sync Spend Money Items from Xero -> DB</button>
+  </form>
+
+  <form action="/trigger_function" method="POST" class="mb-3">
+    <input type="hidden" name="function_name" value="sync_contacts" />
+    <button type="submit" class="btn btn-primary">Sync Contacts from DB -> Xero </button>
+  </form>
+
+  <form action="/trigger_function" method="POST" class="mb-3">
+    <input type="hidden" name="function_name" value="sync_xero_bills" />
+    <button type="submit" class="btn btn-primary">Sync Xero Bills from Xero -> DB</button>
+  </form>
+</div>
+
+<script
+  src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"
+></script>
+</body>
+</html>

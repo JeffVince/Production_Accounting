@@ -10,7 +10,7 @@ import os
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dotenv import load_dotenv
+from dotenv import load_dotenv, set_key
 
 # region PyXero Imports
 from xero import Xero
@@ -119,10 +119,17 @@ class XeroAPI(metaclass=SingletonMeta):
                 else:
                     self.logger.warning("No tenants found for this user/token.")
 
-            # Save updated tokens back to environment (ENV is now our single source of truth)
+            # Save updated tokens back to environment variables
             new_token = self.credentials.token
             os.environ["XERO_ACCESS_TOKEN"] = new_token["access_token"]
             os.environ["XERO_REFRESH_TOKEN"] = new_token["refresh_token"]
+
+            # ---------------------------------------------------
+            # New code to write back to .env
+            env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
+            set_key(env_path, "XERO_ACCESS_TOKEN", new_token["access_token"])
+            set_key(env_path, "XERO_REFRESH_TOKEN", new_token["refresh_token"])
+            # ---------------------------------------------------
 
             # Re-create the Xero client in case credentials updated
             self.xero = Xero(self.credentials)
@@ -381,38 +388,137 @@ class XeroAPI(metaclass=SingletonMeta):
 
     def get_all_bills(self):
         """
-    Retrieve all Invoices from Xero of Type='ACCPAY'.
-    Returns:
-        list: A list of ACCPAY invoice dicts.
+        Retrieve all Invoices from Xero of Type='ACCPAY' -- including line items.
+
+        Because Xero only returns summary info (no line items) when fetching multiple
+        invoices at once, we do this in two steps:
+          1) Retrieve a summary list of all ACCPAY invoices via paging.
+          2) For each invoice in that summary, retrieve the full details individually
+             by calling xero.invoices.get(<InvoiceID>).
+
+        Returns:
+            list: A list of ACCPAY invoice dicts, each containing LineItems if any.
         """
         self._refresh_token_if_needed()
 
-        self.logger.info("Retrieving all ACCPAY invoices from Xero...")
-        filter_str = 'Type=="ACCPAY"'  # Only fetch bills
-        try:
-            invoices = self._retry_on_unauthorized(self.xero.invoices.filter, raw=filter_str)
-            if not invoices:
-                self.logger.info("No ACCPAY invoices found in Xero.")
-                return []
-            self.logger.info(f"Retrieved {len(invoices)} ACCPAY invoices from Xero.")
-            return invoices
-        except XeroException as e:
-            self.logger.error(f"Failed to retrieve ACCPAY invoices: {str(e)}")
+        self.logger.info("Retrieving all ACCPAY invoices from Xero (2-step with paging + individual fetch).")
+
+        all_invoices_summary = []
+        page_number = 1
+        page_size = 100  # Xero returns up to 100 invoices per page by default
+
+        # Step 1: Collect a summary list of all ACCPAY invoices
+        while True:
+            self.logger.debug(f"Fetching page {page_number} of ACCPAY invoice summaries...")
+            # We do summary fetch: no line items, just the IDs, references, etc.
+            # Type=="ACCPAY" => only Bills
+            # summaryOnly= not used here because PyXero's .filter doesn't automatically do line items anyway
+            # raw filter with no line items
+            filter_str = 'Type=="ACCPAY"'
+            invoices_page = self._retry_on_unauthorized(
+                self.xero.invoices.filter,
+                raw=filter_str,
+                page=page_number
+            )
+
+            if not invoices_page:
+                self.logger.debug(f"No invoices found on page {page_number}. Stopping.")
+                break
+
+            all_invoices_summary.extend(invoices_page)
+            self.logger.debug(f"Retrieved {len(invoices_page)} invoices on page {page_number}.")
+
+            # If we got fewer than page_size, we've hit the last page
+            if len(invoices_page) < page_size:
+                break
+
+            page_number += 1
+
+        if not all_invoices_summary:
+            self.logger.info("No ACCPAY invoices found in Xero at all.")
             return []
 
-    def extract_detail_item_id_from_xero_line(self, line_item: dict) -> int:
+        self.logger.info(
+            f"Fetched {len(all_invoices_summary)} ACCPAY invoice summaries. Now retrieving full details..."
+        )
+
+        # Step 2: For each invoice in the summary, retrieve the full invoice by ID
+        detailed_invoices = []
+        for summary_inv in all_invoices_summary:
+            invoice_id = summary_inv.get("InvoiceID")
+            if not invoice_id:
+                self.logger.warning("Invoice summary is missing InvoiceID; skipping.")
+                continue
+
+            # This call should return a list with exactly 1 invoice (with line items).
+            # Because we do xero.invoices.get(<InvoiceID>), we get the full detail, including line items.
+            full_inv_list = self._retry_on_unauthorized(self.xero.invoices.get, invoice_id)
+            if not full_inv_list:
+                self.logger.warning(f"No detailed invoice found for InvoiceID={invoice_id}; skipping.")
+                continue
+
+            detailed_inv = full_inv_list[0]
+            detailed_invoices.append(detailed_inv)
+
+        self.logger.info(
+            f"Finished retrieving {len(detailed_invoices)} detailed ACCPAY invoices with line items."
+        )
+        return detailed_invoices
+
+    def get_acpay_invoices_summary_by_ref(self, reference_substring: str) -> list:
         """
-        Tries to parse or derive a detail_item_id from the Xero line_item dict.
-        Replace with your real logic.
+        Retrieves a *summary* of ACCPAY (bills) from Xero whose InvoiceNumber
+        (or Reference) contains the given substring. Does NOT include line items.
         """
-        description = line_item.get("Description", "")
-        # For example, if your line item description is "DetailItemID=123":
-        if "DetailItemID=" in description:
-            try:
-                return int(description.split("DetailItemID=")[1].strip())
-            except (ValueError, IndexError):
-                return 0
-        return 0
+        self._refresh_token_if_needed()
+
+        # Xero filter, e.g.: Type=="ACCPAY" && InvoiceNumber.Contains("2416")
+        raw_filter = f'Type=="ACCPAY" AND InvoiceNumber!=null && InvoiceNumber.Contains("{reference_substring}")'
+        self.logger.info(f"Fetching summary for ACCPAY invoices that match '{reference_substring}' in InvoiceNumber.")
+
+        # Because we might have multiple pages, we’ll demonstrate a simple approach:
+        page_number = 1
+        page_size = 100
+        all_summaries = []
+
+        while True:
+            self.logger.debug(f"Requesting page {page_number} for filter: {raw_filter}")
+            current_page = self._retry_on_unauthorized(
+                self.xero.invoices.filter,
+                raw=raw_filter,
+                page=page_number
+            )
+
+            if not current_page:
+                # No results or no more pages
+                break
+
+            all_summaries.extend(current_page)
+
+            if len(current_page) < page_size:
+                # Reached last page
+                break
+            page_number += 1
+
+        self.logger.info(f"Found {len(all_summaries)} ACCPAY invoice summaries matching '{reference_substring}'.")
+        return all_summaries
+
+    def get_invoice_details(self, invoice_id: str) -> dict:
+        """
+        Retrieves the *full* invoice with line items by InvoiceID.
+        Returns a single invoice dict (with 'LineItems') if found, or None.
+        """
+        self._refresh_token_if_needed()
+
+        self.logger.debug(f"Fetching detailed invoice for InvoiceID={invoice_id}")
+        invoice_list = self._retry_on_unauthorized(self.xero.invoices.get, invoice_id)
+        if not invoice_list:
+            self.logger.warning(f"No detailed invoice found for InvoiceID={invoice_id}.")
+            return None
+
+        # Typically, this returns a list with exactly one invoice object
+        full_invoice = invoice_list[0]
+        return full_invoice
     # endregion
 
     # region Retrieval Methods
@@ -639,7 +745,6 @@ class XeroAPI(metaclass=SingletonMeta):
         self.logger.error("Failed to update contacts after multiple rate-limit retries.")
         return None
 
-
     # region Concurrency Example
 
     def create_spend_money_in_batch(self, session, detail_item_ids: list[int]):
@@ -661,8 +766,6 @@ class XeroAPI(metaclass=SingletonMeta):
         return results
 
     # endregion
-
-
 
 
 # Instantiate a global `XeroAPI` object you can import throughout your app

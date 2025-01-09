@@ -1,4 +1,4 @@
-# xero_services.py
+# xero_files.xero_services.py
 
 import logging
 import time
@@ -185,6 +185,7 @@ class XeroServices(metaclass=SingletonMeta):
                 {
                     "AddressType": "STREET",
                     "AddressLine1": db_contact.get("address_line_1", "") or "",
+                    "AddressLine2": db_contact.get("address_line_2", "") or "",
                     "City": db_contact.get("city", "") or "",
                     "PostalCode": db_contact.get("zip", "") or "",
                     "Region": db_contact.get("region", "") or "",
@@ -194,6 +195,7 @@ class XeroServices(metaclass=SingletonMeta):
                 {
                     "AddressType": "POBOX",
                     "AddressLine1": db_contact.get("address_line_1", "") or "",
+                    "AddressLine2": db_contact.get("address_line_2", "") or "",
                     "City": db_contact.get("city", "") or "",
                     "PostalCode": db_contact.get("zip", "") or "",
                     "Region": db_contact.get("region", "") or "",
@@ -229,7 +231,7 @@ class XeroServices(metaclass=SingletonMeta):
                 for idx in range(2):
                     old = xero_addresses[idx]
                     new = address_data[idx]
-                    for field in ["AddressLine1", "City", "PostalCode", "Country", "Region"]:
+                    for field in ["AddressLine1", "AddressLine2", "City", "PostalCode", "Country", "Region"]:
                         if old.get(field, "") != new.get(field, ""):
                             self.logger.debug(
                                 f"Address {idx} field '{field}' changed for '{contact_name}' "
@@ -287,6 +289,7 @@ class XeroServices(metaclass=SingletonMeta):
         # Validate address fields
         address = {
             "AddressLine1": db_contact.get("address_line_1", ""),
+            "AddressLine2": db_contact.get("address_line_2", ""),
             "City": db_contact.get("city", ""),
             "PostalCode": db_contact.get("zip", ""),
         }
@@ -304,121 +307,180 @@ class XeroServices(metaclass=SingletonMeta):
 
         return errors
 
+    # xero_services.py (within the XeroServices class)
+
     def load_bills(self, project_number: str):
         """
-        load_bills
-        ==========
-        1) Download all ACCPAY (Bills) from Xero using xero_api.get_all_bills().
-        2) Filter them so that only invoices whose Reference contains `project_number` are processed.
-        3) For each matching Invoice:
-           - See if we already have it in xero_bill:
-             - If yes, update it
-             - If no, create it
-           - For each line item in the Invoice, see if we already have a corresponding
-             bill_line_item in the DB:
-             - If yes, do nothing (or update if needed)
-             - If no, create it
-
-        Args:
-            project_number (str): A substring (e.g., "2416") to match against each
-                                  invoice's Reference field in Xero.
+        1) Retrieve summary of ACCPAY invoices matching project_number in InvoiceNumber.
+        2) For each invoice, retrieve full details (line items).
+        3) For each line item, match a local DetailItem by quantity/rate
+           (and project_number, po_number), then create bill_line_item.
         """
         self.logger.info(
-            f"Downloading ACCPAY invoices from Xero and filtering by those containing '{project_number}' in their Reference."
+            f"Retrieving ACCPAY invoices from Xero where InvoiceNumber contains '{project_number}'..."
         )
-        invoices = self.xero_api.get_all_bills()  # Fetches all ACCPAY invoices from Xero
-        if not invoices:
-            self.logger.info("No ACCPAY invoices returned from Xero. Nothing to do.")
-            return
-
-        # Filter invoices whose Reference contains the desired project_number
-        filtered_invoices = []
-        for inv in invoices:
-            reference_field = inv.get("InvoiceNumber", "") or ""
-            if project_number in reference_field:
-                filtered_invoices.append(inv)
-
-        if not filtered_invoices:
+        # Step 1: fetch summary of matching invoices
+        summaries = self.xero_api.get_acpay_invoices_summary_by_ref(project_number)
+        if not summaries:
             self.logger.info(
-                f"No invoices found with a Reference containing '{project_number}'. Nothing to do."
+                f"No ACCPAY invoices found with InvoiceNumber containing '{project_number}'."
             )
             return
 
-        for inv in filtered_invoices:
-            # Identify this invoice by its Xero "InvoiceID"
-            invoice_id = inv.get("InvoiceNumber")
-            invoice_status = inv.get("Status", "DRAFT")  # e.g. 'DRAFT', 'SUBMITTED', 'PAID', etc.
-            line_items = inv.get("LineItems", [])
+        for summary_inv in summaries:
+            invoice_id = summary_inv.get("InvoiceID")
+            invoice_number = summary_inv.get("InvoiceNumber", "")
+            status = summary_inv.get("Status", "DRAFT")
 
-            # Search local DB for an existing xero_bill with that reference
+            self.logger.info(
+                f"Fetching full details for InvoiceNumber={invoice_number} (ID={invoice_id})..."
+            )
+
+            # Step 2: retrieve full invoice details (line items)
+            full_inv = self.xero_api.get_invoice_details(invoice_id)
+            if not full_inv:
+                self.logger.warning(f"Skipping InvoiceID={invoice_id}, no line items returned.")
+                continue
+
+            line_items = full_inv.get("LineItems", [])
+            self.logger.debug(
+                f"Invoice {invoice_number} has {len(line_items)} line item(s)."
+            )
+
+            # Derive some project_number & po_number from invoice_number (if you store them in that format).
+            # Example: "2416_32" => project=2416, po=32
+            # If you have a different pattern, adapt accordingly
+            parts = invoice_number.split("_")
+            if len(parts) >= 2:
+                try:
+                    project_num = int(parts[0])  # "2416"
+                    po_num = int(parts[1])  # "32"
+                except ValueError:
+                    self.logger.warning(
+                        f"InvoiceNumber='{invoice_number}' not in numeric format. Skipping line item match."
+                    )
+                    continue
+            else:
+                self.logger.warning(
+                    f"InvoiceNumber='{invoice_number}' doesn't have at least two parts. Skipping line item match."
+                )
+                continue
+
+            # Create or update xero_bill
             existing_bill = self.database_util.search_xero_bills(
                 column_names=["xero_reference_number"],
-                values=[invoice_id]
+                values=[invoice_number]
             )
-
             if not existing_bill:
-                # We don’t have it yet, so we create a new record in xero_bill
-                self.logger.info(f"Creating a new xero_bill for InvoiceID={invoice_id}")
                 created_bill = self.database_util.create_xero_bill(
-                    xero_reference_number=invoice_id,
-                    state=invoice_status,
+                    xero_reference_number=invoice_number,
+                    state=status,
+                    xero_link=f"https://go.xero.com/AccountsPayable/View.aspx?invoiceId={invoice_id}"
                 )
                 if not created_bill:
-                    self.logger.error(f"Failed to create xero_bill for InvoiceID={invoice_id}; skipping line items.")
+                    self.logger.error(f"Failed to create xero_bill for {invoice_number}. Skipping line items.")
                     continue
                 xero_bill_id = created_bill["id"]
             else:
-                # If multiple are returned, just use the first; or handle if you wish
                 if isinstance(existing_bill, list):
                     existing_bill = existing_bill[0]
-
                 xero_bill_id = existing_bill["id"]
-                self.logger.info(f"Updating existing xero_bill (ID={xero_bill_id}) to state={invoice_status}")
-                updated_bill = self.database_util.update_xero_bill(xero_bill_id, state=invoice_status)
-                if not updated_bill:
-                    self.logger.warning(
-                        f"Couldn’t update xero_bill (ID={xero_bill_id}). Will still process line items."
-                    )
-
-            # Process each line item in this Xero invoice
-            for li in line_items:
-                # This placeholder function extracts the corresponding detail_item_id
-                # from the Xero line item. Adapt as needed.
-                detail_item_id = self.xero_api.extract_detail_item_id_from_xero_line(li)
-                if not detail_item_id:
-                    self.logger.warning(
-                        f"Could not derive detail_item_id for InvoiceID={invoice_id}; skipping line item."
-                    )
-                    continue
-
-                # Search local DB for an existing bill_line_item with (xero_bill_id, detail_item_id)
-                existing_line = self.xero_api.search_bill_line_items(
-                    column_names=["xero_bill_id", "detail_item_id"],
-                    values=[xero_bill_id, detail_item_id]
+                self.logger.info(f"Updating existing xero_bill ID={xero_bill_id} to status={status}.")
+                self.database_util.update_xero_bill(
+                    xero_bill_id,
+                    state=status,
+                    xero_link=f"https://go.xero.com/AccountsPayable/View.aspx?invoiceId={invoice_id}"
                 )
 
-                # If we don’t already have it, create it
-                if not existing_line:
-                    new_line = self.xero_api.create_bill_line_item(
+            # Step 3: For each line item, match local DetailItem & create/update BillLineItem
+            for li in line_items:
+                # Extract line item fields from Xero
+                xero_line_id = li.get("LineItemID")  # e.g. '6fe99992-2544-4a3a-b53b-83a2ae70383f'
+                description = li.get("Description")
+                quantity = li.get("Quantity")
+                unit_amount = li.get("UnitAmount")
+                line_amount = li.get("LineAmount")
+                account_code_str = li.get("AccountCode")  # Typically a string
+                account_code = None
+
+                # Convert AccountCode to int if possible
+                if account_code_str:
+                    try:
+                        account_code = int(account_code_str)
+                    except ValueError:
+                        self.logger.warning(f"AccountCode '{account_code_str}' is not an integer. Using None.")
+
+                # 1) Attempt to locate an existing BillLineItem by xero_id
+                existing_line = self.database_util.search_bill_line_items(
+                    column_names=["xero_id"],
+                    values=[xero_line_id]
+                )
+                matched_items = self.database_util.search_detail_items_by_project_po_qty_rate(
+                    project_num,
+                    po_num,
+                    quantity,
+                    unit_amount
+                )
+
+                if not matched_items:
+                    self.logger.warning(
+                        f"No local DetailItem matched (qty={quantity}, rate={unit_amount}). Skipping line item."
+                    )
+
+
+                if existing_line:
+                    # If multiple found, use the first
+                    if isinstance(existing_line, list):
+                        existing_line = existing_line[0]
+
+                    bill_line_item_id = existing_line["id"]
+
+                    # 2a) Update existing BillLineItem
+                    self.logger.info(
+                        f"Updating existing BillLineItem (ID={bill_line_item_id}) with Xero line data."
+                    )
+                    updated_line = self.database_util.update_bill_line_item(
+                        bill_line_item_id,
+                        description=description,
+                        quantity=quantity,
+                        unit_amount=unit_amount,
+                        line_amount=line_amount,
+                        account_code=account_code
+                    )
+                    if updated_line:
+                        self.logger.debug(f"BillLineItem (ID={bill_line_item_id}) successfully updated.")
+                    else:
+                        self.logger.error(
+                            f"Failed to update BillLineItem (ID={bill_line_item_id})."
+                        )
+
+                else:
+                    # 2b) If no existing record, create new
+                    self.logger.info(f"No BillLineItem found for XeroID={xero_line_id}. Creating a new one.")
+                    # detail_item_id can still be matched from the quantity & rate approach
+                    # or from your logic that ties a line item to a detail item.
+                    # We'll assume you already derived a `detail_item_id` above
+                    new_line = self.database_util.create_bill_line_item(
                         xero_bill_id=xero_bill_id,
-                        detail_item_id=detail_item_id
+                        description=description,
+                        quantity=quantity,
+                        unit_amount=unit_amount,
+                        line_amount=line_amount,
+                        account_code=account_code,
+                        xero_id=xero_line_id
                     )
                     if new_line:
                         self.logger.debug(
-                            f"Created bill_line_item for xero_bill_id={xero_bill_id}, detail_item_id={detail_item_id}."
+                            f"Created BillLineItem with ID={new_line['id']} and xero_id={xero_line_id}."
                         )
                     else:
                         self.logger.error(
-                            f"Failed creating bill_line_item for xero_bill_id={xero_bill_id}, detail_item_id={detail_item_id}."
+                            f"Failed to create BillLineItem for xero_id={xero_line_id}."
                         )
-                else:
-                    self.logger.debug(
-                        f"bill_line_item already exists for xero_bill_id={xero_bill_id}, detail_item_id={detail_item_id}."
-                    )
 
         self.logger.info(
-            f"Finished loading ACCPAY invoices (filtered by '{project_number}' in Reference) "
-            "from Xero into xero_bill and bill_line_item."
+            f"Finished loading ACCPAY invoices matching '{project_number}', with line items mapped to local DetailItems."
         )
+
 # Instantiate a single instance
 xero_services = XeroServices()

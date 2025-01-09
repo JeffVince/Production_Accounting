@@ -276,6 +276,8 @@ class DropboxService(metaclass=SingletonMeta):
         2) Convert project_number -> real project.id
         3) Find/create the PurchaseOrder with the real project_number
         4) Create or update the DetailItems
+        5) # ADDED/CHANGED: If there's a matching receipt, store receipt_id in the detail item
+           and ensure we can propagate the link to Monday subitems.
         """
         self.logger.info("🔧 Processing PO data in the database...")
 
@@ -332,7 +334,7 @@ class DropboxService(metaclass=SingletonMeta):
 
                 # 4) Find or create the PurchaseOrder with the real project.id
                 po_search = self.database_util.search_purchase_order_by_keys(
-                    item["project_number"],  # real numeric ID from project table
+                    item["project_number"],
                     item["po_number"]
                 )
 
@@ -402,13 +404,8 @@ class DropboxService(metaclass=SingletonMeta):
                     continue
 
                 # ------------------------------------------------------------------
-                # 1) Before we do anything, check spend_money records to see if
-                #    there's an RECONCILED record. If so => We'll mark RECONCILED
-                #    and skip normal detail updates. Also ignore "DELETED" spend_money.
+                # 1) Before normal detail logic, check spend_money record for RECONCILED
                 # ------------------------------------------------------------------
-
-                # Build possible references for xero_spend_monday_reference_number
-                # e.g. "2416_54" or "2416_54_01"
                 project_str = str(sub_item["project_number"])
                 po_str = str(sub_item["po_number"]).zfill(2)  # Pad PO number
                 detail_str = str(sub_item["detail_item_id"]).zfill(2)  # Pad Detail Item number
@@ -420,17 +417,26 @@ class DropboxService(metaclass=SingletonMeta):
 
                 spend_money_record = None
                 for ref in possible_refs:
-                    sm = self.database_util.search_spend_money(column_names=['xero_spend_money_reference_number'], values=[ref])
-                    # e.g. a custom method you'd implement in your DB ops
-                    # that returns None or a record. We'll break on the first
-                    # valid record that isn't DELETED.
+                    sm = self.database_util.search_spend_money(
+                        column_names=['xero_spend_money_reference_number'],
+                        values=[ref]
+                    )
                     if sm and sm["state"] != "DELETED":
                         spend_money_record = sm
                         break
 
-                # If we found a valid spend_money record that is RECONCILED =>
-                # set detail state=RECONCILED in DB & Monday, then skip normal updates.
-                if spend_money_record and spend_money_record["state"] == "RECONCILED":
+
+                existing_detail = self.database_util.search_detail_item_by_keys(
+                    project_number=sub_item["project_number"],
+                    po_number=sub_item["po_number"],
+                    detail_number=sub_item["detail_item_id"],
+                    line_id=sub_item["line_id"]
+                )
+
+
+
+                # If RECONCILED => skip normal updates
+                if spend_money_record and existing_detail and spend_money_record["state"] == "RECONCILED":
                     self.logger.info(
                         f"SpendMoney found with state=RECONCILED for ref='{spend_money_record['xero_spend_money_reference_number']}'. "
                         f"Marking detail {detail_str} as RECONCILED."
@@ -442,33 +448,18 @@ class DropboxService(metaclass=SingletonMeta):
                         line_id=sub_item["line_id"],
                         state="RECONCILED"
                     )
-                    # We can also push the update to Monday (subitem) if needed
-                    # if updated_di and updated_di.get("pulse_id"):
-                    #     self.logger.info("Updating Monday subitem to RECONCILED as well.")
-                    #     subitem_pulse_id = updated_di["pulse_id"]
-                    #     col_values = monday_util.subitem_column_values_formatter(status="RECONCILED")
-                    #     self.monday_api.update_item(
-                    #         item_id=subitem_pulse_id,
-                    #         column_values=col_values,
-                    #         type="subitem"
-                    #     )
-                    # Now skip normal PO detail logic for this sub_item
                     continue
 
                 # ------------------------------------------------------------------
-                # 2) If there's no spend_money "AUTHORIZED" record, proceed as normal
+                # 2) Create or update the detail item
                 # ------------------------------------------------------------------
-                existing_detail = self.database_util.search_detail_item_by_keys(
-                    project_number=sub_item["project_number"],
-                    po_number=sub_item["po_number"],
-                    detail_number=sub_item["detail_item_id"],
-                    line_id=sub_item["line_id"]
-                )
+                if spend_money_record and spend_money_record["state"] == "RECONCILED":
+                    sub_item["state"] = "RECONCILED"
 
                 created_or_updated_detail = None
 
                 if not existing_detail:
-                    # Not in DB yet -> create it
+                    # Not in DB -> create
                     created_di = self.database_util.create_detail_item_by_keys(
                         project_number=sub_item["project_number"],
                         po_number=sub_item["po_number"],
@@ -489,7 +480,7 @@ class DropboxService(metaclass=SingletonMeta):
                         created_or_updated_detail = created_di
                         self.logger.debug(f"✔️ Created DetailItem id={created_di['id']} for PO={sub_item['po_number']}")
                 elif isinstance(existing_detail, list):
-                    # Multiple found; typically you’d handle merging or pick one.
+                    # Multiple found
                     first_detail = existing_detail[0]
                     payment_status = first_detail.get("state", "").upper()
                     if payment_status in [s.upper() for s in PAYMENT_COMPLETE_STATUSES]:
@@ -497,7 +488,6 @@ class DropboxService(metaclass=SingletonMeta):
                             f"⚠️ DetailItem id={first_detail['id']} has payment_status={payment_status}, skipping update."
                         )
                         continue
-                    # Otherwise, proceed with update
                     self.logger.debug(
                         f"🔎 Found multiple detail items, updating the first (id={first_detail['id']})."
                     )
@@ -547,21 +537,47 @@ class DropboxService(metaclass=SingletonMeta):
                     created_or_updated_detail = updated_di if updated_di else existing_detail
 
                 # -----------------------
-                # 2a) Check for matching receipt total, if a receipt exists
+                # 2a) If there's a receipt, store receipt_id & handle state
                 # -----------------------
                 if created_or_updated_detail:
-                    detail_number = sub_item["detail_item_id"]
-                    project_number_str = sub_item["project_number"]
-                    po_number_str = sub_item["po_number"]
-                    line_id = sub_item["line_id"]
+                    # # ADDED/CHANGED: Check if receipts exist for this detail
+                    existing_receipts = self.database_util.search_receipts(
+                        ["project_number", "po_number", "detail_number", "line_id"],
+                        [
+                            sub_item["project_number"],
+                            sub_item["po_number"],
+                            sub_item["detail_item_id"],
+                            sub_item["line_id"]
+                        ]
+                    )
+                    if existing_receipts:
+                        # We'll link the first one. If there's more than one,
+                        # you might decide to handle that differently.
+                        first_receipt = existing_receipts[0] if isinstance(existing_receipts, list) else existing_receipts
+                        receipt_id = first_receipt.get("id")
 
+                        # Only set receipt_id if detail doesn't already have it
+                        if not created_or_updated_detail.get("receipt_id"):
+                            self.logger.info(
+                                f"Linking existing receipt_id={receipt_id} to DetailItem id={created_or_updated_detail['id']}."
+                            )
+                            self.database_util.update_detail_item_by_keys(
+                                project_number=sub_item["project_number"],
+                                po_number=sub_item["po_number"],
+                                detail_number=sub_item["detail_item_id"],
+                                line_id=sub_item["line_id"],
+                                receipt_id=receipt_id
+                            )
+
+                # -----------------------
+                # 2b) Check for matching receipt total => set REVIEWED or mismatch
+                # -----------------------
+                if created_or_updated_detail:
                     detail_subtotal = float(created_or_updated_detail.get("sub_total", 0.0))
-                    if detail_subtotal == 0.0 and "sub_total" in created_or_updated_detail:
-                        detail_subtotal = float(created_or_updated_detail.get("sub_total", 0.0))
 
                     existing_receipts = self.database_util.search_receipts(
                         ["project_number", "po_number", "detail_number"],
-                        [project_number_str, po_number_str, detail_number]
+                        [sub_item["project_number"], sub_item["po_number"], sub_item["detail_item_id"]]
                     )
 
                     if existing_receipts:
@@ -572,41 +588,39 @@ class DropboxService(metaclass=SingletonMeta):
                         )
                         try:
                             receipt_total = float(first_receipt.get("total", 0.0))
-                        except TypeError as e:
+                        except TypeError:
                             receipt_total = 0.0
 
                         if receipt_total == detail_subtotal:
                             new_state = "REVIEWED"
                             self.logger.info(
-                                f"Receipt total matches detail subtotal for detail_item {detail_number} => Setting state=REVIEWED."
+                                f"Receipt total matches detail subtotal for detail_item {sub_item['detail_item_id']} => Setting state=REVIEWED."
                             )
                             self.database_util.update_detail_item_by_keys(
-                                project_number=project_number_str,
-                                po_number=po_number_str,
-                                detail_number=detail_number,
-                                line_id=line_id,
+                                project_number=sub_item["project_number"],
+                                po_number=sub_item["po_number"],
+                                detail_number=sub_item["detail_item_id"],
+                                line_id=sub_item["line_id"],
                                 state=new_state
                             )
                         else:
                             new_state = "PO MISMATCH"
                             self.logger.info(
-                                f"Receipt total != detail subtotal for detail_item {detail_number} => Setting state=PO MISMATCH."
+                                f"Receipt total != detail subtotal for detail_item {sub_item['detail_item_id']} => Setting state=PO MISMATCH."
                             )
                             self.database_util.update_detail_item_by_keys(
-                                project_number=project_number_str,
-                                po_number=po_number_str,
-                                detail_number=detail_number,
-                                line_id=line_id,
+                                project_number=sub_item["project_number"],
+                                po_number=sub_item["po_number"],
+                                detail_number=sub_item["detail_item_id"],
+                                line_id=sub_item["line_id"],
                                 state=new_state
                             )
 
                     # ----------------------------------------------------
                     # If due_date has passed => status = OVERDUE
                     # ----------------------------------------------------
-                    # (Only if not already in a completed status)
                     due_date_str = created_or_updated_detail.get("due_date")
                     current_state = created_or_updated_detail.get("state", "").upper()
-                    # Avoid overriding if we already set the state to PAID, LOGGED, RECONCILED, or REVIEWED
                     completed_statuses = {"PAID", "LOGGED", "RECONCILED", "REVIEWED"}
                     po_type = main_match.get("po_type", "").upper() if main_match else ""
 
@@ -614,17 +628,16 @@ class DropboxService(metaclass=SingletonMeta):
                         try:
                             due_date_str = str(due_date_str)
                             due_date_obj = datetime.strptime(due_date_str, "%Y-%m-%d %H:%M:%S")
-                            # Compare due_date to 'today'
                             now = datetime.now()
                             if due_date_obj < now:
                                 self.logger.info(
                                     f"Due date ({due_date_obj}) has passed for detail item => Setting state=OVERDUE."
                                 )
                                 self.database_util.update_detail_item_by_keys(
-                                    project_number=project_number_str,
-                                    po_number=po_number_str,
-                                    detail_number=detail_number,
-                                    line_id=line_id,
+                                    project_number=sub_item["project_number"],
+                                    po_number=sub_item["po_number"],
+                                    detail_number=sub_item["detail_item_id"],
+                                    line_id=sub_item["line_id"],
                                     state="OVERDUE"
                                 )
                         except ValueError:
@@ -792,8 +805,9 @@ class DropboxService(metaclass=SingletonMeta):
                 return None
 
             new_tax_form_link = \
-            self.dropbox_api.get_po_tax_form_link(project_number=project_number, po_number=po_number)[0][
-                "po_tax_form_link"]
+                self.dropbox_api.get_po_tax_form_link(project_number=project_number, po_number=po_number)[0][
+                    "po_tax_form_link"
+                ]
             self.database_util.update_contact(contact_id, tax_form_link=new_tax_form_link)
             self.logger.info(f"📑 Updated tax form link for PO {project_number}_{po_number} => {new_tax_form_link}")
             return new_tax_form_link
@@ -810,29 +824,26 @@ class DropboxService(metaclass=SingletonMeta):
         Demonstrates how to fetch all subitems once from Monday,
         then process them locally to avoid multiple queries.
         """
-
         self.logger.info("🌐 Processing PO data in Monday.com...")
 
         # -------------------------------------------------------------------------
         # 1) FETCH MAIN ITEMS FROM MONDAY & FROM DB
         # -------------------------------------------------------------------------
-        monday_items = monday_api.get_items_in_project(project_id=project_number)
-        processed_items = self.database_util.search_purchase_order_by_keys(
-            project_number=project_number
-        )
+        monday_items = self.monday_api.get_items_in_project(project_id=project_number)
+        processed_items = self.database_util.search_purchase_order_by_keys(project_number=project_number)
 
         # Build a map for main items
         monday_items_map = {}
         for mi in monday_items:
-            pid = mi["column_values"].get(monday_util.PO_PROJECT_ID_COLUMN)["text"]
-            pono = mi["column_values"].get(monday_util.PO_NUMBER_COLUMN)["text"]
+            pid = mi["column_values"].get(self.monday_util.PO_PROJECT_ID_COLUMN)["text"]
+            pono = mi["column_values"].get(self.monday_util.PO_NUMBER_COLUMN)["text"]
             if pid and pono:
                 monday_items_map[(int(pid), int(pono))] = mi
 
         # -------------------------------------------------------------------------
         # 2) FETCH ALL SUBITEMS AT ONCE (FOR ENTIRE SUBITEM BOARD)
         # -------------------------------------------------------------------------
-        all_subitems = monday_api.get_subitems_in_board(project_number=project_number)
+        all_subitems = self.monday_api.get_subitems_in_board(project_number=project_number)
 
         # -------------------------------------------------------------------------
         # 3) BUILD A GLOBAL DICTIONARY FOR SUBITEM LOOKUP
@@ -840,8 +851,7 @@ class DropboxService(metaclass=SingletonMeta):
         # -------------------------------------------------------------------------
         global_subitem_map = {}
         for msub in all_subitems:
-            identifiers = monday_util.extract_subitem_identifiers(msub)
-
+            identifiers = self.monday_util.extract_subitem_identifiers(msub)
             if identifiers is not None:
                 global_subitem_map[identifiers] = msub
 
@@ -860,7 +870,7 @@ class DropboxService(metaclass=SingletonMeta):
             p_id = project_number
             po_no = int(db_item["po_number"])
 
-            column_values_str = monday_util.po_column_values_formatter(
+            column_values_str = self.monday_util.po_column_values_formatter(
                 project_id=str(project_number),
                 po_number=db_item["po_number"],
                 description=db_item.get("description"),
@@ -874,7 +884,7 @@ class DropboxService(metaclass=SingletonMeta):
             key = (p_id, po_no)
             if key in monday_items_map:
                 monday_item = monday_items_map[key]
-                differences = monday_util.is_main_item_different(db_item, monday_item)
+                differences = self.monday_util.is_main_item_different(db_item, monday_item)
                 if differences:
                     self.logger.debug(f"Item differs for PO {po_no}. Differences: {differences}")
                     items_to_update.append({
@@ -896,7 +906,7 @@ class DropboxService(metaclass=SingletonMeta):
         # -------------------------------------------------------------------------
         if items_to_create:
             self.logger.info(f"🆕 Need to create {len(items_to_create)} main items on Monday.")
-            created_mapping = monday_api.batch_create_or_update_items(
+            created_mapping = self.monday_api.batch_create_or_update_items(
                 items_to_create, project_id=project_number, create=True
             )
             for itm in created_mapping:
@@ -914,7 +924,7 @@ class DropboxService(metaclass=SingletonMeta):
 
         if items_to_update:
             self.logger.info(f"✏️ Need to update {len(items_to_update)} main items on Monday.")
-            updated_mapping = monday_api.batch_create_or_update_items(
+            updated_mapping = self.monday_api.batch_create_or_update_items(
                 items_to_update, project_id=project_number, create=False
             )
             for itm in updated_mapping:
@@ -943,7 +953,7 @@ class DropboxService(metaclass=SingletonMeta):
                     self.logger.info(f"🗂 PO {po_no} now has pulse_id {monday_item_id} in DB")
 
         # -------------------------------------------------------------------------
-        # 6) CREATE/UPDATE SUBITEMS WITHOUT FETCHING FROM MONDAY AGAIN
+        # 6) CREATE/UPDATE SUBITEMS
         # -------------------------------------------------------------------------
         for db_item in processed_items:
             p_id = project_number
@@ -961,33 +971,53 @@ class DropboxService(metaclass=SingletonMeta):
 
             subitems_to_create = []
             subitems_to_update = []
-            if po_no == 43:
+            if not sub_items_db:
                 pass
+
             for sdb in sub_items_db:
-                sdb["account_code"] = self.database_util.search_aicp_codes(["id"], [sdb.get("aicp_code_id")])[
-                    "aicp_code"]
+                # Attempt to look up an aicp code if present
+                if sdb.get("aicp_code_id"):
+                    aicp_row = self.database_util.search_aicp_codes(["id"], [sdb["aicp_code_id"]])
+                    sdb["account_code"] = aicp_row["aicp_code"] if aicp_row else None
+                else:
+                    sdb["account_code"] = None
 
+                # --------------------------
+                # # CHANGED or ADDED:
+                # Always see if there's a receipt link we can attach
+                # 1) If detail_item has a `receipt_id`...
+                # 2) Or if there's an existing receipt in DB for this detail
+                # --------------------------
                 file_link_for_subitem = ""
-                try:
-                    # Only do a receipt lookup if this PO type suggests a card or petty cash transaction
-                    if db_item.get("po_type") in ["CC", "PC"]:
-                        receipts_found = self.database_util.search_receipts(
-                            ["project_number", "po_number", "detail_number", "line_id"],
-                            [db_item["project_number"], db_item["po_number"], sdb["detail_number"], sdb["line_id"]]
-                        )
-                        if receipts_found:
-                            first_receipt = receipts_found[0] if isinstance(receipts_found, list) else receipts_found
-                            possible_link = first_receipt.get("file_link")
-                            if possible_link:
-                                file_link_for_subitem = possible_link
-                                self.logger.debug(
-                                    f"🔗 Found existing receipt link for detail_item_number {sdb['detail_number']}: {possible_link}"
-                                )
-                except Exception as re_ex:
-                    self.logger.warning(
-                        f"❗ Error searching receipts for detail_item_number {sdb['detail_number']}: {re_ex}")
 
-                sub_col_values_str = monday_util.subitem_column_values_formatter(
+                receipt_id = sdb.get("receipt_id")
+                if receipt_id:
+                    existing_receipt = self.database_util.search_receipts(["id"], [receipt_id])
+                    if existing_receipt and existing_receipt.get("file_link"):
+                        file_link_for_subitem = existing_receipt["file_link"]
+                else:
+                    # Possibly there's a newly discovered receipt:
+                    existing_receipts = self.database_util.search_receipts(
+                        ["project_number", "po_number", "detail_number", "line_id"],
+                        [db_item["project_number"], db_item["po_number"], sdb["detail_number"], sdb["line_id"]]
+                    )
+                    if existing_receipts:
+                        first_receipt = existing_receipts[0] if isinstance(existing_receipts,
+                                                                           list) else existing_receipts
+                        file_link_for_subitem = first_receipt.get("file_link", "")
+                        rid = first_receipt.get("id")
+                        # update DB detail_item with that receipt_id
+                        self.database_util.update_detail_item_by_keys(
+                            project_number=p_id,
+                            po_number=db_item["po_number"],
+                            detail_number=sdb["detail_number"],
+                            line_id=sdb["line_id"],
+                            receipt_id=rid
+                        )
+                        sdb["receipt_id"] = rid
+
+                # Build the subitem column values
+                sub_col_values_str = self.monday_util.subitem_column_values_formatter(
                     project_id=project_number,
                     po_number=db_item["po_number"],
                     detail_item_number=sdb["detail_number"],
@@ -1000,25 +1030,21 @@ class DropboxService(metaclass=SingletonMeta):
                     date=sdb.get("transaction_date"),
                     due_date=sdb.get("due_date"),
                     account_number=sdb["account_code"],
-                    link=file_link_for_subitem,
+                    link=file_link_for_subitem,  # ADDED or UPDATED
                     OT=sdb.get("ot"),
                     fringes=sdb.get("fringes")
                 )
                 new_sub_vals = json.loads(sub_col_values_str)
 
-                sub_key = (
-                    project_number,
-                    db_item["po_number"],
-                    sdb["detail_number"],
-                    sdb["line_id"]
-                )
+                sub_key = (project_number, db_item["po_number"], sdb["detail_number"], sdb["line_id"])
 
                 if sub_key in global_subitem_map:
+                    # Possibly update
                     msub = global_subitem_map[sub_key]
                     sdb["project_number"] = db_item["project_number"]
                     sdb["po_number"] = db_item["po_number"]
                     sdb["file_link"] = file_link_for_subitem
-                    differences = monday_util.is_sub_item_different(sdb, msub)
+                    differences = self.monday_util.is_sub_item_different(sdb, msub)
                     if differences:
                         self.logger.debug(
                             f"Sub-item differs for detail #{sdb['detail_number']} (PO {po_no}). {differences}"
@@ -1030,6 +1056,7 @@ class DropboxService(metaclass=SingletonMeta):
                             "monday_item_id": msub["id"]
                         })
                     else:
+                        # Even if no changes in columns, we still want to ensure the DB has the correct pulse_id
                         sub_pulse_id = msub["id"]
                         self.database_util.update_detail_item_by_keys(
                             project_number=project_number,
@@ -1042,6 +1069,7 @@ class DropboxService(metaclass=SingletonMeta):
                         sdb["pulse_id"] = sub_pulse_id
                         sdb["parent_pulse_id"] = main_monday_id
                 else:
+                    # Need to create
                     subitems_to_create.append({
                         "db_sub_item": sdb,
                         "column_values": new_sub_vals,
@@ -1066,6 +1094,9 @@ class DropboxService(metaclass=SingletonMeta):
         return processed_items
 
     def _batch_create_subitems(self, subitems_to_create, parent_item_id, project_number, db_item):
+        """
+        Creates subitems in chunks, then updates DB with the new subitem IDs.
+        """
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
         chunk_size = 10
@@ -1096,9 +1127,11 @@ class DropboxService(metaclass=SingletonMeta):
                     self.logger.exception(f"❌ Error creating subitems in chunk {idx + 1}: {e}")
                     raise
 
+        # Update DB with newly-created subitem IDs
         for csub in all_created_subs:
             db_sub_item = csub["db_sub_item"]
             monday_subitem_id = csub["monday_item_id"]
+
             self.database_util.update_detail_item_by_keys(
                 project_number,
                 db_item["po_number"],
@@ -1111,6 +1144,9 @@ class DropboxService(metaclass=SingletonMeta):
             db_sub_item["parent_pulse_id"] = parent_item_id
 
     def _batch_update_subitems(self, subitems_to_update, parent_item_id, project_number, db_item):
+        """
+        Updates subitems in chunks, then updates DB with any new data (e.g., if we changed the link).
+        """
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
         chunk_size = 10
@@ -1141,9 +1177,11 @@ class DropboxService(metaclass=SingletonMeta):
                     self.logger.exception(f"❌ Error updating subitems in chunk {idx + 1}: {e}")
                     raise
 
+        # Update DB with newly-updated subitem data
         for usub in all_updated_subs:
             db_sub_item = usub["db_sub_item"]
             monday_subitem_id = usub["monday_item_id"]
+
             self.database_util.update_detail_item_by_keys(
                 project_number,
                 db_item["po_number"],
@@ -1169,9 +1207,7 @@ class DropboxService(metaclass=SingletonMeta):
         5) Generate file link in Dropbox.
         6) Create or update the 'receipt' table, linking to the appropriate detail item *via project_number, po_number, detail_item_number*.
         7) Update the corresponding subitem in Monday with the link.
-
-        If extraction fails, we still upload the link to Monday,
-        but set the subitem status to 'ISSUE' in both the DB and Monday.
+        8) # ADDED/CHANGED: After we create or update the receipt, update that detail item with the `receipt_id`.
         """
 
         self.logger.info(f"🧾 Processing receipt: {dropbox_path}")
@@ -1182,19 +1218,15 @@ class DropboxService(metaclass=SingletonMeta):
         # ---------------------------------------------
         # 1) Detect if it's petty cash or credit card
         # ---------------------------------------------
-        # 'PC_' in the file name OR path has '3. Petty Cash' or 'Crew PC Folders'
         is_petty_cash = (
-                "3. Petty Cash" in dropbox_path
-                or "Crew PC Folders" in dropbox_path
-                or filename.startswith("PC_")
+            "3. Petty Cash" in dropbox_path
+            or "Crew PC Folders" in dropbox_path
+            or filename.startswith("PC_")
         )
 
         # ---------------------------------------------
-        # 2) Regex pattern - optional 'PC_' prefix
+        # 2) Regex pattern
         # ---------------------------------------------
-        # This pattern captures:
-        #  (project_number)_(xx)_(xx) (vendor) Receipt.(pdf|jpg|jpeg|png)
-        # with an optional leading PC_ in front.
         pattern = r'^(?:PC_)?(\d{4})_(\d{2})_(\d{2})\s+(.*?)\s+Receipt\.(pdf|jpe?g|png)$'
         match = re.match(pattern, filename, re.IGNORECASE)
 
@@ -1203,8 +1235,8 @@ class DropboxService(metaclass=SingletonMeta):
             return
 
         project_number_str = match.group(1)
-        group2_str = match.group(2).lstrip("0")  # second 2-digit group
-        group3_str = match.group(3).lstrip("0")  # third 2-digit group
+        group2_str = match.group(2).lstrip("0")
+        group3_str = match.group(3).lstrip("0")
         vendor_name = match.group(4)
         file_ext = match.group(5).lower()
 
@@ -1212,12 +1244,10 @@ class DropboxService(metaclass=SingletonMeta):
         # 3) Determine PO #, detail #, line #
         # ---------------------------------------------
         if is_petty_cash:
-            # Example: PC_2416_02_12 => project=2416, detail=02, line=12, forced PO=1
             po_number_str = "1"
             detail_item_str = group2_str
             line_id_str = group3_str
         else:
-            # For credit card receipts: 2416_02_12 => project=2416, PO=02, detail=12, line=0
             po_number_str = group2_str
             detail_item_str = group3_str
             line_id_str = "1"
@@ -1300,7 +1330,8 @@ class DropboxService(metaclass=SingletonMeta):
 
             if not existing_detail:
                 self.logger.warning(
-                    f"❗ No matching detail item found for project={project_number}, PO={po_number}, detail={detail_item_number}, line={line_id_number}."
+                    f"❗ No matching detail item found for project={project_number}, "
+                    f"PO={po_number}, detail={detail_item_number}, line={line_id_number}."
                 )
                 self.cleanup_temp_file(temp_file_path)
                 return
@@ -1309,7 +1340,7 @@ class DropboxService(metaclass=SingletonMeta):
                     existing_detail = existing_detail[0]
 
             # 6A) Create or update a receipt row
-            spend_money_id = 1
+            spend_money_id = 1  # example placeholder
 
             existing_receipts = self.database_util.search_receipts(
                 ["project_number", "po_number", "detail_number", "line_id"],
@@ -1349,7 +1380,7 @@ class DropboxService(metaclass=SingletonMeta):
                     f"✏️ Updated existing receipt with ID={receipt_id} for detail_item_number={detail_item_number}"
                 )
 
-            # 7) Determine state (ISSUE, REVIEWED, PO MISMATCH, etc.)
+            # 7) Determine detail_item state
             state = "PENDING"
             detail_subtotal = existing_detail.get("sub_total", 0.0)
             if not existing_detail["state"] == "RECONCILED":
@@ -1373,34 +1404,40 @@ class DropboxService(metaclass=SingletonMeta):
             else:
                 state = "RECONCILED"
 
-            # Update the detail_item’s state in DB
+            # # ADDED/CHANGED: Update detail item with new state AND the new receipt_id
             self.database_util.update_detail_item_by_keys(
                 project_number=str(project_number),
                 po_number=po_number,
                 detail_number=detail_item_number,
                 line_id=line_id_number,
-                state=state
+                state=state,
+                receipt_id=receipt_id
             )
 
             # 8) Update the subitem in Monday
             column_values_str = monday_util.subitem_column_values_formatter(link=file_link, status=state)
             new_vals = column_values_str
 
-            monday_subitem = self.monday_api.update_item(
-                item_id=existing_detail["pulse_id"],
-                column_values=new_vals,
-                type="subitem"
-            )
-            if not monday_subitem:
-                self.logger.warning(
-                    f"❌ No Monday subitem found for detail {detail_item_number} in project {project_number}, PO {po_number}."
-                )
-            else:
-                subitem_id = monday_subitem["data"]["change_multiple_column_values"]["id"]
-                self.monday_api.update_item(
+            if existing_detail.get("pulse_id"):
+                subitem_id = existing_detail["pulse_id"]
+                monday_subitem = self.monday_api.update_item(
                     item_id=subitem_id,
                     column_values=new_vals,
                     type="subitem"
+                )
+                if not monday_subitem:
+                    self.logger.warning(
+                        f"❌ No Monday subitem found for detail {detail_item_number} in project {project_number}, PO {po_number}."
+                    )
+                else:
+                    self.monday_api.update_item(
+                        item_id=subitem_id,
+                        column_values=new_vals,
+                        type="subitem"
+                    )
+            else:
+                self.logger.warning(
+                    f"Detail item for project={project_number}, PO={po_number}, detail={detail_item_number} has no pulse_id in DB."
                 )
 
             self.cleanup_temp_file(temp_file_path)
@@ -1423,15 +1460,10 @@ class DropboxService(metaclass=SingletonMeta):
         1) Parse filename to extract project_number, po_number, and invoice_number.
         2) Download the file from Dropbox to a local temp path.
         3) Use OCRService + OpenAI to extract total amount, transaction date, and term from the file.
-           - If no date is found, set None.
-           - If no term is found, set NET30 (i.e., 30).
-           - If no total is found, set 0.0.
         4) Locate the corresponding purchase_order (and project) in the DB.
         5) Create or update the 'invoice' record with the parsed info.
         6) Store the Dropbox share link in 'file_link'.
         7) Optionally push data to Monday (create or update invoice pulse).
-
-        :param dropbox_path: The full Dropbox path to the invoice file.
         """
         self.logger.info(f"📄 Processing invoice: {dropbox_path}")
         filename = os.path.basename(dropbox_path)
@@ -1476,7 +1508,7 @@ class DropboxService(metaclass=SingletonMeta):
                 term = 30
                 total = 0.0
             else:
-                # Attempt to parse the date (expected format: YYYY-MM-DD)
+                # Attempt to parse the date
                 date_str = info.get("invoice_date")
                 try:
                     transaction_date = datetime.strptime(date_str, "%Y-%m-%d") if date_str else None
@@ -1492,9 +1524,7 @@ class DropboxService(metaclass=SingletonMeta):
 
                 # Attempt to parse the payment term
                 term_str = info.get("payment_term")
-                # If the returned string looks like 'NET30' or '30', extract digits
                 if term_str:
-                    # Remove non-digit characters
                     digits_only = re.sub(r"[^0-9]", "", term_str)
                     try:
                         term = int(digits_only) if digits_only else 30
@@ -1535,7 +1565,6 @@ class DropboxService(metaclass=SingletonMeta):
                 )
                 invoice_id = new_invoice["id"] if new_invoice else None
             else:
-                # existing_invoice might be a single dict or a list of dicts
                 if isinstance(existing_invoice, list):
                     invoice_id = existing_invoice[0]["id"]
                 else:
@@ -1563,22 +1592,19 @@ class DropboxService(metaclass=SingletonMeta):
         except Exception as e:
             self.logger.exception(f"💥 Error retrieving or storing Dropbox link: {e}", exc_info=True)
 
-        # 7) Update any Monday subitems that match this invoice (by project_number, po_number, detail_item_number == invoice_number)
+        # 7) Update any Monday subitems if needed (example logic)
         try:
             self.logger.info(
                 f"🌐 Updating Monday subitems link for invoice #{invoice_number} (project {project_number}, PO {po_number}).")
 
-            # Retrieve all subitems from your DB that correspond to this (project, PO, invoice_number)
-            # Make sure the DB function aligns with your actual implementation
+            # Retrieve all subitems from your DB that correspond to this invoice number
             matching_subitems = self.database_util.search_detail_items(
                 ["po_id", "detail_number"], [po_data["id"], invoice_number]
             )
 
-            # If no matching subitems, we can skip or just log
             if not matching_subitems:
                 self.logger.info("No subitems found in DB that link to this invoice.")
             else:
-                # Ensure it's a list if your DB utility can sometimes return a single dict
                 if not isinstance(matching_subitems, list):
                     matching_subitems = [matching_subitems]
 
@@ -1589,11 +1615,9 @@ class DropboxService(metaclass=SingletonMeta):
                         self.logger.warning(f"Missing subitem_id (pulse_id) in DB record: {sub}")
                         continue
 
-                    # Prepare column values (just the link in this case)
                     col_vals_str = self.monday_util.subitem_column_values_formatter(link=file_share_link)
                     col_vals_dict = json.loads(col_vals_str)
 
-                    # Update the subitem columns on Monday
                     success = self.monday_util.update_subitem_columns(subitem_id, col_vals_dict)
                     if success:
                         updated_count += 1
@@ -1606,7 +1630,10 @@ class DropboxService(metaclass=SingletonMeta):
         except Exception as e:
             self.logger.exception(f"💥 Error updating invoice link in Monday subitems: {e}", exc_info=True)
         self.logger.info(
-            f"✅ Finished processing invoice #{invoice_number} for PO {po_number} (project {project_number}).")    #endregion
+            f"✅ Finished processing invoice #{invoice_number} for PO {po_number} (project {project_number}).")
+
+    #endregion
+    #endregion
 
     # region Helpers
     def download_file_from_dropbox(self, path: str, temp_file_path: str) -> bool:
@@ -1667,7 +1694,6 @@ class DropboxService(metaclass=SingletonMeta):
 
     def _extract_text_from_pdf(self, file_data: bytes) -> str:
         import PyPDF2
-        import pdf2image
         import fitz
         from io import BytesIO
         from PIL import Image
@@ -1702,7 +1728,7 @@ class DropboxService(metaclass=SingletonMeta):
             if extracted_text.strip():
                 return extracted_text
 
-            # Attempt embedded images with PyMuPDF
+            # Attempt embedded images with PyMuPDF if normal text is insufficient
             self.logger.info("No or insufficient text from PyPDF2; extracting images via PyMuPDF...")
             pdf_document = fitz.open(stream=file_data, filetype="pdf")
             embedded_ocr_results = []
@@ -1710,132 +1736,34 @@ class DropboxService(metaclass=SingletonMeta):
             for page_idx in range(pdf_document.page_count):
                 page = pdf_document[page_idx]
                 images = page.get_images(full=True)
-                self.logger.debug(f"Page {page_idx + 1}: found {len(images)} embedded image(s).")
-
-                for img_num, img_info in enumerate(images, start=1):
+                self.logger.debug(f"Page {page_idx + 1}: found {len(images)} images.")
+                for img_ix, img_info in enumerate(images, start=1):
                     xref = img_info[0]
                     base_image = pdf_document.extract_image(xref)
-                    if not base_image or "image" not in base_image:
-                        self.logger.debug(f"Skipping xref={xref}, no valid image data.")
-                        continue
-
-                    img_data = base_image["image"]
-                    self.logger.debug(
-                        f"Page {page_idx + 1}, Image {img_num}: raw={len(img_data)} bytes."
-                    )
-
+                    image_data = base_image["image"]
                     try:
-                        pil_img = Image.open(BytesIO(img_data)).convert("L")
+                        pil_image = Image.open(BytesIO(image_data)).convert("RGB")
+                        # OCR the image data
+                        text_in_image = self._extract_text_via_ocr(image_data)
+                        self.logger.debug(f"Image {img_ix}: OCR extracted {len(text_in_image)} chars.")
+                        embedded_ocr_results.append(text_in_image)
                     except Exception as e:
-                        self.logger.warning(f"Could not open embedded image (xref={xref}): {e}")
-                        continue
+                        self.logger.warning(f"Could not OCR an embedded PDF image: {e}")
 
-                    buf = BytesIO()
-                    pil_img.save(buf, format="PNG")
-                    png_bytes = buf.getvalue()
-
-                    page_text_ocr = self._extract_text_via_ocr(png_bytes)
-                    if page_text_ocr:
-                        self.logger.debug(f"OCR from image xref={xref}: {len(page_text_ocr)} chars.")
-                        embedded_ocr_results.append(page_text_ocr)
-                    else:
-                        self.logger.debug(f"OCR result from image xref={xref} is empty.")
-
-            pdf_document.close()
-            embedded_text = "\n".join(embedded_ocr_results)
-
-            if embedded_text.strip():
-                self.logger.debug(f"Extracted {len(embedded_text)} chars from embedded images.")
-                return embedded_text
-
-            # Final pdf2image fallback
-            self.logger.info("No text found from embedded images, trying pdf2image fallback...")
-            try:
-                page_images = pdf2image.convert_from_bytes(file_data, dpi=200)
-            except Exception as e:
-                self.logger.warning(f"pdf2image conversion failed: {e}")
-                return ""
-
-            fallback_ocr_results = []
-            for idx, img in enumerate(page_images, start=1):
-                buf = BytesIO()
-                img.save(buf, format="PNG")
-                page_data = buf.getvalue()
-
-                page_text_ocr = self._extract_text_via_ocr(page_data)
-                if page_text_ocr:
-                    fallback_ocr_results.append(page_text_ocr)
-                    self.logger.debug(f"pdf2image page {idx}: {len(page_text_ocr)} chars.")
-                else:
-                    self.logger.debug(f"pdf2image page {idx} => empty OCR result.")
-
-            final_text = "\n".join(fallback_ocr_results)
-            self.logger.debug(f"Final fallback OCR result length={len(final_text)}.")
-            return final_text
+            fallback_text = "\n".join(embedded_ocr_results)
+            self.logger.info(f"PyMuPDF fallback extracted {len(fallback_text)} chars in total.")
+            return fallback_text
 
         except Exception as e:
-            self.logger.warning(f"🛑 _extract_text_from_pdf error: {e}")
+            self.logger.warning(f"Could not parse PDF with PyPDF2 or PyMuPDF: {e}")
             return ""
 
     def _extract_text_via_ocr(self, file_data: bytes) -> str:
-        from ocr_service import OCRService
-        return self.ocr_service.extract_text_from_receipt(file_data)
-
-    def parse_invoice_data_with_openai(self, local_file_path: str):
-        """
-        Uses OCRService to extract text from the given file path, then
-        calls the extract_info_with_openai method to parse out invoice_date,
-        total_amount, and payment_term from the text.
-
-        :param local_file_path: Path to the local invoice file
-        :return: (transaction_date, term, total) - with term defaulting to 30 if None,
-                 and total defaulting to 0.0 if not parseable.
-        """
-        # Extract raw text from file
-        extracted_text = self.ocr_service.extract_text(local_file_path)
-
-        # Use OpenAI to parse date, amount, and term
-        info, err = self.ocr_service.extract_info_with_openai(extracted_text)
-        if err or not info:
-            self.logger.error(f"❌ OpenAI extraction error: {err} - Falling back to defaults.")
-            return None, 30, 0.0  # Default transaction_date=None, term=30, total=0.0
-
-        date_str = info.get("invoice_date")
-        total_str = info.get("total_amount")
-        term_str = info.get("payment_term")
-
-        # Attempt to parse the date (expected format: YYYY-MM-DD)
         try:
-            transaction_date = datetime.strptime(date_str, "%Y-%m-%d") if date_str else None
-        except (ValueError, TypeError):
-            transaction_date = None
-
-        # Attempt to parse total as float
-        try:
-            total = float(total_str) if total_str else 0.0
-        except (ValueError, TypeError):
-            total = 0.0
-
-        # Attempt to parse the payment term (if it's something like "NET30", we strip out digits)
-        # If no term found, we default to 30
-        try:
-            # If the returned string looks like 'NET30', extract the digits
-            if term_str and re.search(r"(?i)\bNET\s*\d+\b", term_str):
-                term = int(re.sub(r"[^0-9]", "", term_str))
-            else:
-                term = int(term_str) if term_str else None
-        except (ValueError, TypeError):
-            term = None
-
-        if not term:
-            term = 30
-
-        return transaction_date, term, total
-
-
+            return self.ocr_service.ocr_image_bytes(file_data)
+        except Exception as e:
+            self.logger.warning(f"OCR extraction failed: {e}")
+            return ""
     # endregion
 
-
-
-# Singleton instance
 dropbox_service = DropboxService()
