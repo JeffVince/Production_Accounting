@@ -35,6 +35,43 @@
     <input type="hidden" name="function_name" value="sync_xero_bills" />
     <button type="submit" class="btn btn-primary">Sync Xero Bills from Xero -> DB</button>
   </form>
+
+    <form action="/trigger_function" method="POST" class="mb-3">
+    <input type="hidden" name="function_name" value="scan_project_receipts" />
+    <div class="mb-2">
+      <label for="project_number" class="form-label">Project Number</label>
+      <input
+        type="text"
+        class="form-control"
+        name="project_number"
+        id="project_number"
+        placeholder="e.g. 2416"
+        required
+      />
+    </div>
+    <button type="submit" class="btn btn-primary">
+      Scan Receipts for Project
+    </button>
+  </form>
+
+      <form action="/trigger_function" method="POST" class="mb-3">
+    <input type="hidden" name="function_name" value="scan_project_invoice" />
+    <div class="mb-2">
+      <label for="project_number" class="form-label">Project Number</label>
+      <input
+        type="text"
+        class="form-control"
+        name="project_number"
+        id="project_number_invoice"
+        placeholder="e.g. 2416"
+        required
+      />
+    </div>
+    <button type="submit" class="btn btn-primary">
+      Scan Invoices for Project
+    </button>
+  </form>
+
 </div>
 
 <script

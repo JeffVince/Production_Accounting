@@ -3,6 +3,7 @@
 import logging
 from flask import Flask, jsonify, request, redirect, url_for
 
+from dropbox_service import dropbox_service
 from orchestration.orchestrator import Orchestrator
 from monday_files.monday_webhook_handler import monday_blueprint
 from monday_files.monday_api import monday_api
@@ -63,6 +64,14 @@ def control_panel():
     """
     return render_template("control_panel.html")
 
+@app.route("/toggle_temp_file", methods=["POST"])
+def toggle_temp_file():
+    current_value = dropbox_service.USE_TEMP_FILE
+    new_value = not current_value
+    dropbox_service.USE_TEMP_FILE = new_value
+    logger.info(f"USE_TEMP_FILE toggled from {current_value} to {new_value}")
+    return redirect(url_for("control_panel"))
+
 @app.route("/trigger_function", methods=["POST"])
 def trigger_function():
     """
@@ -70,6 +79,7 @@ def trigger_function():
     """
     logger = logging.getLogger("app_logger")
     function_name = request.form.get("function_name", "")
+    project_number = request.form.get("project_number", "")  # This is optional
 
     try:
         if function_name == "schedule_monday_main_items_sync":
@@ -78,13 +88,21 @@ def trigger_function():
         elif function_name == "schedule_monday_sub_items_sync":
             orchestrator.sync_monday_sub_items()
             logger.info("Scheduled monday_sub_items_sync")
+        elif function_name == "scan_project_receipts":
+            # Make sure the user actually gave us a project_number
+            if not project_number:
+                logger.warning("No project number provided for scanning receipts.")
+            else:
+                orchestrator.scan_project_receipts(project_number)
+        elif function_name == "scan_project_invoice":
+            # Make sure the user actually gave us a project_number
+            if not project_number:
+                logger.warning("No project number provided for scanning receipts.")
+            else:
+                orchestrator.scan_project_invoices(project_number)
         elif function_name == "schedule_monday_contact_sync":
             orchestrator.sync_monday_contacts()
             logger.info("Scheduled monday_contact_sync")
-        elif function_name == "coordinate_state_transitions":
-            # If you have a method called coordinate_state_transitions(), call it here
-            orchestrator.coordinate_state_transitions()
-            logger.info("Called coordinate_state_transitions")
         elif function_name == "sync_spend_money_items":
             orchestrator.sync_spend_money_items()
             logger.info("Called sync_spend_money_items")

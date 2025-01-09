@@ -106,3 +106,21 @@ class Orchestrator:
         self.logger.info("Syncing Xero bills...")
         result = self.xero_services.load_bills("2416")
         return result
+
+    def scan_project_receipts(self, project_number: str):
+        """
+        Calls the dropbox_service to scan a specific project folder for receipts
+        and process each receipt into the database.
+        """
+        self.logger.info(f"📂 Orchestrator: scanning receipts for project {project_number}.")
+        from dropbox_files.dropbox_service import dropbox_service  # If not already imported
+        dropbox_service.scan_project_receipts(project_number)
+
+    def scan_project_invoices(self, project_number: str):
+        """
+        Calls the dropbox_service to scan a specific project folder for invoices
+        and process each invoice into the database.
+        """
+        self.logger.info(f"📂 Orchestrator: scanning invoice for project {project_number}.")
+        from dropbox_files.dropbox_service import dropbox_service  # If not already imported
+        dropbox_service.scan_project_invoices(project_number)

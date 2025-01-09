@@ -15,13 +15,14 @@ Key Flow for PO Logs:
 import json
 import os
 import re
+import tempfile
 import traceback
 import logging
 from concurrent.futures import ThreadPoolExecutor, wait, ALL_COMPLETED, as_completed
 from datetime import datetime
 from typing import Optional
 
-from models import Contact
+import pytesseract
 
 from dropbox_files.dropbox_api import dropbox_api
 from config import Config
@@ -34,6 +35,9 @@ from po_log_database_util import po_log_database_util
 from po_log_files.po_log_processor import POLogProcessor
 from utilities.singleton import SingletonMeta
 from ocr_service import OCRService
+from pdf2image import convert_from_path
+from typing import List
+from PIL import Image
 
 # Import the updated DB ops:
 from database.database_util import DatabaseOperations
@@ -1272,12 +1276,13 @@ class DropboxService(metaclass=SingletonMeta):
                 extracted_text = self._extract_text_from_pdf(file_data)
                 if not extracted_text.strip():
                     self.logger.info("PDF extraction found no text; falling back to OCR.")
-                    extracted_text = self._extract_text_via_ocr(file_data)
+                    extracted_text = self._extract_text_from_pdf_with_ocr(file_data)
             else:
                 extracted_text = self._extract_text_via_ocr(file_data)
 
             parse_failed = False
             if not extracted_text.strip():
+
                 self.logger.warning(
                     f"🛑 No text extracted from receipt: {filename}. Will mark as ISSUE but continue."
                 )
@@ -1481,6 +1486,22 @@ class DropboxService(metaclass=SingletonMeta):
             project_number = int(project_number_str)
             po_number = int(po_number_str)
             invoice_number = int(invoice_number_str)
+
+            path_segments = dropbox_path.strip("/").split("/")
+            if len(path_segments) >= 2:
+                # Attempt to parse PO number from the second-to-last folder name
+                folder_po_str = path_segments[-2].strip()
+                folder_po_match = re.search(r'^\d{4}_(\d+)', folder_po_str)
+                if folder_po_match:
+                    folder_po_number = int(folder_po_match.group(1))
+                    if folder_po_number != po_number:
+                        self.logger.warning(
+                            f"❗ Mismatch between folder PO number '{folder_po_number}' "
+                            f"and invoice filename PO number '{po_number}'. "
+                            f"Using folder PO number."
+                        )
+                        po_number = folder_po_number
+
         except Exception as e:
             self.logger.exception(f"💥 Error parsing invoice filename '{filename}': {e}", exc_info=True)
             return
@@ -1629,6 +1650,7 @@ class DropboxService(metaclass=SingletonMeta):
 
         except Exception as e:
             self.logger.exception(f"💥 Error updating invoice link in Monday subitems: {e}", exc_info=True)
+        self.cleanup_temp_file(temp_file_path)
         self.logger.info(
             f"✅ Finished processing invoice #{invoice_number} for PO {po_number} (project {project_number}).")
 
@@ -1758,12 +1780,259 @@ class DropboxService(metaclass=SingletonMeta):
             self.logger.warning(f"Could not parse PDF with PyPDF2 or PyMuPDF: {e}")
             return ""
 
+    def _extract_text_from_pdf_with_ocr(self, file_data: bytes) -> str:
+        # 1) Save PDF bytes to a temporary file
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp_pdf:
+            tmp_pdf.write(file_data)
+            tmp_pdf.flush()
+            tmp_pdf_path = tmp_pdf.name
+
+        try:
+            # 2) Rasterize each page to an image, then do OCR
+            text = self.ocr_pdf_file(tmp_pdf_path)
+            return text
+        finally:
+            # 3) Clean up
+            os.remove(tmp_pdf_path)
+
     def _extract_text_via_ocr(self, file_data: bytes) -> str:
         try:
-            return self.ocr_service.ocr_image_bytes(file_data)
+            return self.ocr_service.extract_text_from_receipt(file_data)
         except Exception as e:
             self.logger.warning(f"OCR extraction failed: {e}")
             return ""
     # endregion
+
+    def scan_project_receipts(self, project_number: str):
+        """
+        Scans both credit-card/vendor receipt folders (under 1. Purchase Orders)
+        and petty-cash receipt folders (under 3. Petty Cash/1. Crew PC Folders)
+        for the specified project_number, then processes matching receipts.
+        """
+        self.logger.info(f"🔎 Starting receipt scan for project_number={project_number}")
+
+        # 1) Locate the *exact* project folder path under '2024' that contains the text "project_number"
+        #    Example folder name might be "2416 - Whop Keynote"
+        project_folder_path = self.dropbox_api.find_project_folder(project_number, namespace="2024")
+        if not project_folder_path:
+            self.logger.warning(f"❌ Could not find a matching project folder for '{project_number}' under 2024.")
+            return
+
+        self.logger.info(f"📂 Project folder resolved: {project_folder_path}")
+
+        # 2) Paths to check (relative to the found project folder):
+        #    - '1. Purchase Orders' for vendor/credit card receipts
+        #    - '3. Petty Cash/1. Crew PC Folders' for petty cash receipts
+        #    We will search each subfolder recursively for matching files.
+
+        purchase_orders_path = f"{project_folder_path}/1. Purchase Orders"
+        petty_cash_path = f"{project_folder_path}/3. Petty Cash/1. Crew PC Folders"
+
+        # 3) Recursively scan both directories:
+        #    We'll gather all 'receipt' files from vendor subfolders and petty-cash subfolders, then process them.
+        self._scan_and_process_receipts_in_folder(purchase_orders_path, project_number)
+        self._scan_and_process_receipts_in_folder(petty_cash_path, project_number)
+
+        self.logger.info(f"✅ Finished scanning receipts for project_number={project_number}.")
+
+    def _scan_and_process_receipts_in_folder(self, folder_path: str, project_number: str):
+        """
+        Recursively scans the given folder_path and its subfolders, and whenever
+        it finds a file that looks like a 'receipt' (based on your naming pattern),
+        calls `process_receipt(...)`.
+        """
+        # 1) List all items (files + folders) in the current folder
+        entries = self._list_folder_recursive(folder_path)
+        if not entries:
+            self.logger.debug(f"📂 No entries found under '{folder_path}'")
+            return
+
+        # 2) For each file, see if it matches your existing naming pattern:
+        #    e.g. "2416_04_03 Some Vendor Receipt.pdf" OR "PC_2416_04_03 Some Vendor Receipt.png"
+        for entry in entries:
+            # The `entry` is a dict: { "is_folder": bool, "path_lower": "....", "name": "filename", ... }
+            if entry["is_folder"]:
+                continue  # We’re already recursing, so skip subfolders here.
+
+            dropbox_path = entry["path_display"]
+            file_name = entry["name"]
+
+            # If the file name includes "receipt" and presumably matches your patterns,
+            # you can do a more precise check or just pass to process_receipt() which
+            # already does the final matching via regex in your code.
+            if re.search(self.RECEIPT_REGEX, file_name, re.IGNORECASE):
+                # For example: `2416_04_03 VendorName Receipt.pdf` or `PC_2416_04_03 VendorName Receipt.pdf`
+                self.logger.debug(f"🧾 Potential receipt found: {dropbox_path}")
+                self.process_receipt(dropbox_path)
+            else:
+                # Not a receipt
+                pass
+
+    def _list_folder_recursive(self, folder_path: str):
+        """
+        Recursively lists all entries (files and subfolders) under `folder_path`.
+        Return a list of entries, each entry is a dict containing
+        {
+          "name": str,
+          "path_lower": str,
+          "path_display": str,
+          "is_folder": bool
+        }
+        """
+        from dropbox import files
+        results = []
+
+        try:
+            dbx = self.dropbox_client.dbx
+            # Initial request
+            res = dbx.files_list_folder(folder_path, recursive=True)
+
+            # Accumulate results
+            entries = res.entries
+            while res.has_more:
+                res = dbx.files_list_folder_continue(res.cursor)
+                entries.extend(res.entries)
+
+            # Convert each entry to a dict
+            for e in entries:
+                if isinstance(e, files.FolderMetadata):
+                    results.append({
+                        "name": e.name,
+                        "path_lower": e.path_lower,
+                        "path_display": e.path_display,
+                        "is_folder": True
+                    })
+                elif isinstance(e, files.FileMetadata):
+                    results.append({
+                        "name": e.name,
+                        "path_lower": e.path_lower,
+                        "path_display": e.path_display,
+                        "is_folder": False
+                    })
+        except Exception as ex:
+            self.logger.warning(f"⚠️ Could not list folder recursively: {folder_path}, Error: {ex}")
+
+        return results
+
+    def rasterize_pdf(self, pdf_file_path: str, dpi: int = 200) -> List[Image.Image]:
+        """
+        Converts a multi-page PDF into a list of PIL Image objects, one per page,
+        at the specified DPI (dots per inch).
+        """
+        # If you need to specify a custom path to poppler binaries, do:
+        # convert_from_path(pdf_file_path, dpi=dpi, poppler_path=r"C:\path\to\poppler\bin")
+        pages = convert_from_path(pdf_file_path, dpi=dpi)
+
+        # pages is now a list of PIL Image objects in memory
+        return pages
+
+    def ocr_pdf_file(self, pdf_file_path: str) -> str:
+        """
+        Converts the PDF into images and runs OCR on each page,
+        returning concatenated text from all pages.
+        """
+        all_text = []
+
+        # 1) Rasterize pages
+        pages_as_images = self.rasterize_pdf(pdf_file_path, dpi=200)
+
+        # 2) For each page (PIL Image), run Tesseract OCR
+        for idx, image in enumerate(pages_as_images, start=1):
+            text = pytesseract.image_to_string(image)
+            all_text.append(text)
+
+        # 3) Combine and return
+        return "\n".join(all_text)
+
+    def scan_project_invoices(self, project_number: str):
+        """
+        Scans the '1. Purchase Orders' folder for the specified project_number,
+        finds subfolders that look like they contain a valid PO number (po_type='INV'),
+        and processes invoice files.
+        """
+        self.logger.info(f"🔎 Starting invoice scan for project_number={project_number}")
+
+        project_folder_path = self.dropbox_api.find_project_folder(project_number, namespace="2024")
+        if not project_folder_path:
+            self.logger.warning(f"❌ Could not find a matching project folder for '{project_number}' under 2024.")
+            return
+
+        self.logger.info(f"📂 Project folder resolved: {project_folder_path}")
+
+        # The only path we check is '1. Purchase Orders'
+        purchase_orders_path = f"{project_folder_path}/1. Purchase Orders"
+
+        # Recursively list items. We'll see subfolders named like "2416_04 VendorName"
+        entries = self._list_folder_recursive(purchase_orders_path)
+        if not entries:
+            self.logger.debug(f"📂 No entries found under '{purchase_orders_path}'")
+            return
+
+        # We expect subfolders for each PO. We'll parse out the PO # from the folder name
+        # (e.g. "2416_04 VendorName" -> "04") and check the DB for po_type='INV'.
+        # Then, for that subfolder, we look for invoice files.
+        from dropbox import files
+        folders_for_pos = [e for e in entries if e["is_folder"]]
+
+        for folder_entry in folders_for_pos:
+            folder_name = folder_entry["name"]  # e.g. "2416_04 VendorName"
+            folder_path = folder_entry[
+                "path_display"]  # e.g. "/2024/2416-Whop Keynote/1. Purchase Orders/2416_04 VendorName"
+
+            # Step A) Attempt to parse the PO number from `folder_name`
+            # If your naming convention is always <project>_<po_number> [whatever], do:
+            po_match = re.match(rf"^{project_number}_(\d+)", folder_name)
+            if not po_match:
+                self.logger.debug(f"Skipping folder '{folder_name}' - doesn't match {project_number}_<po_number>")
+                continue
+            folder_po_number = po_match.group(1)
+
+            # Step B) Check DB for that PO with type='INV'
+            po_data = self.database_util.search_purchase_order_by_keys(project_number, folder_po_number)
+            # Could be dict or list or None
+            if not po_data:
+                self.logger.info(f"Folder '{folder_name}' references PO #{folder_po_number}, not found in DB.")
+                continue
+
+            # If it's a list, take the first. If it's a dict, keep it as is.
+            if isinstance(po_data, list):
+                po_data = po_data[0]
+
+            # Ensure it's an actual PurchaseOrder with `po_type == 'INV'`
+            if po_data.get("po_type") != "INV":
+                self.logger.debug(
+                    f"Folder '{folder_name}' references PO #{folder_po_number} with po_type != 'INV'. Skipping.")
+                continue
+
+            # Step C) If valid, we now scan that folder for invoice files
+            self._scan_po_folder_for_invoices(folder_path, project_number, folder_po_number)
+
+        self.logger.info(f"✅ Finished scanning invoices for project_number={project_number}.")
+
+    def _scan_po_folder_for_invoices(self, folder_path: str, project_number: str, folder_po_number: str):
+        """
+        Given a subfolder that definitely references a valid PO with type='INV',
+        scan the folder's files for invoice docs. Then call process_invoice(...)
+        for each matching file.
+        """
+        entries = self._list_folder_recursive(folder_path)
+        if not entries:
+            return
+
+        for entry in entries:
+            if entry["is_folder"]:
+                # skip deeper subfolders, or optionally you could handle them
+                continue
+
+            dropbox_path = entry["path_display"]
+            file_name = entry["name"]
+
+            # If the file name includes "invoice" or matches your known pattern,
+            # we pass it to process_invoice.
+            # (Your process_invoice code also has a pattern for e.g. ^(\d{4})_(\d+)(?:_(\d+))?
+            # so it won't do anything if it doesn't match.)
+            if re.search(self.INVOICE_REGEX, file_name, re.IGNORECASE):
+                self.logger.debug(f"📄 Potential invoice found in {folder_path}: {dropbox_path}")
+                self.process_invoice(dropbox_path)
 
 dropbox_service = DropboxService()

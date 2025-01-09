@@ -40,8 +40,7 @@ class POLogProcessor(metaclass=SingletonMeta):
         else:
             return "INV"
 
-    def _determine_status_and_due_date(self, pay_id: str, payment_type: str, transaction_date: datetime) -> (
-    str, datetime):
+    def _determine_status_and_due_date(self, pay_id: str, payment_type: str, transaction_date: datetime) -> (str, datetime):
         """
         Determines the status and due_date based on the rules:
           - If status = "PAID" and payment type = CC or PC => status=PAID,  due_date=transaction_date
@@ -103,8 +102,7 @@ class POLogProcessor(metaclass=SingletonMeta):
             return 0.0
 
     def _parse_factors(self, factors: str, subtotal: float):
-        self.logger.debug(
-            f"🔧 Parsing factors: '{factors}' with subtotal='{subtotal}' '")
+        self.logger.debug(f"🔧 Parsing factors: '{factors}' with subtotal='{subtotal}' ")
         clean_factors = re.sub(r'\s+', ' ', factors.replace(',', ''))
 
         # Updated regex to allow negative numbers
@@ -327,25 +325,23 @@ class POLogProcessor(metaclass=SingletonMeta):
 
     def _assign_item_ids(self, raw_entries, manual_ids_by_po):
         """
-        Modified logic:
-        For PC transactions:
-          - detail_item_id = envelope_number
-          - line_id = numeric_id derived from item_id_raw or auto increment if not present
-
-        For Non-PC transactions:
-          - detail_item_id = numeric_id derived from item_id_raw or auto increment
-          - line_id increments for each repeated occurrence of the same detail_item_id
+        Logic Changes:
+        1) Retain PC logic (petty cash). If item_id_raw is missing for PC, we set line_id=1.
+        2) For non-PC:
+           - If item_id_raw is empty -> detail_item_id="1"
+           - If item_id_raw is present -> detail_item_id=<parsed numeric>
+           - We **auto-increment** line_id for each repeated (po_number, detail_item_id).
         """
         self.logger.debug("🔖 Assigning detail_item_id and line_id to entries...")
         assigned_item_ids = defaultdict(set)
 
-        # Record all manual IDs
+        # Store manually provided IDs, if any
         for key_for_ids, manual_ids in manual_ids_by_po.items():
             for mid in manual_ids:
                 assigned_item_ids[key_for_ids].add(mid)
                 self.logger.debug(f"🔗 Manual ID='{mid}' recorded for key='{key_for_ids}'")
 
-        auto_increment_counters = defaultdict(int)
+        # We auto-increment line_id for repeated detail_item_ids in non-PC transactions
         line_id_counters = defaultdict(int)
 
         for entry in raw_entries:
@@ -355,38 +351,28 @@ class POLogProcessor(metaclass=SingletonMeta):
             envelope_number = entry['envelope_number']
 
             if payment_type == "PC":
-                # For PC:
-                # detail_item_id = envelope_number
-                # line_id = numeric_id from item_id_raw or auto
+                # For PC transactions, the detail_item_id is tied to the envelope_number.
                 detail_item_id = envelope_number
 
+                # If item_id_raw is missing, set line_id = 1
                 if not item_id_raw or not item_id_raw.strip():
-                    # Need to assign an auto ID for the line_id
-                    auto_increment_counters[key_for_ids] += 1
-                    numeric_id = auto_increment_counters[key_for_ids]
+                    line_id = 1
                 else:
-                    # Use the given numeric ID from item_id_raw
+                    # Otherwise parse numeric from item_id_raw
                     stripped_id = item_id_raw.lstrip('0') or '1'
                     try:
                         numeric_id = int(stripped_id)
                     except ValueError:
                         numeric_id = 1
-
-                line_id = numeric_id
+                    line_id = numeric_id
 
             else:
-                # For non-PC:
-                # detail_item_id = numeric_id from item_id_raw or auto
-                # line_id increments per repeated detail_item_id
+                # For non-PC transactions:
                 if not item_id_raw or not item_id_raw.strip():
-                    auto_increment_counters[key_for_ids] += 1
-                    numeric_id = auto_increment_counters[key_for_ids]
-                    detail_item_id = str(numeric_id)
-                    while detail_item_id in assigned_item_ids[key_for_ids]:
-                        auto_increment_counters[key_for_ids] += 1
-                        numeric_id = auto_increment_counters[key_for_ids]
-                        detail_item_id = str(numeric_id)
+                    # If unspecified, set detail_item_id to "1"
+                    detail_item_id = "1"
                 else:
+                    # Otherwise parse numeric from item_id_raw
                     stripped_id = item_id_raw.lstrip('0') or '1'
                     try:
                         numeric_id = int(stripped_id)
@@ -394,7 +380,6 @@ class POLogProcessor(metaclass=SingletonMeta):
                         numeric_id = 1
                     detail_item_id = str(numeric_id)
 
-                # Assign line_id based on repeated occurrences of the same detail_item_id
                 line_id_key = (entry['po_number'], detail_item_id)
                 line_id_counters[line_id_key] += 1
                 line_id = line_id_counters[line_id_key]
@@ -402,7 +387,8 @@ class POLogProcessor(metaclass=SingletonMeta):
             entry['detail_item_id'] = detail_item_id
             entry['line_id'] = line_id
             self.logger.debug(
-                f"🆔 Assigned detail_item_id='{detail_item_id}' and line_id='{line_id}' for PO='{entry['po_number']}', payment_type='{payment_type}'."
+                f"🆔 Assigned detail_item_id='{detail_item_id}', line_id='{line_id}' "
+                f"for PO='{entry['po_number']}', payment_type='{payment_type}'."
             )
 
     def parse_showbiz_po_log(self, file_path: str):
@@ -440,8 +426,10 @@ class POLogProcessor(metaclass=SingletonMeta):
         # Sum amounts for main items
         self.logger.debug("🔢 Summing up amounts for main items...")
         for m in main_items:
-            rel_details = [d for d in detail_items if
-                           d['po_number'] == m['po_number'] and d['project_number'] == m['project_number']]
+            rel_details = [
+                d for d in detail_items
+                if d['po_number'] == m['po_number'] and d['project_number'] == m['project_number']
+            ]
             total_amount = sum(d['total'] for d in rel_details)
             m['amount'] = total_amount
             self.logger.debug(f"📈 PO='{m['po_number']}' total amount='{total_amount}'")
