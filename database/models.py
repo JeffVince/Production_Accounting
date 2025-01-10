@@ -189,6 +189,7 @@ class DetailItem(Base):
     pulse_id = Column(MYSQL_BIGINT, nullable=True)
     parent_pulse_id = Column(MYSQL_BIGINT, nullable=True)
     receipt_id = Column(MYSQL_INTEGER(unsigned=True))
+    payment_type = Column(String(45), nullable=True)
     invoice_id = Column(MYSQL_INTEGER(unsigned=True))
     sub_total = Column(
         MYSQL_DECIMAL(15, 2),

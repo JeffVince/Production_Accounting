@@ -550,7 +550,8 @@ class DatabaseOperations:
         transaction_date=None,
         due_date=None,
         state=None,
-        aicp_code=None
+        aicp_code=None,
+        payment_type = None
     ):
         """
         🆕 Create a DetailItem by looking up PurchaseOrder in the same session,
@@ -631,6 +632,7 @@ class DatabaseOperations:
                     description=description,
                     transaction_date=transaction_date,
                     due_date=due_date,
+                    payment_type=payment_type
                 )
                 if state:
                     new_detail_item.state = state

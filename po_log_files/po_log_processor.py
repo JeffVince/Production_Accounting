@@ -418,7 +418,7 @@ class POLogProcessor(metaclass=SingletonMeta):
                 'payment_type': entry['payment_type'],
                 'total': entry['subtotal'],
                 'OT': ot,
-                'fringes': entry['fringes']
+                'fringes': entry['fringes'],
             }
             detail_items.append(detail_item)
             self.logger.debug(f"💾 Created detail_item: {detail_item}")
