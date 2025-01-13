@@ -67,7 +67,6 @@ def signal_worker_init(sender=None, **kwargs):
 
 @worker_ready.connect
 def signal_worker_ready(sender=None, **kwargs):
-
     logger.info("🚀 Celery Worker is READY and waiting for tasks! Buckle up, folks.")
 
 @worker_shutdown.connect

@@ -1,4 +1,4 @@
-# project_po_detail_item_triggers.py
+# po_triggers.py
 
 import logging
 from typing import Optional, Dict, Any
@@ -20,54 +20,36 @@ class DatabaseOperationError(Exception):
 # ------------------------------------------------------------------
 
 def handle_project_create(project_id: int) -> None:
-    """
-    Triggered when a new Project record is inserted into the DB.
-    """
     logger.info(f"[PROJECT CREATE] ID={project_id}")
     # ...
     pass
 
 
 def handle_project_update(project_id: int) -> None:
-    """
-    Triggered when an existing Project record is updated in the DB.
-    """
     logger.info(f"[PROJECT UPDATE] ID={project_id}")
     # ...
     pass
 
 
 def handle_project_delete(project_id: int) -> None:
-    """
-    Triggered when a Project record is deleted from the DB.
-    """
     logger.info(f"[PROJECT DELETE] ID={project_id}")
     # ...
     pass
 
 
 def handle_purchase_order_create(po_id: int) -> None:
-    """
-    Triggered when a new PurchaseOrder record is inserted into the DB.
-    """
     logger.info(f"[PO CREATE] po_id={po_id}")
     # ...
     pass
 
 
 def handle_purchase_order_update(po_id: int) -> None:
-    """
-    Triggered when an existing PurchaseOrder record is updated in the DB.
-    """
     logger.info(f"[PO UPDATE] po_id={po_id}")
     # ...
     pass
 
 
 def handle_purchase_order_delete(po_id: int) -> None:
-    """
-    Triggered when a PurchaseOrder record is deleted from the DB.
-    """
     logger.info(f"[PO DELETE] po_id={po_id}")
     # ...
     pass
@@ -94,9 +76,6 @@ def handle_detail_item_update(detail_item_id: int) -> None:
 
 
 def handle_detail_item_delete(detail_item_id: int) -> None:
-    """
-    Triggered when a DetailItem record is deleted from the DB.
-    """
     logger.info(f"[DETAIL ITEM DELETE] detail_item_id={detail_item_id}")
     # ...
     pass
@@ -166,7 +145,6 @@ def _detail_item_set_to_rtp(detail_item_id: int) -> Optional[Dict[str, Any]]:
     # 3) Build a reference key -> 'projectNumber_PO_Number_detailNumber'
     project_number = _fetch_project_number_for_po(po_record)
     po_number = po_record.get("po_number") or "UNKNOWN"
-    # For payment_type=INV, we treat detail_number as the invoice/bill number:
     if not detail_number:
         logger.warning(f"DetailItem(id={detail_item_id}) has no detail_number. Using 'XX'.")
         detail_number = "XX"
@@ -205,9 +183,8 @@ def _detail_item_set_to_rtp(detail_item_id: int) -> Optional[Dict[str, Any]]:
 
 def _create_or_get_xero_bill(reference_key: str, po_id: int) -> Optional[Dict[str, Any]]:
     """
-    Thread-safe approach to create or retrieve a XeroBill for a given reference_key.
-    If a concurrency issue arises (unique constraint violation), we re-query
-    the DB for that newly created Bill.
+    Looks up an existing XeroBill by xero_reference_number; if not found,
+    creates a new one. No concurrency fallback—if creation fails, we just raise an error.
     """
     # 1) Try to find an existing Bill
     try:
@@ -218,54 +195,37 @@ def _create_or_get_xero_bill(reference_key: str, po_id: int) -> Optional[Dict[st
         raise DatabaseOperationError(message)
 
     if existing_bills:
-        # If it's a list, pick the first
         logger.debug(
             f"Found existing Bill(s) for reference_key='{reference_key}'. Returning the first."
         )
         return existing_bills[0] if isinstance(existing_bills, list) else existing_bills
 
-    # 2) If no Bill found, create one. Handle concurrency if another thread is doing the same.
+    # 2) If no Bill found, create one
     try:
         new_xero_bill = db_ops.create_xero_bill(
             state="Draft",
             xero_reference_number=reference_key,
             po_id=po_id
         )
+        if not new_xero_bill:
+            raise DatabaseOperationError(
+                f"Could not create XeroBill for reference='{reference_key}'."
+            )
         logger.info(
             f"Created new XeroBill for reference={reference_key} with id={new_xero_bill.get('id')}"
         )
         return new_xero_bill
     except Exception as e:
-        # Potential concurrency issue (unique constraint violation or similar)
-        logger.warning(f"Failed to create XeroBill for reference='{reference_key}': {e}")
-        logger.warning("Attempting to re-query the newly created Bill after concurrency issue.")
-
-        try:
-            fallback_bills = db_ops.search_xero_bills(["xero_reference_number"], [reference_key])
-            if fallback_bills:
-                bill = fallback_bills[0] if isinstance(fallback_bills, list) else fallback_bills
-                logger.info(
-                    f"Retrieved Bill after concurrency conflict (id={bill.get('id')})."
-                )
-                return bill
-            else:
-                # If we still have nothing, raise an error
-                raise DatabaseOperationError(
-                    f"No Bill found for reference='{reference_key}' even after concurrency fallback."
-                )
-        except Exception as requery_err:
-            message = f"Error re-querying Bill after concurrency conflict: {requery_err}"
-            logger.error(message)
-            raise DatabaseOperationError(message)
+        # If creation fails (duplicate or other DB error), just raise
+        message = f"Failed to create XeroBill for reference='{reference_key}': {e}"
+        logger.error(message)
+        raise DatabaseOperationError(message)
 
 
-def _ensure_bill_line_item(
-    detail_item: Dict[str, Any],
-    xero_bill_id: int
-) -> Optional[Dict[str, Any]]:
+def _ensure_bill_line_item(detail_item: Dict[str, Any], xero_bill_id: int) -> Optional[Dict[str, Any]]:
     """
     If there's no BillLineItem linking (xero_bill_id, detail_item_id), create one.
-    Otherwise, compare & update if differences are found.
+    Otherwise, compare & update if differences are found. No concurrency fallback.
     """
     detail_item_id = detail_item["id"]
     try:
@@ -285,11 +245,9 @@ def _ensure_bill_line_item(
     sub_total = detail_item.get("sub_total", 0)
     aicp_code_id = detail_item.get("aicp_code_id")
 
-    # If needed, fetch an account_code from the AICP code -> tax_account
     account_code = _fetch_account_code(aicp_code_id)
 
     if found:
-        # If it's a list, pick the first
         if isinstance(found, list):
             found = found[0]
         logger.info(
@@ -301,7 +259,6 @@ def _ensure_bill_line_item(
             or found.get("line_amount") != sub_total
             or found.get("account_code") != account_code
         )
-
         if changes_needed:
             try:
                 updated_line = db_ops.update_bill_line_item(
@@ -337,25 +294,23 @@ def _ensure_bill_line_item(
             unit_amount=sub_total,
             line_amount=sub_total,
             account_code=account_code,
-            xero_id=""  # Typically assigned later if needed
+            xero_id=""
         )
+
+        if not new_line:
+            message = f"Could not create BillLineItem for xero_bill_id={xero_bill_id}."
+            logger.warning(message)
+            raise DatabaseOperationError(message)
+
+        logger.info(
+            f"BillLineItem created (id={new_line['id']}) for xero_bill_id={xero_bill_id}, detail_item_id={detail_item_id}."
+        )
+        return new_line
+
     except Exception as e:
-        message = (
-            f"Failed to create BillLineItem for xero_bill_id={xero_bill_id}, "
-            f"detail_item_id={detail_item_id}: {e}"
-        )
+        message = f"Failed to create BillLineItem for xero_bill_id={xero_bill_id}, detail_item_id={detail_item_id}: {e}"
         logger.error(message)
         raise DatabaseOperationError(message)
-
-    if not new_line:
-        message = f"Could not create BillLineItem for xero_bill_id={xero_bill_id}."
-        logger.warning(message)
-        raise DatabaseOperationError(message)
-
-    logger.info(
-        f"BillLineItem created (id={new_line['id']}) for xero_bill_id={xero_bill_id}, detail_item_id={detail_item_id}."
-    )
-    return new_line
 
 
 def _fetch_account_code(aicp_code_id: Optional[int]) -> Optional[str]:

@@ -28,6 +28,13 @@ def process_invoice_trigger(invoice_id: int):
     """
     logger.info(f"🚀 Starting process_invoice_trigger shared task. invoice_id={invoice_id}.")
     try:
+        config = Config()
+        db_settings = config.get_database_settings(config.USE_LOCAL)
+        try:
+            initialize_database(db_settings['url'])
+            logger.info("DB initialization is done.")
+        except Exception as e:
+            logger.error(f"DB initialization failed! Error={e}", exc_info=True)
         trigger_service = database_trigger_service
         trigger_service.invoice_trigger_on_create_or_update(invoice_id)
         logger.info(f"🎉 Done with invoice #{invoice_id}.")
@@ -86,6 +93,13 @@ def process_detail_item_create(detail_item_id: int):
     """
     logger.info(f"🌀 Handling created detail item for detail_item_id={detail_item_id}")
     try:
+        config = Config()
+        db_settings = config.get_database_settings(config.USE_LOCAL)
+        try:
+            initialize_database(db_settings['url'])
+            logger.info("DB initialization is done.")
+        except Exception as e:
+            logger.error(f"DB initialization failed! Error={e}", exc_info=True)
         trigger_service = database_trigger_service
         trigger_service.detail_item_trigger_on_create(detail_item_id)
         logger.info(f"✅ detail_item_set_to_rtp completed for id={detail_item_id}")
@@ -471,8 +485,15 @@ def create_xero_bill(bill_id: str):
     """
     The Celery task for handling newly created XeroBills.
     """
-    logger.info(f"🚀 Starting create_xero_bill shared task. reference_id={bill_id}.")
+    logger.info(f"🌀 NEW TASK - CREATE - XERO BILL - STARTED 🌀 {bill_id}.")
     try:
+        config = Config()
+        db_settings = config.get_database_settings(config.USE_LOCAL)
+        try:
+            initialize_database(db_settings['url'])
+            logger.info("DB initialization is done.")
+        except Exception as e:
+            logger.error(f"DB initialization failed! Error={e}", exc_info=True)
         trigger_service = database_trigger_service
         trigger_service.create_xero_bill_trigger(bill_id)
         logger.info(f"🎉 Done with XeroBill creation for bill_id={bill_id}.")

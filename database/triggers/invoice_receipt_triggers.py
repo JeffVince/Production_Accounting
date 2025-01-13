@@ -61,7 +61,7 @@ def handle_invoice_create_or_update(invoice_id: int) -> None:
                     f"#{d_item['detail_number']} (DB ID={d_item['id']})."
                 )
 
-            # Set them to "INVOICED" if they're not already final
+            # Set them to "PENDING" if they're not already final
             current_state = (d_item.get("state") or "").upper()
             if current_state not in ["RECONCILED", "PAID", "RTP", "PO MISMATCH"]:
                 db_ops.update_detail_item_by_keys(
@@ -69,10 +69,10 @@ def handle_invoice_create_or_update(invoice_id: int) -> None:
                     po_number,
                     d_item["detail_number"],
                     d_item["line_id"],
-                    state="INVOICED"
+                    state="PENDING"
                 )
                 logger.info(
-                    f"📄 Marked detail_item #{d_item['detail_number']} (ID={d_item['id']}) as INVOICED."
+                    f"📄 Marked detail_item #{d_item['detail_number']} (ID={d_item['id']}) as PENDING."
                 )
     else:
         logger.info(
