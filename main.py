@@ -47,7 +47,6 @@ def main():
     # Initialize the database
     config = Config()
 
-
     db_settings = config.get_database_settings(config.USE_LOCAL)
     initialize_database(db_settings['url'])
     logger.info("Database initialized.")

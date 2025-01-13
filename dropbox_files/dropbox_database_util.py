@@ -9,12 +9,12 @@ from database.db_util import get_db_session
 from singleton import SingletonMeta
 
 
-class DropboxDatabaseUtil(metaclass=SingletonMeta):
+class DropboxDatabaseUtil():
     def __init__(self):
         self.logger = logging.getLogger("app_logger")
         self.dropbox_util = dropbox_util
         self.logger.info("📦 Dropbox Database Util initialized 🌟")
-        self._initialized = True
+        #self._initialized = True
 
     def add_invoice_link_to_detail_items(self, project_id: str, po_number: str, invoice_number: int, file_link: str):
         with get_db_session() as session:

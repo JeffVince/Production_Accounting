@@ -55,6 +55,7 @@ class MondayUtil(metaclass=SingletonMeta):
     SUBITEM_LINE_NUMBER_COLUMN_ID = "numbers_Mjj5uYts"
     SUBITEM_PO_COLUMN_ID = "numbers_Mjj60Olh"
     SUBITEM_PROJECT_ID_COLUMN_ID = "numbers_Mjj8k8Yt"
+    SUBITEM_XERO_LINK_COLUMN_ID = "link_mkm0s83t"
 
     # Column IDs for Contacts
     CONTACT_NAME = 'name'
@@ -447,7 +448,7 @@ class MondayUtil(metaclass=SingletonMeta):
     def subitem_column_values_formatter(self, project_id=None, po_number=None, detail_item_number=None, line_id=None,
                                         notes=None, status=None, description=None,
                                         quantity=None, rate=None, date=None, due_date=None,
-                                        account_number=None, link=None, OT=None, fringes=None):
+                                        account_number=None, link=None, OT=None, fringes=None, xero_link=None):
         column_values = {}
 
         if notes: column_values[self.SUBITEM_NOTES_COLUMN_ID] = notes
@@ -531,6 +532,9 @@ class MondayUtil(metaclass=SingletonMeta):
 
         if link:
             column_values[self.SUBITEM_LINK_COLUMN_ID] = {'url': link, 'text': '🧾'}
+
+        if link:
+            column_values[self.SUBITEM_XERO_LINK_COLUMN_ID] = {'url': xero_link, 'text': '📊'}
 
         if po_number is not None:
             column_values[self.SUBITEM_PO_COLUMN_ID] = po_number

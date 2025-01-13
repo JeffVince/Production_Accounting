@@ -41,7 +41,6 @@ class Project(Base):
     project_number = Column(MYSQL_INTEGER, nullable=True)
     name = Column(String(100), nullable=False)
     status = Column(Enum('Active', 'Closed'), nullable=False, server_default='Active')
-    total_spent = Column(MYSQL_DECIMAL(10, 2), nullable=True, server_default='0.00')
     created_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
     updated_at = Column(
         DateTime,
@@ -116,7 +115,6 @@ class PurchaseOrder(Base):
         nullable=False,
         server_default='PENDING'
     )
-    amount_total = Column(MYSQL_DECIMAL(15, 2), nullable=False, server_default='0.00')
     producer = Column(String(100), nullable=True)
     pulse_id = Column(MYSQL_BIGINT, nullable=True)
     folder_link = Column(String(255), nullable=True)
@@ -230,7 +228,22 @@ class Invoice(Base):
     updated_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'))
 
 
+# -------------------------------------------------------------------
+#   AUDIT LOGS
+# -------------------------------------------------------------------
+class AuditLog(Base):
+    """
+    Corresponds to table: audit_log
+    (Populated by MySQL AFTER INSERT/UPDATE/DELETE triggers)
+    """
+    __tablename__ = 'audit_log'
 
+    id = Column(MYSQL_INTEGER(unsigned=True), primary_key=True, autoincrement=True)
+    table_name = Column(String(100), nullable=False)
+    operation = Column(String(10), nullable=False)   # 'INSERT','UPDATE','DELETE'
+    record_id = Column(MYSQL_INTEGER(unsigned=True), nullable=True)
+    message = Column(String(255), nullable=True)
+    created_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
 
 # -------------------------------------------------------------------
 # XERO_BILL
@@ -245,6 +258,7 @@ class XeroBill(Base):
     state = Column(String(45), nullable=False, server_default='Draft')
     xero_reference_number = Column(String(45), nullable=True, unique=True)
     xero_link = Column(String(255))
+    po_id = Column(MYSQL_INTEGER(unsigned=True))
     created_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
     updated_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'))
 

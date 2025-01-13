@@ -63,7 +63,7 @@ class DropboxService(metaclass=SingletonMeta):
     SHOWBIZ_REGEX = r".mbb"
     PROJECT_NUMBER = ""
 
-    USE_TEMP_FILE = True  # Whether to use a local temp file
+    USE_TEMP_FILE = False  # Whether to use a local temp file
     DEBUG_STARTING_PO_NUMBER = 0  # If set, skip POs below this number
     SKIP_DATABASE = False
     ADD_PO_TO_MONDAY = True
@@ -669,10 +669,10 @@ class DropboxService(metaclass=SingletonMeta):
                     # ----------------------------------------------------
                     due_date_str = created_or_updated_detail.get("due_date")
                     current_state = created_or_updated_detail.get("state", "").upper()
-                    completed_statuses = {"PAID", "LOGGED", "RECONCILED", "REVIEWED"}
+                    completed_statuses = {"PAID", "LOGGED", "RECONCILED", "REVIEWED"} # add overdue
                     po_type = main_match.get("po_type", "").upper() if main_match else ""
 
-                    if due_date_str and current_state not in completed_statuses and po_type not in ["PC", "CC"]:
+                    if due_date_str and current_state not in completed_statuses and po_type not in ["PC", "CC"] and False:
                         try:
                             due_date_str = str(due_date_str)
                             due_date_obj = datetime.strptime(due_date_str, "%Y-%m-%d %H:%M:%S")
@@ -726,7 +726,7 @@ class DropboxService(metaclass=SingletonMeta):
                     invoice_total = float(invoice_record.get("total", 0.0))
 
                     # We also want to ensure none of these detail items is in an "untouchable" status
-                    skip_statuses = {"OVERDUE", "RECONCILED", "PAID"}
+                    skip_statuses = {"RECONCILED", "PAID"}
                     if any(d.get("state", "").upper() in skip_statuses for d in detail_list):
                         self.logger.info(
                             f"Skipping invoice check for invoice_id={inv_id} because at least one detail item is OVERDUE/RECONCILED/PAID."
@@ -1584,30 +1584,19 @@ class DropboxService(metaclass=SingletonMeta):
     # endregion
 
     #region Event Processing - Invoices
+    # ============================
+    # In dropbox_service.py
+    # ============================
     def process_invoice(self, dropbox_path: str):
         """
-        Processes an invoice file from Dropbox. The filename is expected to match
-        the pattern "{project_number}_{po_number}" or "{project_number}_{po_number}_{invoice_number}".
-        If no invoice number is in the filename, defaults to 1.
-
-        Steps:
-         1) Parse filename to extract project_number, po_number, and invoice_number.
-         2) Download the file from Dropbox to a local temp path.
-         3) Use OCRService + OpenAI to extract total amount, transaction date, and term from the file.
-         4) Locate the corresponding purchase_order (and project) in the DB.
-         5) Create or update the 'invoice' record with the parsed info.
-         6) Store the Dropbox share link in 'file_link'.
-         7) Link matching detail items (payment_type="INV" & detail_number=invoice_number) to this invoice_id.
-         8) (NEW) If none of the associated detail items are RECONCILED/OVERDUE/PAID,
-            check whether the sum of their sub_totals matches the invoice total.
-            - If match => set status=RTP
-            - If mismatch => set status=PO MISMATCH
-         9) Optionally push data to Monday (update subitems, etc.).
+        Minimal 'process_invoice' that only inserts or updates an 'invoice' record
+        in the DB (plus a share link). All other logic (detail item linking, sum checks,
+        RTP vs. MISMATCH, etc.) is handled by the triggers in invoice_receipt_triggers.py.
         """
         self.logger.info(f"📄 Processing invoice: {dropbox_path}")
         filename = os.path.basename(dropbox_path)
 
-        # 1) Extract project_number, po_number, invoice_number
+        # 1) Extract project_number, po_number, invoice_number from filename
         try:
             match = re.match(r"^(\d{4})_(\d{1,2})(?:_(\d{1,2}))?", filename)
             if not match:
@@ -1615,120 +1604,81 @@ class DropboxService(metaclass=SingletonMeta):
                 return
             project_number_str = match.group(1)
             po_number_str = match.group(2)
-            invoice_number_str = match.group(3) or "1"  # default to 1 if missing
+            invoice_number_str = match.group(3) or "1"
 
             project_number = int(project_number_str)
             po_number = int(po_number_str)
             invoice_number = int(invoice_number_str)
-
-            path_segments = dropbox_path.strip("/").split("/")
-            if len(path_segments) >= 2:
-                # Attempt to parse PO number from folder name if there's a mismatch
-                folder_po_str = path_segments[-2].strip()
-                folder_po_match = re.search(r'^\d{4}_(\d+)', folder_po_str)
-                if folder_po_match:
-                    folder_po_number = int(folder_po_match.group(1))
-                    if folder_po_number != po_number:
-                        self.logger.warning(
-                            f"❗ Mismatch between folder PO number '{folder_po_number}' "
-                            f"and invoice filename PO number '{po_number}'. "
-                            f"Using folder PO number."
-                        )
-                        po_number = folder_po_number
-
         except Exception as e:
             self.logger.exception(f"💥 Error parsing invoice filename '{filename}': {e}", exc_info=True)
             return
 
-        # 2) Download file from Dropbox
-        temp_file_path = f"./temp_files/{filename}"
+        # 2) Try to get the Dropbox share link *first* so we can store it at creation/update time
         try:
-            self.logger.info(f"⬇️ Downloading invoice file to {temp_file_path}")
-            if not self.download_file_from_dropbox(dropbox_path, temp_file_path):
-                self.logger.error(f"❌ Could not download invoice file: {dropbox_path}")
-                return
+            file_share_link = self.dropbox_util.get_file_link(dropbox_path)
+            self.logger.info(f"🔗 Obtained Dropbox link for invoice: {file_share_link}")
         except Exception as e:
-            self.logger.exception(f"💥 Failed to download invoice file: {e}", exc_info=True)
+            self.logger.exception(f"💥 Error retrieving Dropbox link: {e}", exc_info=True)
+            file_share_link = None
+
+        # 3) Download file from Dropbox
+        temp_file_path = f"./temp_files/{filename}"
+        if not self.download_file_from_dropbox(dropbox_path, temp_file_path):
+            self.logger.error(f"❌ Could not download invoice file: {dropbox_path}")
             return
 
-        # 3) Extract data with OCR + OpenAI
+        # 4) Attempt to parse out invoice fields (date, term, total) via OCR
+        transaction_date, term, total = None, 30, 0.0
         try:
             self.logger.info("🔎 Scanning invoice file for data with OCRService + OpenAI...")
             extracted_text = self.ocr_service.extract_text(temp_file_path)
             info, err = self.ocr_service.extract_info_with_openai(extracted_text)
-
             if err or not info:
-                self.logger.error(f"❌ Failed to parse invoice data from OpenAI. Error: {err}")
-                transaction_date = None
-                term = 30
-                total = 0.0
+                self.logger.warning(f"❌ Could not parse invoice data from OpenAI. Using defaults. Error: {err}")
             else:
-                # Attempt to parse the date
+                # Date
                 date_str = info.get("invoice_date")
                 try:
-                    transaction_date = datetime.strptime(date_str, "%Y-%m-%d") if date_str else None
+                    if date_str:
+                        transaction_date = datetime.strptime(date_str, "%Y-%m-%d")
                 except (ValueError, TypeError):
                     transaction_date = None
 
-                # Attempt to parse total as float
+                # Total
                 total_str = info.get("total_amount")
                 try:
                     total = float(total_str) if total_str else 0.0
                 except (ValueError, TypeError):
                     total = 0.0
 
-                # Attempt to parse the payment term
+                # Term
                 term_str = info.get("payment_term")
                 if term_str:
                     digits_only = re.sub(r"[^0-9]", "", term_str)
                     try:
-                        term_int = int(digits_only) if digits_only else 30
-                        if len(digits_only) > 2:
-                            self.logger.warning(f"Extracted payment term '{term_int}' is too long. Defaulting to 30.")
-                            term = 30
-                        elif 7 <= term_int <= 60:
-                            term = term_int
-                            self.logger.info(f"Parsed payment term: {term} days.")
-                        else:
-                            self.logger.warning(
-                                f"Payment term '{term_int}' is out of expected range. Defaulting to 30.")
-                            term = 30
-                    except (ValueError, TypeError) as e:
-                        self.logger.exception(f"Error parsing payment term '{term_str}': {e}. Defaulting to 30.")
+                        t_val = int(digits_only) if digits_only else 30
+                        if 7 <= t_val <= 60:
+                            term = t_val
+                    except Exception:
                         term = 30
-                else:
-                    self.logger.info("No payment term provided. Defaulting to 30.")
-                    term = 30
-
         except Exception as e:
             self.logger.exception(f"💥 Error extracting invoice data: {e}", exc_info=True)
-            transaction_date, term, total = None, 30, 0.0
 
-        # 4) Find or create the purchase_order (and project)
-        try:
-            po_data = self.database_util.search_purchase_order_by_keys(project_number, po_number)
-            if not po_data:
-                self.logger.warning(f"⚠️ PO {project_number}_{po_number} not found; cannot create invoice.")
-                return
-            if isinstance(po_data, list):
-                po_data = po_data[0]
-        except Exception as e:
-            self.logger.exception(f"💥 Error locating PO or project in DB: {e}", exc_info=True)
-            return
-
-        # 5) Create or update the invoice record
+        # 5) Create/update the Invoice record (including the share link) in one go
         try:
             existing_invoice = self.database_util.search_invoice_by_keys(project_number, po_number, invoice_number)
             if existing_invoice is None:
                 self.logger.info(
-                    f"🆕 Creating new invoice #{invoice_number} for PO {po_number} (project {project_number}).")
+                    f"🆕 Creating new invoice #{invoice_number} for PO {po_number} (project {project_number})."
+                )
                 new_invoice = self.database_util.create_invoice(
                     project_number=project_number,
                     po_number=po_number,
                     invoice_number=invoice_number,
                     transaction_date=transaction_date,
                     term=term,
-                    total=total
+                    total=total,
+                    file_link=file_share_link  # Store link here at creation
                 )
                 invoice_id = new_invoice["id"] if new_invoice else None
             else:
@@ -1736,154 +1686,24 @@ class DropboxService(metaclass=SingletonMeta):
                     invoice_id = existing_invoice[0]["id"]
                 else:
                     invoice_id = existing_invoice["id"]
-
-                self.logger.info(f"🔄 Updating existing invoice #{invoice_number} for PO {po_number}.")
+                self.logger.info(
+                    f"🔄 Updating existing invoice #{invoice_number} for PO {po_number}."
+                )
                 self.database_util.update_invoice(
                     invoice_id=invoice_id,
                     transaction_date=transaction_date,
                     term=term,
-                    total=total
+                    total=total,
+                    file_link=file_share_link  # Update link here at the same time
                 )
         except Exception as e:
             self.logger.exception(f"💥 Error creating/updating invoice in DB: {e}", exc_info=True)
+            self.cleanup_temp_file(temp_file_path)
             return
 
-        # 6) Update the invoice file_link with Dropbox share link
-        try:
-            file_share_link = self.dropbox_util.get_file_link(dropbox_path)
-            self.logger.info(f"🔗 Obtained Dropbox link for invoice: {file_share_link}")
-            self.database_util.update_invoice(
-                invoice_id=invoice_id,
-                file_link=file_share_link
-            )
-        except Exception as e:
-            self.logger.exception(f"💥 Error retrieving or storing Dropbox link: {e}", exc_info=True)
-
-        # 7) Link matching detail items (payment_type="INV" & detail_number=invoice_number) to this invoice_id
-        try:
-            detail_matches = self.database_util.search_detail_items(
-                column_names=["po_id", "detail_number", "payment_type"],
-                values=[po_data['id'], invoice_number, "INV"]
-            )
-            if detail_matches:
-                if not isinstance(detail_matches, list):
-                    detail_matches = [detail_matches]
-                for d_item in detail_matches:
-                    if d_item.get("invoice_id") != invoice_id:
-                        self.database_util.update_detail_item_by_keys(
-                            project_number=project_number,
-                            po_number=po_number,
-                            detail_number=d_item["detail_number"],
-                            line_id=d_item["line_id"],
-                            invoice_id=invoice_id
-                        )
-                        self.logger.info(
-                            f"Linked invoice_id={invoice_id} to detail_item_id={d_item['detail_number']} (ID={d_item['id']})."
-                        )
-            else:
-                self.logger.info(
-                    f"No existing detail items found for project={project_number}, PO={po_number}, detail={invoice_number}, payment_type=INV."
-                )
-        except Exception as e:
-            self.logger.exception(f"💥 Error linking detail items to invoice {invoice_id}: {e}", exc_info=True)
-
-        # 8) (NEW) Check if none of the associated details are RECONCILED, OVERDUE, or PAID,
-        #    then compare sum(sub_totals) to invoice total => set "RTP" or "PO MISMATCH"
-        try:
-            if detail_matches:
-                # Reload them (they may have been updated above)
-                all_details = []
-                for item in detail_matches:
-                    reloaded = self.database_util.search_detail_item_by_keys(
-                        project_number=project_number,
-                        po_number=po_number,
-                        detail_number=item["detail_number"],
-                        line_id=item["line_id"]
-                    )
-                    if reloaded:
-                        all_details.append(reloaded if isinstance(reloaded, dict) else reloaded[0])
-
-                # Determine if any detail is RECONCILED, OVERDUE, or PAID
-                skip_check = any(
-                    d.get("state", "").upper() in {"RECONCILED", "OVERDUE", "PAID"}
-                    for d in all_details
-                )
-                if skip_check:
-                    self.logger.info(
-                        "Skipping invoice total check because at least one detail item is RECONCILED/OVERDUE/PAID."
-                    )
-                else:
-                    # Sum sub_totals from these detail items
-                    sum_subtotals = sum(float(d.get("sub_total", 0.0)) for d in all_details)
-                    if abs(sum_subtotals - total) < 0.0001:
-                        # Mark invoice as RTP in DB
-                        self.logger.info(
-                            f"Invoice total matches sum of detail sub_totals. Setting invoice status to RTP."
-                        )
-                        self.database_util.update_invoice(invoice_id, status="RTP")
-
-                        # Optionally update any Monday column for invoice (if you track invoice status there)
-                        # For subitems, you could also do something similar:
-                        # This is just an example—actual code may differ
-                        for d in all_details:
-                            if d.get("pulse_id"):
-                                col_values_str = self.monday_util.subitem_column_values_formatter(status="RTP")
-                                self.monday_util.update_subitem_columns(d["pulse_id"], json.loads(col_values_str))
-
-                    else:
-                        self.logger.info(
-                            f"Invoice total != sum of detail sub_totals ({sum_subtotals}). Marking as PO MISMATCH."
-                        )
-                        self.database_util.update_invoice(invoice_id, status="PO MISMATCH")
-
-                        # Similarly update subitems on Monday:
-                        for d in all_details:
-                            if d.get("pulse_id"):
-                                col_values_str = self.monday_util.subitem_column_values_formatter(status="PO MISMATCH")
-                                self.monday_util.update_subitem_columns(d["pulse_id"], json.loads(col_values_str))
-        except Exception as e:
-            self.logger.exception(f"💥 Error performing invoice total check for invoice_id={invoice_id}: {e}",
-                                  exc_info=True)
-
-        # 9) Update any Monday subitems if needed (existing logic)
-        try:
-            self.logger.info(
-                f"🌐 Updating Monday subitems link for invoice #{invoice_number} (project {project_number}, PO {po_number})."
-            )
-
-            # Retrieve all subitems from your DB that correspond to this invoice number
-            matching_subitems = self.database_util.search_detail_items(
-                ["po_id", "detail_number"], [po_data["id"], invoice_number]
-            )
-
-            if not matching_subitems:
-                self.logger.info("No subitems found in DB that link to this invoice.")
-            else:
-                if not isinstance(matching_subitems, list):
-                    matching_subitems = [matching_subitems]
-
-                updated_count = 0
-                for sub in matching_subitems:
-                    subitem_id = sub.get("pulse_id")
-                    if not subitem_id:
-                        self.logger.warning(f"Missing subitem_id (pulse_id) in DB record: {sub}")
-                        continue
-
-                    col_vals_str = self.monday_util.subitem_column_values_formatter(link=file_share_link)
-                    col_vals_dict = json.loads(col_vals_str)
-
-                    success = self.monday_util.update_subitem_columns(subitem_id, col_vals_dict)
-                    if success:
-                        updated_count += 1
-
-                self.logger.info(f"Updated {updated_count} subitems on Monday with invoice link.")
-        except Exception as e:
-            self.logger.exception(f"💥 Error updating subitems on Monday: {e}", exc_info=True)
-
-        # Cleanup temp file
+        # 6) Clean up the local temp file
         self.cleanup_temp_file(temp_file_path)
-        self.logger.info(f"✅ Invoice processing complete for: {dropbox_path}")
-        #endregion
+        self.logger.info(f"✅ Minimal invoice processing complete for: {dropbox_path}")
 
     # region Tax Form
     def process_tax_form(self, dropbox_path: str):
@@ -1979,6 +1799,209 @@ class DropboxService(metaclass=SingletonMeta):
                 os.remove(temp_img_file_name)
 
         return extracted_text
+
+    def scan_project_receipts(self, project_number: str):
+        """
+        Scans both credit-card/vendor receipt folders (under 1. Purchase Orders)
+        and petty-cash receipt folders (under 3. Petty Cash/1. Crew PC Folders)
+        for the specified project_number, then processes matching receipts.
+        """
+        self.logger.info(f"🔎 Starting receipt scan for project_number={project_number}")
+
+        # 1) Locate the *exact* project folder path under '2024' that contains the text "project_number"
+        #    Example folder name might be "2416 - Whop Keynote"
+        project_folder_path = self.dropbox_api.find_project_folder(project_number, namespace="2024")
+        if not project_folder_path:
+            self.logger.warning(f"❌ Could not find a matching project folder for '{project_number}' under 2024.")
+            return
+
+        self.logger.info(f"📂 Project folder resolved: {project_folder_path}")
+
+        # 2) Paths to check (relative to the found project folder):
+        #    - '1. Purchase Orders' for vendor/credit card receipts
+        #    - '3. Petty Cash/1. Crew PC Folders' for petty cash receipts
+        #    We will search each subfolder recursively for matching files.
+
+        purchase_orders_path = f"{project_folder_path}/1. Purchase Orders"
+        petty_cash_path = f"{project_folder_path}/3. Petty Cash/1. Crew PC Folders"
+
+        # 3) Recursively scan both directories:
+        #    We'll gather all 'receipt' files from vendor subfolders and petty-cash subfolders, then process them.
+        self._scan_and_process_receipts_in_folder(purchase_orders_path, project_number)
+        self._scan_and_process_receipts_in_folder(petty_cash_path, project_number)
+
+        self.logger.info(f"✅ Finished scanning receipts for project_number={project_number}.")
+
+    def _scan_and_process_receipts_in_folder(self, folder_path: str, project_number: str):
+        """
+        Recursively scans the given folder_path and its subfolders, and whenever
+        it finds a file that looks like a 'receipt' (based on your naming pattern),
+        calls `process_receipt(...)`.
+        """
+        # 1) List all items (files + folders) in the current folder
+        entries = self._list_folder_recursive(folder_path)
+        if not entries:
+            self.logger.debug(f"📂 No entries found under '{folder_path}'")
+            return
+
+        # 2) For each file, see if it matches your existing naming pattern:
+        #    e.g. "2416_04_03 Some Vendor Receipt.pdf" OR "PC_2416_04_03 Some Vendor Receipt.png"
+        for entry in entries:
+            # The `entry` is a dict: { "is_folder": bool, "path_lower": "....", "name": "filename", ... }
+            if entry["is_folder"]:
+                continue  # We’re already recursing, so skip subfolders here.
+
+            dropbox_path = entry["path_display"]
+            file_name = entry["name"]
+
+            # If the file name includes "receipt" and presumably matches your patterns,
+            # you can do a more precise check or just pass to process_receipt() which
+            # already does the final matching via regex in your code.
+            if re.search(self.RECEIPT_REGEX, file_name, re.IGNORECASE):
+                # For example: `2416_04_03 VendorName Receipt.pdf` or `PC_2416_04_03 VendorName Receipt.pdf`
+                self.logger.debug(f"🧾 Potential receipt found: {dropbox_path}")
+                self.process_receipt(dropbox_path)
+            else:
+                # Not a receipt
+                pass
+
+    def _list_folder_recursive(self, folder_path: str):
+        """
+        Recursively lists all entries (files and subfolders) under `folder_path`.
+        Return a list of entries, each entry is a dict containing
+        {
+          "name": str,
+          "path_lower": str,
+          "path_display": str,
+          "is_folder": bool
+        }
+        """
+        from dropbox import files
+        results = []
+
+        try:
+            dbx = self.dropbox_client.dbx
+            # Initial request
+            res = dbx.files_list_folder(folder_path, recursive=True)
+
+            # Accumulate results
+            entries = res.entries
+            while res.has_more:
+                res = dbx.files_list_folder_continue(res.cursor)
+                entries.extend(res.entries)
+
+            # Convert each entry to a dict
+            for e in entries:
+                if isinstance(e, files.FolderMetadata):
+                    results.append({
+                        "name": e.name,
+                        "path_lower": e.path_lower,
+                        "path_display": e.path_display,
+                        "is_folder": True
+                    })
+                elif isinstance(e, files.FileMetadata):
+                    results.append({
+                        "name": e.name,
+                        "path_lower": e.path_lower,
+                        "path_display": e.path_display,
+                        "is_folder": False
+                    })
+        except Exception as ex:
+            self.logger.warning(f"⚠️ Could not list folder recursively: {folder_path}, Error: {ex}")
+
+        return results
+
+    def scan_project_invoices(self, project_number: str):
+        """
+        Scans the '1. Purchase Orders' folder for the specified project_number,
+        finds subfolders that look like they contain a valid PO number (po_type='INV'),
+        and processes invoice files.
+        """
+        self.logger.info(f"🔎 Starting invoice scan for project_number={project_number}")
+
+        project_folder_path = self.dropbox_api.find_project_folder(project_number, namespace="2024")
+        if not project_folder_path:
+            self.logger.warning(f"❌ Could not find a matching project folder for '{project_number}' under 2024.")
+            return
+
+        self.logger.info(f"📂 Project folder resolved: {project_folder_path}")
+
+        # The only path we check is '1. Purchase Orders'
+        purchase_orders_path = f"{project_folder_path}/1. Purchase Orders"
+
+        # Recursively list items. We'll see subfolders named like "2416_04 VendorName"
+        entries = self._list_folder_recursive(purchase_orders_path)
+        if not entries:
+            self.logger.debug(f"📂 No entries found under '{purchase_orders_path}'")
+            return
+
+        # We expect subfolders for each PO. We'll parse out the PO # from the folder name
+        # (e.g. "2416_04 VendorName" -> "04") and check the DB for po_type='INV'.
+        # Then, for that subfolder, we look for invoice files.
+        from dropbox import files
+        folders_for_pos = [e for e in entries if e["is_folder"]]
+
+        for folder_entry in folders_for_pos:
+            folder_name = folder_entry["name"]  # e.g. "2416_04 VendorName"
+            folder_path = folder_entry[
+                "path_display"]  # e.g. "/2024/2416-Whop Keynote/1. Purchase Orders/2416_04 VendorName"
+
+            # Step A) Attempt to parse the PO number from `folder_name`
+            # If your naming convention is always <project>_<po_number> [whatever], do:
+            po_match = re.match(rf"^{project_number}_(\d+)", folder_name)
+            if not po_match:
+                self.logger.debug(f"Skipping folder '{folder_name}' - doesn't match {project_number}_<po_number>")
+                continue
+            folder_po_number = po_match.group(1)
+
+            # Step B) Check DB for that PO with type='INV'
+            po_data = self.database_util.search_purchase_order_by_keys(project_number, folder_po_number)
+            # Could be dict or list or None
+            if not po_data:
+                self.logger.info(f"Folder '{folder_name}' references PO #{folder_po_number}, not found in DB.")
+                continue
+
+            # If it's a list, take the first. If it's a dict, keep it as is.
+            if isinstance(po_data, list):
+                po_data = po_data[0]
+
+            # Ensure it's an actual PurchaseOrder with `po_type == 'INV'`
+            if po_data.get("po_type") != "INV":
+                self.logger.debug(
+                    f"Folder '{folder_name}' references PO #{folder_po_number} with po_type != 'INV'. Skipping.")
+                continue
+
+            # Step C) If valid, we now scan that folder for invoice files
+            self._scan_po_folder_for_invoices(folder_path, project_number, folder_po_number)
+
+        self.logger.info(f"✅ Finished scanning invoices for project_number={project_number}.")
+
+    def _scan_po_folder_for_invoices(self, folder_path: str, project_number: str, folder_po_number: str):
+        """
+        Given a subfolder that definitely references a valid PO with type='INV',
+        scan the folder's files for invoice docs. Then call process_invoice(...)
+        for each matching file.
+        """
+        entries = self._list_folder_recursive(folder_path)
+        if not entries:
+            return
+
+        for entry in entries:
+            if entry["is_folder"]:
+                # skip deeper subfolders, or optionally you could handle them
+                continue
+
+            dropbox_path = entry["path_display"]
+            file_name = entry["name"]
+
+            # If the file name includes "invoice" or matches your known pattern,
+            # we pass it to process_invoice.
+            # (Your process_invoice code also has a pattern for e.g. ^(\d{4})_(\d+)(?:_(\d+))?
+            # so it won't do anything if it doesn't match.)
+            if re.search(self.INVOICE_REGEX, file_name, re.IGNORECASE):
+                self.logger.debug(f"📄 Potential invoice found in {folder_path}: {dropbox_path}")
+                self.process_invoice(dropbox_path)
+
 
     # endregion
 dropbox_service = DropboxService()

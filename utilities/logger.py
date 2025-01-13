@@ -36,7 +36,7 @@ class CustomLogger(logging.Logger):
             self.error(f"File: {os.path.basename(frame.filename)}, Line: {frame.lineno}, Function: {frame.name}")
 
 
-def setup_logging():
+def setup_logging(name="app_logger"):
     """
     Sets up logging for the application. The log level is determined by the
     LOG_LEVEL environment variable. Defaults to DEBUG if not set.
@@ -47,17 +47,17 @@ def setup_logging():
     global _logger_initialized
     with _lock:
         if _logger_initialized:
-            logger = logging.getLogger("app_logger")
+            logger = logging.getLogger(name)
             return logger
 
         # Set the CustomLogger as the Logger class
         logging.setLoggerClass(CustomLogger)
 
         # Get log level from environment variable, default to DEBUG
-        log_level_str = os.getenv("LOG_LEVEL", "DEBUG").upper()
-        log_level = getattr(logging, log_level_str, logging.DEBUG)
+        log_level_str = os.getenv("LOG_LEVEL", "INFO").upper()
+        log_level = getattr(logging, log_level_str, logging.INFO)
 
-        logger = logging.getLogger("app_logger")
+        logger = logging.getLogger(name)
         logger.setLevel(log_level)
 
         # Suppress SQLAlchemy engine logs
@@ -101,7 +101,7 @@ def setup_logging():
 
         _logger_initialized = True
 
-        logger.debug(f"[DEBUG] app_logger has {len(logger.handlers)} handlers attached.")
+        logger.debug(f"[DEBUG] {name} has {len(logger.handlers)} handlers attached.")
 
         return logger
 

@@ -27,16 +27,17 @@ def get_db_session():
     global session_factory
     if session_factory is None:
         raise RuntimeError("Session factory not initialized.")
-    session = session_factory  # Correctly create a session by calling the factory
+    session = session_factory
 
     try:
         yield session
         session.commit()
-    except Exception as e:
+    except Exception:
         session.rollback()
-        raise e
+        raise
     finally:
-        session.close()
+        # For scoped_session usage:
+        session.remove()
 
 
 def initialize_session_factory(session_factory_instance: scoped_session):

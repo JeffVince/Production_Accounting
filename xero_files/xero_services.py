@@ -355,6 +355,7 @@ class XeroServices(metaclass=SingletonMeta):
                 try:
                     project_num = int(parts[0])  # "2416"
                     po_num = int(parts[1])  # "32"
+                    detail_num = int(parts[2]) or 1
                 except ValueError:
                     self.logger.warning(
                         f"InvoiceNumber='{invoice_number}' not in numeric format. Skipping line item match."
@@ -415,17 +416,6 @@ class XeroServices(metaclass=SingletonMeta):
                     column_names=["xero_id"],
                     values=[xero_line_id]
                 )
-                matched_items = self.database_util.search_detail_items_by_project_po_qty_rate(
-                    project_num,
-                    po_num,
-                    quantity,
-                    unit_amount
-                )
-
-                if not matched_items:
-                    self.logger.warning(
-                        f"No local DetailItem matched (qty={quantity}, rate={unit_amount}). Skipping line item."
-                    )
 
 
                 if existing_line:

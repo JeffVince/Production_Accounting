@@ -6,18 +6,21 @@ from collections import defaultdict
 # Define the target folders and root files
 TARGET_FOLDERS = {
     #"AICP Code Map",
-    "Database",
+    "database",
     "dropbox_files",
     #"invoice_files",
     "monday_files",
-    "Orchestration",
+    "orchestration",
     "po_log_files",
+    "celery_files",
+    "budet_files"
     #"utilities"
 }
 
 ROOT_FILES = {
     "main.py",
-    "webhook_main.py"
+    "webhook_main.py",
+    "celery_server.py"
 }
 
 class FunctionCallVisitor(ast.NodeVisitor):
