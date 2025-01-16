@@ -5,7 +5,7 @@ from collections import defaultdict
 
 # Define the target folders and root files
 TARGET_FOLDERS = {
-    #"AICP Code Map",
+    #"Account Code Map",
     "database",
     "dropbox_files",
     #"invoice_files",

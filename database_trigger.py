@@ -33,7 +33,27 @@ import sys
 
 from sqlalchemy import text
 
-from logger import setup_logging
+# 1) Create or get the "my_unified_logger"
+logger = logging.getLogger("db_logger")
+logger.setLevel(logging.DEBUG)
+
+# 2) Add a file handler (so everything goes to one log file).
+file_handler = logging.FileHandler("unified_db.log")
+file_handler.setLevel(logging.DEBUG)
+file_formatter = logging.Formatter(
+    fmt="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
+)
+file_handler.setFormatter(file_formatter)
+logger.addHandler(file_handler)
+
+# 3) (Optional) Add a console handler
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.DEBUG)
+console_handler.setFormatter(file_formatter)
+logger.addHandler(console_handler)
+
+
 from utilities.config import Config
 from celery_tasks import (
     process_invoice_trigger,
@@ -53,9 +73,9 @@ from celery_tasks import (
     process_bank_transaction_create,
     process_bank_transaction_update,
     process_bank_transaction_delete,
-    process_aicp_code_create,
-    process_aicp_code_update,
-    process_aicp_code_delete,
+    process_account_code_create,
+    process_account_code_update,
+    process_account_code_delete,
     process_receipt_create,
     process_receipt_update,
     process_receipt_delete,
@@ -65,18 +85,13 @@ from celery_tasks import (
     process_tax_account_create,
     process_tax_account_update,
     process_tax_account_delete,
-    update_xero_bill,
-    create_xero_bill,
-    delete_xero_bill,
-    create_xero_bill_line_items,
-    update_xero_bill_line_item,
-    delete_xero_bill_line_item
+    process_xero_bill_create,
+    process_xero_bill_update,
+    process_xero_bill_delete
 )
 
 # Use your db_util module for the session
 from db_util import get_db_session, initialize_database
-
-logger = logging.getLogger("app_logger")
 logger.setLevel(logging.DEBUG)
 
 ########################################
@@ -108,9 +123,9 @@ TASK_ROUTING = {
     ("bank_transaction", "UPDATE"): lambda rid: process_bank_transaction_update.delay(rid),
     ("bank_transaction", "DELETE"): lambda rid: process_bank_transaction_delete.delay(rid),
 
-    ("aicp_code", "INSERT"): lambda rid: process_aicp_code_create.delay(rid),
-    ("aicp_code", "UPDATE"): lambda rid: process_aicp_code_update.delay(rid),
-    ("aicp_code", "DELETE"): lambda rid: process_aicp_code_delete.delay(rid),
+    ("account_code", "INSERT"): lambda rid: process_account_code_create.delay(rid),
+    ("account_code", "UPDATE"): lambda rid: process_account_code_update.delay(rid),
+    ("account_code", "DELETE"): lambda rid: process_account_code_delete.delay(rid),
 
     ("receipt", "INSERT"): lambda rid: process_receipt_create.delay(rid),
     ("receipt", "UPDATE"): lambda rid: process_receipt_update.delay(rid),
@@ -124,9 +139,9 @@ TASK_ROUTING = {
     ("tax_account", "UPDATE"): lambda rid: process_tax_account_update.delay(rid),
     ("tax_account", "DELETE"): lambda rid: process_tax_account_delete.delay(rid),
 
-    ("xero_bill", "INSERT"): lambda rid: create_xero_bill(rid),
-    ("xero_bill", "UPDATE"): lambda rid: update_xero_bill.delay(rid),
-    ("xero_bill", "DELETE"): lambda rid: delete_xero_bill.delay(rid),
+    ("xero_bill", "INSERT"): lambda rid: process_xero_bill_create(rid),
+    ("xero_bill", "UPDATE"): lambda rid: process_xero_bill_update.delay(rid),
+    ("xero_bill", "DELETE"): lambda rid: process_xero_bill_delete.delay(rid),
 }
 
 
@@ -218,8 +233,6 @@ def main():
     """
     Main function for running this script as a dedicated server.
     """
-    setup_logging(name="Trigger-logs")
-    logger = logging.getLogger("Trigger-Logs")
 
     logger.info("Initializing DB Trigger Listener server...")
     # Initialize the database

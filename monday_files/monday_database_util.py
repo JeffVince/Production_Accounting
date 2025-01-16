@@ -12,15 +12,9 @@ DatabaseOperations from database_util.py for the actual DB CRUD operations.
 import json
 import logging
 import os
-from datetime import datetime
-from typing import Any, Optional, Dict
+
 
 from dotenv import load_dotenv
-
-# Old references to direct session usage can be replaced
-# from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-# from database.db_util import get_db_session
-# from database.models import PurchaseOrder, DetailItem, Contact, AicpCode
 
 from monday_files.monday_util import monday_util
 from utilities.singleton import SingletonMeta
@@ -45,7 +39,7 @@ class MondayDatabaseUtil(metaclass=SingletonMeta):
             self.monday_api_url = 'https://api.monday.com/v2'
             self.monday_util = monday_util
             self.DEFAULT_ACCOUNT_NUMBER = "5000"
-            self.DEFAULT_AICP_CODE = 1
+            self.DEFAULT_ACCOUNT_CODE = 1
             self.logger.info("Monday Database Utility initialized")
 
             # Instantiate DatabaseOperations

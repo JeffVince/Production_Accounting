@@ -31,7 +31,7 @@ class DropboxDatabaseUtil():
             detail_items = session.execute(
                 select(DetailItem).where(
                     DetailItem.parent_surrogate_id == po.po_surrogate_id,
-                    DetailItem.detail_item_number == invoice_number
+                    DetailItem.detail_number == invoice_number
                 )
             ).scalars().all()
 
@@ -102,7 +102,7 @@ class DropboxDatabaseUtil():
             detail_items = session.execute(
                 select(DetailItem).where(
                     DetailItem.parent_surrogate_id == po.po_surrogate_id,
-                    DetailItem.detail_item_number == invoice_number
+                    DetailItem.detail_number == invoice_number
                 )
             ).scalars().all()
 

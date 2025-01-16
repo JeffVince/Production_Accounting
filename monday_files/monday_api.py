@@ -850,23 +850,23 @@ class MondayAPI(metaclass=SingletonMeta):
     # endregion
 
     # region 🔎 Specialized Fetches
-    def fetch_subitem_by_receipt_and_line(self, receipt_number, line_id):
+    def fetch_subitem_by_receipt_and_line(self, receipt_number, line_number):
         """
-        🔎 Fetch subitem matching receipt_number & line_id from subitem board.
+        🔎 Fetch subitem matching receipt_number & line_number from subitem board.
         Replace 'receipt_number_column_id' and 'line_number_column_id' with your real subitem board columns.
         """
-        self.logger.debug(f"🔍 Searching subitem by receipt_number='{receipt_number}', line_id='{line_id}'...")
+        self.logger.debug(f"🔍 Searching subitem by receipt_number='{receipt_number}', line_number='{line_number}'...")
         receipt_number_column_id = "numeric__1"
         line_number_column_id = "numbers_Mjj5uYts"
 
         query = f'''
-        query ($board_id: ID!, $receipt_number: String!, $line_id: String!) {{
+        query ($board_id: ID!, $receipt_number: String!, $line_number: String!) {{
             complexity {{ query before after }}
             items_page_by_column_values(
                 board_id: $board_id, 
                 columns: [
                   {{column_id: "{receipt_number_column_id}", column_values: [$receipt_number]}}, 
-                  {{column_id: "{line_number_column_id}", column_values: [$line_id]}}
+                  {{column_id: "{line_number_column_id}", column_values: [$line_number]}}
                 ], 
                 limit: 1
             ) {{
@@ -884,7 +884,7 @@ class MondayAPI(metaclass=SingletonMeta):
         variables = {
             'board_id': int(self.SUBITEM_BOARD_ID),
             'receipt_number': str(receipt_number),
-            'line_id': str(line_id)
+            'line_number': str(line_number)
         }
 
         response = self._make_request(query, variables)
@@ -926,24 +926,24 @@ class MondayAPI(metaclass=SingletonMeta):
         }
         return self._make_request(query, variables)
 
-    def fetch_subitem_by_po_receipt_line(self, po_number, receipt_number, line_id):
+    def fetch_subitem_by_po_receipt_line(self, po_number, receipt_number, line_number):
         """
         🔎 Fetch a subitem by matching PO number, receipt number, and line ID columns.
         """
-        self.logger.debug(f"🔍 Searching subitem (PO='{po_number}', receipt='{receipt_number}', line_id='{line_id}')...")
+        self.logger.debug(f"🔍 Searching subitem (PO='{po_number}', receipt='{receipt_number}', line_number='{line_number}')...")
         po_number_column_id = self.monday_util.SUBITEM_PO_COLUMN_ID
         receipt_number_column_id = self.monday_util.SUBITEM_ID_COLUMN_ID
         line_number_column_id = self.monday_util.SUBITEM_LINE_NUMBER_COLUMN_ID
 
         query = f'''
-        query ($board_id: ID!, $po_number: String!, $receipt_number: String!, $line_id: String!) {{
+        query ($board_id: ID!, $po_number: String!, $receipt_number: String!, $line_number: String!) {{
             complexity {{ query before after }}
             items_page_by_column_values(
                 board_id: $board_id, 
                 columns: [
                     {{column_id: "{po_number_column_id}", column_values: [$po_number]}},
                     {{column_id: "{receipt_number_column_id}", column_values: [$receipt_number]}},
-                    {{column_id: "{line_number_column_id}", column_values: [$line_id]}}
+                    {{column_id: "{line_number_column_id}", column_values: [$line_number]}}
                 ], 
                 limit: 1
             ) {{
@@ -962,7 +962,7 @@ class MondayAPI(metaclass=SingletonMeta):
             'board_id': int(self.SUBITEM_BOARD_ID),
             'po_number': str(po_number),
             'receipt_number': str(receipt_number),
-            'line_id': str(line_id)
+            'line_number': str(line_number)
         }
 
         response = self._make_request(query, variables)
@@ -1360,12 +1360,12 @@ class MondayAPI(metaclass=SingletonMeta):
     def find_or_create_sub_item_in_monday(self, sub_item, parent_item):
         """
         🔎 Finds or creates a subitem in Monday corresponding to external data (invoice lines, hours, etc.).
-        :param sub_item: dict with keys like ["line_id", "date", "due date", "po_number", "vendor", etc.]
+        :param sub_item: dict with keys like ["line_number", "date", "due date", "po_number", "vendor", etc.]
         :param parent_item: dict with at least ["item_pulse_id", "status", "name", ...]
         :return: The updated sub_item with "pulse_id" assigned if created or found
         """
         try:
-            self.logger.debug(f"🔎 Checking subitem with line_id='{sub_item.get('line_id')}' under parent {parent_item.get('item_pulse_id')}...")
+            self.logger.debug(f"🔎 Checking subitem with line_number='{sub_item.get('line_number')}' under parent {parent_item.get('item_pulse_id')}...")
             status = "RTP" if parent_item.get("status") == "RTP" else "PENDING"
 
             # Format column values for the subitem
@@ -1380,7 +1380,7 @@ class MondayAPI(metaclass=SingletonMeta):
                 quantity=sub_item["quantity"],
                 status=status,
                 item_number=sub_item["detail_item_id"],
-                line_number=sub_item["line_id"],
+                line_number=sub_item["line_number"],
                 PO=sub_item["po_number"]
             )
 
@@ -1433,11 +1433,11 @@ class MondayAPI(metaclass=SingletonMeta):
 
             else:
                 # Case 2: No known pulse_id -> we check if a matching subitem already exists
-                self.logger.debug("🕵️ Searching subitem by PO, receipt_number, line_id to avoid duplicates...")
+                self.logger.debug("🕵️ Searching subitem by PO, receipt_number, line_number to avoid duplicates...")
                 existing_subitem = self.fetch_subitem_by_po_receipt_line(
                     po_number=sub_item["po_number"],
                     receipt_number=sub_item["detail_item_id"],
-                    line_id=sub_item["line_id"]
+                    line_number=sub_item["line_number"]
                 )
 
                 if existing_subitem:

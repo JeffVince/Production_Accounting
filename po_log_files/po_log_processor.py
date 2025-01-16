@@ -326,13 +326,13 @@ class POLogProcessor(metaclass=SingletonMeta):
     def _assign_item_ids(self, raw_entries, manual_ids_by_po):
         """
         Logic Changes:
-        1) Retain PC logic (petty cash). If item_id_raw is missing for PC, we set line_id=1.
+        1) Retain PC logic (petty cash). If item_id_raw is missing for PC, we set line_number=1.
         2) For non-PC:
            - If item_id_raw is empty -> detail_item_id="1"
            - If item_id_raw is present -> detail_item_id=<parsed numeric>
-           - We **auto-increment** line_id for each repeated (po_number, detail_item_id).
+           - We **auto-increment** line_number for each repeated (po_number, detail_item_id).
         """
-        self.logger.debug("🔖 Assigning detail_item_id and line_id to entries...")
+        self.logger.debug("🔖 Assigning detail_item_id and line_number to entries...")
         assigned_item_ids = defaultdict(set)
 
         # Store manually provided IDs, if any
@@ -341,8 +341,8 @@ class POLogProcessor(metaclass=SingletonMeta):
                 assigned_item_ids[key_for_ids].add(mid)
                 self.logger.debug(f"🔗 Manual ID='{mid}' recorded for key='{key_for_ids}'")
 
-        # We auto-increment line_id for repeated detail_item_ids in non-PC transactions
-        line_id_counters = defaultdict(int)
+        # We auto-increment line_number for repeated detail_item_ids in non-PC transactions
+        line_number_counters = defaultdict(int)
 
         for entry in raw_entries:
             key_for_ids = (entry['po_number'], entry['envelope_number'])
@@ -354,9 +354,9 @@ class POLogProcessor(metaclass=SingletonMeta):
                 # For PC transactions, the detail_item_id is tied to the envelope_number.
                 detail_item_id = envelope_number
 
-                # If item_id_raw is missing, set line_id = 1
+                # If item_id_raw is missing, set line_number = 1
                 if not item_id_raw or not item_id_raw.strip():
-                    line_id = 1
+                    line_number = 1
                 else:
                     # Otherwise parse numeric from item_id_raw
                     stripped_id = item_id_raw.lstrip('0') or '1'
@@ -364,7 +364,7 @@ class POLogProcessor(metaclass=SingletonMeta):
                         numeric_id = int(stripped_id)
                     except ValueError:
                         numeric_id = 1
-                    line_id = numeric_id
+                    line_number = numeric_id
 
             else:
                 # For non-PC transactions:
@@ -380,14 +380,14 @@ class POLogProcessor(metaclass=SingletonMeta):
                         numeric_id = 1
                     detail_item_id = str(numeric_id)
 
-                line_id_key = (entry['po_number'], detail_item_id)
-                line_id_counters[line_id_key] += 1
-                line_id = line_id_counters[line_id_key]
+                line_number_key = (entry['po_number'], detail_item_id)
+                line_number_counters[line_number_key] += 1
+                line_number = line_number_counters[line_number_key]
 
             entry['detail_item_id'] = detail_item_id
-            entry['line_id'] = line_id
+            entry['line_number'] = line_number
             self.logger.debug(
-                f"🆔 Assigned detail_item_id='{detail_item_id}', line_id='{line_id}' "
+                f"🆔 Assigned detail_item_id='{detail_item_id}', line_number='{line_number}' "
                 f"for PO='{entry['po_number']}', payment_type='{payment_type}'."
             )
 
@@ -406,7 +406,7 @@ class POLogProcessor(metaclass=SingletonMeta):
                 'project_number': entry['project_number'],
                 'po_number': entry['po_number'],
                 'detail_item_id': entry['detail_item_id'],
-                'line_id': entry['line_id'],
+                'line_number': entry['line_number'],
                 'vendor': entry['vendor'],
                 'date': entry['date'].strftime('%Y-%m-%d'),
                 'due date': entry['due_date'].strftime('%Y-%m-%d'),

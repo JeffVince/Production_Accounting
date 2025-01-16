@@ -1,9 +1,9 @@
-# contact_tax_aicp_triggers.py
+# contact_tax_account_triggers.py
 
 import logging
 from database.database_util import DatabaseOperations
 db_ops = DatabaseOperations()
-logger = logging.getLogger("app_logger")
+logger = logging.getLogger("celery_logger")
 
 def handle_contact_create(contact_id: int) -> None:
     logger.info(f"[CONTACT CREATE] contact_id={contact_id}")
@@ -37,17 +37,17 @@ def handle_tax_account_delete(tax_account_id: int) -> None:
     pass
 
 
-def handle_aicp_code_create(aicp_code_id: int) -> None:
-    logger.info(f"[AICP CODE CREATE] id={aicp_code_id}")
+def handle_account_code_create(account_code_id: int) -> None:
+    logger.info(f"[ACCOUNT CODE CREATE] id={account_code_id}")
     # ...
     pass
 
-def handle_aicp_code_update(aicp_code_id: int) -> None:
-    logger.info(f"[AICP CODE UPDATE] id={aicp_code_id}")
+def handle_account_code_update(account_code_id: int) -> None:
+    logger.info(f"[ACCOUNT CODE UPDATE] id={account_code_id}")
     # ...
     pass
 
-def handle_aicp_code_delete(aicp_code_id: int) -> None:
-    logger.info(f"[AICP CODE DELETE] id={aicp_code_id}")
+def handle_account_code_delete(account_code_id: int) -> None:
+    logger.info(f"[ACCOUNT CODE DELETE] id={account_code_id}")
     # ...
     pass

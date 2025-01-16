@@ -200,12 +200,12 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
         """
         # Search
         existing_detail = self.db_ops.search_detail_items(
-            ["project_id", "po_number", "detail_item_number", "line_id"],
+            ["project_id", "po_number", "detail_number", "line_number"],
             [
                 sub_item["project_id"],
                 sub_item["po_number"],
                 sub_item["detail_item_id"],
-                sub_item["line_id"]
+                sub_item["line_number"]
             ]
         )
         if existing_detail:
@@ -232,8 +232,8 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
             self.db_ops.create_detail_item(
                 project_id=sub_item["project_id"],
                 po_number=sub_item["po_number"],
-                detail_item_number=sub_item["detail_item_id"],
-                line_id=sub_item["line_id"],
+                detail_number=sub_item["detail_item_id"],
+                line_number=sub_item["line_number"],
                 parent_surrogate_id=sub_item.get("po_surrogate_id"),
                 vendor=sub_item.get("vendor"),
                 payment_type=sub_item.get("payment_type"),
@@ -266,7 +266,7 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
             return results[0]
         return results
 
-    def get_subitems(self, project_id, po_number=None, detail_item_number=None, line_id=None):
+    def get_subitems(self, project_id, po_number=None, detail_number=None, line_number=None):
         """
         📚 Example retrieval using db_ops.search_detail_items with possible filters.
         """
@@ -279,12 +279,12 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
         if po_number is not None:
             column_names.append("po_number")
             values.append(po_number)
-        if detail_item_number is not None:
-            column_names.append("detail_item_number")
-            values.append(detail_item_number)
-        if line_id is not None:
-            column_names.append("line_id")
-            values.append(line_id)
+        if detail_number is not None:
+            column_names.append("detail_number")
+            values.append(detail_number)
+        if line_number is not None:
+            column_names.append("line_number")
+            values.append(line_number)
 
         # Use the search
         subitems = self.db_ops.search_detail_items(column_names, values)

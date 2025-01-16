@@ -28,7 +28,7 @@ from triggers.invoice_receipt_triggers import (
 from triggers.contact_triggers import (
     handle_contact_create, handle_contact_update, handle_contact_delete,
     handle_tax_account_create, handle_tax_account_update, handle_tax_account_delete,
-    handle_aicp_code_create, handle_aicp_code_update, handle_aicp_code_delete
+    handle_account_code_create, handle_account_code_update, handle_account_code_delete
 )
 # endregion
 
@@ -43,7 +43,7 @@ class DatabaseTriggerService(metaclass=SingletonMeta):
     """
 
     def __init__(self):
-        self.logger = logging.getLogger("app_logger")
+        self.logger = logging.getLogger("celery_logger")
 
     # region 🏦 XERO Bill, BillLineItem, SpendMoney TRIGGERS
     def bill_line_item_trigger_on_create(self, bill_line_item_id: int):
@@ -129,7 +129,7 @@ class DatabaseTriggerService(metaclass=SingletonMeta):
         return handle_receipt_delete(receipt_id)
     # endregion
 
-    # region 👥 CONTACT, TAX ACCOUNT, AICP CODE TRIGGERS
+    # region 👥 CONTACT, TAX ACCOUNT, ACCOUNT CODE TRIGGERS
     def contact_trigger_on_create(self, contact_id: int):
         return handle_contact_create(contact_id)
 
@@ -148,14 +148,14 @@ class DatabaseTriggerService(metaclass=SingletonMeta):
     def tax_account_trigger_on_delete(self, tax_account_id: int):
         return handle_tax_account_delete(tax_account_id)
 
-    def aicp_code_trigger_on_create(self, aicp_code_id: int):
-        return handle_aicp_code_create(aicp_code_id)
+    def account_code_trigger_on_create(self, account_code_id: int):
+        return handle_account_code_create(account_code_id)
 
-    def aicp_code_trigger_on_update(self, aicp_code_id: int):
-        return handle_aicp_code_update(aicp_code_id)
+    def account_code_trigger_on_update(self, account_code_id: int):
+        return handle_account_code_update(account_code_id)
 
-    def aicp_code_trigger_on_delete(self, aicp_code_id: int):
-        return handle_aicp_code_delete(aicp_code_id)
+    def account_code_trigger_on_delete(self, account_code_id: int):
+        return handle_account_code_delete(account_code_id)
     # endregion
 
 

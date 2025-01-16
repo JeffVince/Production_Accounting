@@ -7,14 +7,30 @@ registers triggers, and then reads tasks from tasks.py
 """
 
 import logging
+import sys
+
 from celery import Celery
-from kombu import Queue, Exchange
 
-from db_util import initialize_database
-from utilities.config import Config
-
-logger = logging.getLogger("app_logger")
+# 1) Create or get the "my_unified_logger"
+logger = logging.getLogger("celery_logger")
 logger.setLevel(logging.DEBUG)
+logger.propagate = False
+
+# 2) Add a file handler (so everything goes to one log file).
+file_handler = logging.FileHandler("celery_logger.log")
+file_handler.setLevel(logging.DEBUG)
+file_formatter = logging.Formatter(
+    fmt="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
+)
+file_handler.setFormatter(file_formatter)
+logger.addHandler(file_handler)
+
+# 3) (Optional) Add a console handler
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.DEBUG)
+console_handler.setFormatter(file_formatter)
+logger.addHandler(console_handler)
 
 ################################################################################
 #  RECOMMENDED CELERY CONFIGURATIONS

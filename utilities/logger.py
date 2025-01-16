@@ -54,8 +54,8 @@ def setup_logging(name="app_logger"):
         logging.setLoggerClass(CustomLogger)
 
         # Get log level from environment variable, default to DEBUG
-        log_level_str = os.getenv("LOG_LEVEL", "INFO").upper()
-        log_level = getattr(logging, log_level_str, logging.INFO)
+        log_level_str = os.getenv("LOG_LEVEL", "DEBUG").upper()
+        log_level = getattr(logging, log_level_str, logging.DEBUG)
 
         logger = logging.getLogger(name)
         logger.setLevel(log_level)

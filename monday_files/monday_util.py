@@ -90,7 +90,7 @@ class MondayUtil(metaclass=SingletonMeta):
     SUB_ITEM_COLUMN_ID_TO_DB_FIELD = {
         # Monday Subitem Columns -> DB DetailItem Columns
         SUBITEM_STATUS_COLUMN_ID: "state",  # Maps to the state ENUM in the DB
-        SUBITEM_ID_COLUMN_ID: "detail_item_number",  # Maps to detail_item_number in the DB
+        SUBITEM_ID_COLUMN_ID: "detail_number",  # Maps to detail_number in the DB
         SUBITEM_DESCRIPTION_COLUMN_ID: "description",  # Maps to description in the DB
         SUBITEM_QUANTITY_COLUMN_ID: "quantity",  # Maps to quantity in the DB
         SUBITEM_RATE_COLUMN_ID: "rate",  # Maps to rate in the DB
@@ -445,7 +445,7 @@ class MondayUtil(metaclass=SingletonMeta):
 
     # --------------------- SUBITEM METHODS ---------------------
 
-    def subitem_column_values_formatter(self, project_id=None, po_number=None, detail_item_number=None, line_id=None,
+    def subitem_column_values_formatter(self, project_id=None, po_number=None, detail_number=None, line_number=None,
                                         notes=None, status=None, description=None,
                                         quantity=None, rate=None, date=None, due_date=None,
                                         account_number=None, link=None, OT=None, fringes=None, xero_link=None):
@@ -501,9 +501,6 @@ class MondayUtil(metaclass=SingletonMeta):
 
         if due_date:
             try:
-                # Debugging/logging to ensure due_date is being received correctly
-                self.logger.debug(f"Processing due_date: {due_date}")
-
                 # Check and handle both string and datetime object formats
                 if isinstance(due_date, str) and due_date.strip():
                     parsed_due_date = parser.parse(due_date.strip())
@@ -539,11 +536,11 @@ class MondayUtil(metaclass=SingletonMeta):
         if po_number is not None:
             column_values[self.SUBITEM_PO_COLUMN_ID] = po_number
 
-        if detail_item_number is not None:
-            column_values[self.SUBITEM_ID_COLUMN_ID] = float(detail_item_number)
+        if detail_number is not None:
+            column_values[self.SUBITEM_ID_COLUMN_ID] = float(detail_number)
 
-        if line_id is not None:
-            column_values[self.SUBITEM_LINE_NUMBER_COLUMN_ID] = int(line_id)
+        if line_number is not None:
+            column_values[self.SUBITEM_line_number_COLUMN_ID] = int(line_number)
 
         if project_id is not None:
             column_values[self.SUBITEM_PROJECT_ID_COLUMN_ID] = project_id
@@ -868,8 +865,8 @@ class MondayUtil(metaclass=SingletonMeta):
                 "monday_value": safe_str(col_vals.get(self.SUBITEM_ID_COLUMN_ID)['text'])
             },
             {
-                "field": "line_id",
-                "db_value": safe_str(db_sub_item.get("line_id")),
+                "field": "line_number",
+                "db_value": safe_str(db_sub_item.get("line_number")),
                 "monday_value": safe_str(col_vals.get(self.SUBITEM_LINE_NUMBER_COLUMN_ID)['text'])
             },
             {
@@ -946,10 +943,10 @@ class MondayUtil(metaclass=SingletonMeta):
         project_id = safe_int(float(col_vals[self.SUBITEM_PROJECT_ID_COLUMN_ID]['text']))
         po_number = safe_int(float(col_vals[self.SUBITEM_PO_COLUMN_ID]['text']))
         detail_num = safe_int(float(col_vals[self.SUBITEM_ID_COLUMN_ID]['text']))
-        line_id = safe_int(float(col_vals[self.SUBITEM_LINE_NUMBER_COLUMN_ID]['text']))
+        line_number = safe_int(float(col_vals[self.SUBITEM_LINE_NUMBER_COLUMN_ID]['text']))
 
-        if project_id is not None and po_number is not None and detail_num is not None and line_id is not None:
-            return project_id, po_number, detail_num, line_id
+        if project_id is not None and po_number is not None and detail_num is not None and line_number is not None:
+            return project_id, po_number, detail_num, line_number
         else:
             self.logger.warning("Subitem missing one of the required identifiers.")
             return None

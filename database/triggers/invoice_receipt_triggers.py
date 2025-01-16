@@ -4,7 +4,7 @@ import logging
 from database.database_util import DatabaseOperations
 db_ops = DatabaseOperations()
 
-logger = logging.getLogger("app_logger")
+logger = logging.getLogger("celery_logger")
 
 def handle_invoice_create_or_update(invoice_id: int) -> None:
     """
@@ -53,7 +53,7 @@ def handle_invoice_create_or_update(invoice_id: int) -> None:
                     project_number,
                     po_number,
                     d_item["detail_number"],
-                    d_item["line_id"],
+                    d_item["line_number"],
                     invoice_id=invoice_id
                 )
                 logger.info(
@@ -68,7 +68,7 @@ def handle_invoice_create_or_update(invoice_id: int) -> None:
                     project_number,
                     po_number,
                     d_item["detail_number"],
-                    d_item["line_id"],
+                    d_item["line_number"],
                     state="PENDING"
                 )
                 logger.info(
@@ -115,7 +115,7 @@ def handle_invoice_create_or_update(invoice_id: int) -> None:
                 project_number,
                 po_number,
                 d["detail_number"],
-                d["line_id"],
+                d["line_number"],
                 state="RTP"
             )
     else:
@@ -127,7 +127,7 @@ def handle_invoice_create_or_update(invoice_id: int) -> None:
                 project_number,
                 po_number,
                 d["detail_number"],
-                d["line_id"],
+                d["line_number"],
                 state="PO MISMATCH"
             )
 
@@ -142,6 +142,11 @@ def handle_invoice_delete(invoice_id: int) -> None:
     # You can add any additional logging here with the "🗑️" prefix
     # to keep consistency until the function finishes.
     pass
+
+
+
+
+
 
 
 def handle_receipt_create(receipt_id: int) -> None:

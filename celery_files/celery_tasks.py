@@ -6,14 +6,14 @@ Houses all Celery tasks.
 Does not import 'database_trigger.py' to avoid circular references.
 """
 
-import logging
 from celery import shared_task  # or from your celery_app import celery_app
 from database_trigger_service import database_trigger_service
 from database.db_util import initialize_database
 from utilities.config import Config
-logger = logging.getLogger("app_logger")
-# endregion
+import logging
 
+logger = logging.getLogger("celery_logger")
+# endregion
 
 
 # region 📄 INVOICE TASKS
@@ -50,6 +50,14 @@ def process_invoice_delete(invoice_id: int):
     """
     logger.info(f"🗑️ Handling invoice deletion for invoice_id={invoice_id}.")
     try:
+        config = Config()
+        db_settings = config.get_database_settings(config.USE_LOCAL)
+        try:
+            initialize_database(db_settings['url'])
+            logger.info("DB initialization is done.")
+        except Exception as e:
+            logger.error(f"DB initialization failed! Error={e}", exc_info=True)
+
         trigger_service = database_trigger_service
         trigger_service.invoice_trigger_on_delete(invoice_id)
         logger.info(f"✅ Invoice #{invoice_id} deletion handled successfully.")
@@ -58,6 +66,7 @@ def process_invoice_delete(invoice_id: int):
         logger.error(f"💥 Problem in process_invoice_delete({invoice_id}): {e}", exc_info=True)
         raise
 # endregion
+
 
 # region 🧾 DETAIL ITEM TASKS
 ########################################
@@ -115,6 +124,14 @@ def process_detail_item_delete(detail_item_id: int):
     """
     logger.info(f"🗑️ Handling deleted detail item for detail_item_id={detail_item_id}")
     try:
+        config = Config()
+        db_settings = config.get_database_settings(config.USE_LOCAL)
+        try:
+            initialize_database(db_settings['url'])
+            logger.info("DB initialization is done.")
+        except Exception as e:
+            logger.error(f"DB initialization failed! Error={e}", exc_info=True)
+
         trigger_service = database_trigger_service
         trigger_service.detail_item_on_delete(detail_item_id)
         logger.info(f"✅ Detail item deletion completed for id={detail_item_id}")
@@ -123,6 +140,7 @@ def process_detail_item_delete(detail_item_id: int):
         logger.error(f"💥 Problem with detail_item_on_delete({detail_item_id}): {e}", exc_info=True)
         raise
 # endregion
+
 
 # region 📑 PURCHASE ORDER TASKS
 ########################################
@@ -133,6 +151,14 @@ def process_detail_item_delete(detail_item_id: int):
 def process_purchase_order_create(po_id: int):
     logger.info(f"🚀 Starting process_purchase_order_create shared task. po_id={po_id}.")
     try:
+        config = Config()
+        db_settings = config.get_database_settings(config.USE_LOCAL)
+        try:
+            initialize_database(db_settings['url'])
+            logger.info("DB initialization is done.")
+        except Exception as e:
+            logger.error(f"DB initialization failed! Error={e}", exc_info=True)
+
         trigger_service = database_trigger_service
         trigger_service.purchase_order_trigger_on_create(po_id)
         logger.info(f"🎉 Done processing newly created PO #{po_id}.")
@@ -145,6 +171,14 @@ def process_purchase_order_create(po_id: int):
 def process_purchase_order_update(po_id: int):
     logger.info(f"🔄 Handling updated PurchaseOrder id={po_id}.")
     try:
+        config = Config()
+        db_settings = config.get_database_settings(config.USE_LOCAL)
+        try:
+            initialize_database(db_settings['url'])
+            logger.info("DB initialization is done.")
+        except Exception as e:
+            logger.error(f"DB initialization failed! Error={e}", exc_info=True)
+
         trigger_service = database_trigger_service
         trigger_service.purchase_order_trigger_on_update(po_id)
         logger.info(f"🎉 Done updating PO #{po_id}.")
@@ -157,6 +191,14 @@ def process_purchase_order_update(po_id: int):
 def process_purchase_order_delete(po_id: int):
     logger.info(f"🗑️ Handling deleted PurchaseOrder id={po_id}.")
     try:
+        config = Config()
+        db_settings = config.get_database_settings(config.USE_LOCAL)
+        try:
+            initialize_database(db_settings['url'])
+            logger.info("DB initialization is done.")
+        except Exception as e:
+            logger.error(f"DB initialization failed! Error={e}", exc_info=True)
+
         trigger_service = database_trigger_service
         trigger_service.purchase_order_trigger_on_delete(po_id)
         logger.info(f"✅ PurchaseOrder #{po_id} deletion handled.")
@@ -165,6 +207,7 @@ def process_purchase_order_delete(po_id: int):
         logger.error(f"💥 Problem in process_purchase_order_delete({po_id}): {e}", exc_info=True)
         raise
 # endregion
+
 
 # region 🏷️ CONTACT TASKS
 ########################################
@@ -175,6 +218,14 @@ def process_purchase_order_delete(po_id: int):
 def process_contact_create(contact_id: int):
     logger.info(f"🚀 Starting process_contact_create shared task. contact_id={contact_id}.")
     try:
+        config = Config()
+        db_settings = config.get_database_settings(config.USE_LOCAL)
+        try:
+            initialize_database(db_settings['url'])
+            logger.info("DB initialization is done.")
+        except Exception as e:
+            logger.error(f"DB initialization failed! Error={e}", exc_info=True)
+
         trigger_service = database_trigger_service
         trigger_service.contact_trigger_on_create(contact_id)
         logger.info(f"🎉 Done processing newly created Contact #{contact_id}.")
@@ -187,6 +238,14 @@ def process_contact_create(contact_id: int):
 def process_contact_update(contact_id: int):
     logger.info(f"🔄 Handling updated Contact id={contact_id}.")
     try:
+        config = Config()
+        db_settings = config.get_database_settings(config.USE_LOCAL)
+        try:
+            initialize_database(db_settings['url'])
+            logger.info("DB initialization is done.")
+        except Exception as e:
+            logger.error(f"DB initialization failed! Error={e}", exc_info=True)
+
         trigger_service = database_trigger_service
         trigger_service.contact_trigger_on_update(contact_id)
         logger.info(f"🎉 Done updating Contact #{contact_id}.")
@@ -199,6 +258,14 @@ def process_contact_update(contact_id: int):
 def process_contact_delete(contact_id: int):
     logger.info(f"🗑️ Handling deleted Contact id={contact_id}.")
     try:
+        config = Config()
+        db_settings = config.get_database_settings(config.USE_LOCAL)
+        try:
+            initialize_database(db_settings['url'])
+            logger.info("DB initialization is done.")
+        except Exception as e:
+            logger.error(f"DB initialization failed! Error={e}", exc_info=True)
+
         trigger_service = database_trigger_service
         trigger_service.contact_trigger_on_delete(contact_id)
         logger.info(f"✅ Contact #{contact_id} deletion handled.")
@@ -207,6 +274,7 @@ def process_contact_delete(contact_id: int):
         logger.error(f"💥 Problem in process_contact_delete({contact_id}): {e}", exc_info=True)
         raise
 # endregion
+
 
 # region 💵 BILL LINE ITEM TASKS
 ########################################
@@ -217,6 +285,14 @@ def process_contact_delete(contact_id: int):
 def process_bill_line_item_create(bill_line_item_id: int):
     logger.info(f"🚀 Starting process_bill_line_item_create shared task. bill_line_item_id={bill_line_item_id}.")
     try:
+        config = Config()
+        db_settings = config.get_database_settings(config.USE_LOCAL)
+        try:
+            initialize_database(db_settings['url'])
+            logger.info("DB initialization is done.")
+        except Exception as e:
+            logger.error(f"DB initialization failed! Error={e}", exc_info=True)
+
         trigger_service = database_trigger_service
         trigger_service.bill_line_item_trigger_on_create(bill_line_item_id)
         logger.info(f"🎉 Done processing newly created BillLineItem #{bill_line_item_id}.")
@@ -229,6 +305,14 @@ def process_bill_line_item_create(bill_line_item_id: int):
 def process_bill_line_item_update(bill_line_item_id: int):
     logger.info(f"🔄 Handling updated BillLineItem id={bill_line_item_id}.")
     try:
+        config = Config()
+        db_settings = config.get_database_settings(config.USE_LOCAL)
+        try:
+            initialize_database(db_settings['url'])
+            logger.info("DB initialization is done.")
+        except Exception as e:
+            logger.error(f"DB initialization failed! Error={e}", exc_info=True)
+
         trigger_service = database_trigger_service
         trigger_service.bill_line_item_trigger_on_update(bill_line_item_id)
         logger.info(f"🎉 Done updating BillLineItem #{bill_line_item_id}.")
@@ -241,6 +325,14 @@ def process_bill_line_item_update(bill_line_item_id: int):
 def process_bill_line_item_delete(bill_line_item_id: int):
     logger.info(f"🗑️ Handling deleted BillLineItem id={bill_line_item_id}.")
     try:
+        config = Config()
+        db_settings = config.get_database_settings(config.USE_LOCAL)
+        try:
+            initialize_database(db_settings['url'])
+            logger.info("DB initialization is done.")
+        except Exception as e:
+            logger.error(f"DB initialization failed! Error={e}", exc_info=True)
+
         trigger_service = database_trigger_service
         trigger_service.bill_line_item_trigger_on_delete(bill_line_item_id)
         logger.info(f"✅ BillLineItem #{bill_line_item_id} deletion handled.")
@@ -249,6 +341,7 @@ def process_bill_line_item_delete(bill_line_item_id: int):
         logger.error(f"💥 Problem in process_bill_line_item_delete({bill_line_item_id}): {e}", exc_info=True)
         raise
 # endregion
+
 
 # region 🏦 BANK TRANSACTION TASKS
 ########################################
@@ -259,6 +352,14 @@ def process_bill_line_item_delete(bill_line_item_id: int):
 def process_bank_transaction_create(bank_tx_id: int):
     logger.info(f"🚀 Starting process_bank_transaction_create shared task. bank_tx_id={bank_tx_id}.")
     try:
+        config = Config()
+        db_settings = config.get_database_settings(config.USE_LOCAL)
+        try:
+            initialize_database(db_settings['url'])
+            logger.info("DB initialization is done.")
+        except Exception as e:
+            logger.error(f"DB initialization failed! Error={e}", exc_info=True)
+
         trigger_service = database_trigger_service
         trigger_service.bank_transaction_trigger_on_create(bank_tx_id)
         logger.info(f"🎉 Done processing newly created BankTransaction #{bank_tx_id}.")
@@ -271,6 +372,14 @@ def process_bank_transaction_create(bank_tx_id: int):
 def process_bank_transaction_update(bank_tx_id: int):
     logger.info(f"🔄 Handling updated BankTransaction id={bank_tx_id}.")
     try:
+        config = Config()
+        db_settings = config.get_database_settings(config.USE_LOCAL)
+        try:
+            initialize_database(db_settings['url'])
+            logger.info("DB initialization is done.")
+        except Exception as e:
+            logger.error(f"DB initialization failed! Error={e}", exc_info=True)
+
         trigger_service = database_trigger_service
         trigger_service.bank_transaction_trigger_on_update(bank_tx_id)
         logger.info(f"🎉 Done updating BankTransaction #{bank_tx_id}.")
@@ -283,6 +392,14 @@ def process_bank_transaction_update(bank_tx_id: int):
 def process_bank_transaction_delete(bank_tx_id: int):
     logger.info(f"🗑️ Handling deleted BankTransaction id={bank_tx_id}.")
     try:
+        config = Config()
+        db_settings = config.get_database_settings(config.USE_LOCAL)
+        try:
+            initialize_database(db_settings['url'])
+            logger.info("DB initialization is done.")
+        except Exception as e:
+            logger.error(f"DB initialization failed! Error={e}", exc_info=True)
+
         trigger_service = database_trigger_service
         trigger_service.bank_transaction_trigger_on_delete(bank_tx_id)
         logger.info(f"✅ BankTransaction #{bank_tx_id} deletion handled.")
@@ -290,49 +407,75 @@ def process_bank_transaction_delete(bank_tx_id: int):
     except Exception as e:
         logger.error(f"💥 Problem in process_bank_transaction_delete({bank_tx_id}): {e}", exc_info=True)
         raise
-# endregionw
+# endregion
 
-# region ⚖️ AICP CODE TASKS
+
+# region ⚖️ ACCOUNT CODE TASKS
 ########################################
-# AICP CODE TASKS
+# ACCOUNT CODE TASKS
 ########################################
 
 @shared_task
-def process_aicp_code_create(aicp_code_id: int):
-    logger.info(f"🚀 Starting process_aicp_code_create shared task. aicp_code_id={aicp_code_id}.")
+def process_account_code_create(account_code_id: int):
+    logger.info(f"🚀 Starting process_account_code_create shared task. account_code_id={account_code_id}.")
     try:
+        config = Config()
+        db_settings = config.get_database_settings(config.USE_LOCAL)
+        try:
+            initialize_database(db_settings['url'])
+            logger.info("DB initialization is done.")
+        except Exception as e:
+            logger.error(f"DB initialization failed! Error={e}", exc_info=True)
+
         trigger_service = database_trigger_service
-        trigger_service.aicp_code_trigger_on_create(aicp_code_id)
-        logger.info(f"🎉 Done processing newly created AicpCode #{aicp_code_id}.")
-        return f"AicpCode {aicp_code_id} created successfully!"
+        trigger_service.account_code_trigger_on_create(account_code_id)
+        logger.info(f"🎉 Done processing newly created AccountCode #{account_code_id}.")
+        return f"AccountCode {account_code_id} created successfully!"
     except Exception as e:
-        logger.error(f"💥 Problem in process_aicp_code_create({aicp_code_id}): {e}", exc_info=True)
+        logger.error(f"💥 Problem in process_account_code_create({account_code_id}): {e}", exc_info=True)
         raise
 
 @shared_task
-def process_aicp_code_update(aicp_code_id: int):
-    logger.info(f"🔄 Handling updated AicpCode id={aicp_code_id}.")
+def process_account_code_update(account_code_id: int):
+    logger.info(f"🔄 Handling updated AccountCode id={account_code_id}.")
     try:
+        config = Config()
+        db_settings = config.get_database_settings(config.USE_LOCAL)
+        try:
+            initialize_database(db_settings['url'])
+            logger.info("DB initialization is done.")
+        except Exception as e:
+            logger.error(f"DB initialization failed! Error={e}", exc_info=True)
+
         trigger_service = database_trigger_service
-        trigger_service.aicp_code_trigger_on_update(aicp_code_id)
-        logger.info(f"🎉 Done updating AicpCode #{aicp_code_id}.")
-        return f"AicpCode {aicp_code_id} updated successfully!"
+        trigger_service.account_code_trigger_on_update(account_code_id)
+        logger.info(f"🎉 Done updating AccountCode #{account_code_id}.")
+        return f"AccountCode {account_code_id} updated successfully!"
     except Exception as e:
-        logger.error(f"💥 Problem in process_aicp_code_update({aicp_code_id}): {e}", exc_info=True)
+        logger.error(f"💥 Problem in process_account_code_update({account_code_id}): {e}", exc_info=True)
         raise
 
 @shared_task
-def process_aicp_code_delete(aicp_code_id: int):
-    logger.info(f"🗑️ Handling deleted AicpCode id={aicp_code_id}.")
+def process_account_code_delete(account_code_id: int):
+    logger.info(f"🗑️ Handling deleted AccountCode id={account_code_id}.")
     try:
+        config = Config()
+        db_settings = config.get_database_settings(config.USE_LOCAL)
+        try:
+            initialize_database(db_settings['url'])
+            logger.info("DB initialization is done.")
+        except Exception as e:
+            logger.error(f"DB initialization failed! Error={e}", exc_info=True)
+
         trigger_service = database_trigger_service
-        trigger_service.aicp_code_trigger_on_delete(aicp_code_id)
-        logger.info(f"✅ AicpCode #{aicp_code_id} deletion handled.")
-        return f"AicpCode {aicp_code_id} deletion processed!"
+        trigger_service.account_code_trigger_on_delete(account_code_id)
+        logger.info(f"✅ AccountCode #{account_code_id} deletion handled.")
+        return f"AccountCode {account_code_id} deletion processed!"
     except Exception as e:
-        logger.error(f"💥 Problem in process_aicp_code_delete({aicp_code_id}): {e}", exc_info=True)
+        logger.error(f"💥 Problem in process_account_code_delete({account_code_id}): {e}", exc_info=True)
         raise
-# endregionv
+# endregion
+
 
 # region 🧾 RECEIPT TASKS
 ########################################
@@ -343,6 +486,14 @@ def process_aicp_code_delete(aicp_code_id: int):
 def process_receipt_create(receipt_id: int):
     logger.info(f"🚀 Starting process_receipt_create shared task. receipt_id={receipt_id}.")
     try:
+        config = Config()
+        db_settings = config.get_database_settings(config.USE_LOCAL)
+        try:
+            initialize_database(db_settings['url'])
+            logger.info("DB initialization is done.")
+        except Exception as e:
+            logger.error(f"DB initialization failed! Error={e}", exc_info=True)
+
         trigger_service = database_trigger_service
         trigger_service.receipt_trigger_on_create(receipt_id)
         logger.info(f"🎉 Done processing newly created Receipt #{receipt_id}.")
@@ -355,6 +506,14 @@ def process_receipt_create(receipt_id: int):
 def process_receipt_update(receipt_id: int):
     logger.info(f"🔄 Handling updated Receipt id={receipt_id}.")
     try:
+        config = Config()
+        db_settings = config.get_database_settings(config.USE_LOCAL)
+        try:
+            initialize_database(db_settings['url'])
+            logger.info("DB initialization is done.")
+        except Exception as e:
+            logger.error(f"DB initialization failed! Error={e}", exc_info=True)
+
         trigger_service = database_trigger_service
         trigger_service.receipt_trigger_on_update(receipt_id)
         logger.info(f"🎉 Done updating Receipt #{receipt_id}.")
@@ -367,6 +526,14 @@ def process_receipt_update(receipt_id: int):
 def process_receipt_delete(receipt_id: int):
     logger.info(f"🗑️ Handling deleted Receipt id={receipt_id}.")
     try:
+        config = Config()
+        db_settings = config.get_database_settings(config.USE_LOCAL)
+        try:
+            initialize_database(db_settings['url'])
+            logger.info("DB initialization is done.")
+        except Exception as e:
+            logger.error(f"DB initialization failed! Error={e}", exc_info=True)
+
         trigger_service = database_trigger_service
         trigger_service.receipt_trigger_on_delete(receipt_id)
         logger.info(f"✅ Receipt #{receipt_id} deletion handled.")
@@ -375,6 +542,7 @@ def process_receipt_delete(receipt_id: int):
         logger.error(f"💥 Problem in process_receipt_delete({receipt_id}): {e}", exc_info=True)
         raise
 # endregion
+
 
 # region 💰 SPEND MONEY TASKS
 ########################################
@@ -385,6 +553,14 @@ def process_receipt_delete(receipt_id: int):
 def process_spend_money_create(spend_money_id: int):
     logger.info(f"🚀 Starting process_spend_money_create shared task. spend_money_id={spend_money_id}.")
     try:
+        config = Config()
+        db_settings = config.get_database_settings(config.USE_LOCAL)
+        try:
+            initialize_database(db_settings['url'])
+            logger.info("DB initialization is done.")
+        except Exception as e:
+            logger.error(f"DB initialization failed! Error={e}", exc_info=True)
+
         trigger_service = database_trigger_service
         trigger_service.spend_money_trigger_on_create(spend_money_id)
         logger.info(f"🎉 Done processing newly created SpendMoney #{spend_money_id}.")
@@ -397,6 +573,14 @@ def process_spend_money_create(spend_money_id: int):
 def process_spend_money_update(spend_money_id: int):
     logger.info(f"🔄 Handling updated SpendMoney id={spend_money_id}.")
     try:
+        config = Config()
+        db_settings = config.get_database_settings(config.USE_LOCAL)
+        try:
+            initialize_database(db_settings['url'])
+            logger.info("DB initialization is done.")
+        except Exception as e:
+            logger.error(f"DB initialization failed! Error={e}", exc_info=True)
+
         trigger_service = database_trigger_service
         trigger_service.spend_money_trigger_on_update(spend_money_id)
         logger.info(f"🎉 Done updating SpendMoney #{spend_money_id}.")
@@ -409,6 +593,14 @@ def process_spend_money_update(spend_money_id: int):
 def process_spend_money_delete(spend_money_id: int):
     logger.info(f"🗑️ Handling deleted SpendMoney id={spend_money_id}.")
     try:
+        config = Config()
+        db_settings = config.get_database_settings(config.USE_LOCAL)
+        try:
+            initialize_database(db_settings['url'])
+            logger.info("DB initialization is done.")
+        except Exception as e:
+            logger.error(f"DB initialization failed! Error={e}", exc_info=True)
+
         trigger_service = database_trigger_service
         trigger_service.spend_money_trigger_on_delete(spend_money_id)
         logger.info(f"✅ SpendMoney #{spend_money_id} deletion handled.")
@@ -417,6 +609,7 @@ def process_spend_money_delete(spend_money_id: int):
         logger.error(f"💥 Problem in process_spend_money_delete({spend_money_id}): {e}", exc_info=True)
         raise
 # endregion
+
 
 # region 🏷️ TAX ACCOUNT TASKS
 ########################################
@@ -427,6 +620,14 @@ def process_spend_money_delete(spend_money_id: int):
 def process_tax_account_create(tax_account_id: int):
     logger.info(f"🚀 Starting process_tax_account_create shared task. tax_account_id={tax_account_id}.")
     try:
+        config = Config()
+        db_settings = config.get_database_settings(config.USE_LOCAL)
+        try:
+            initialize_database(db_settings['url'])
+            logger.info("DB initialization is done.")
+        except Exception as e:
+            logger.error(f"DB initialization failed! Error={e}", exc_info=True)
+
         trigger_service = database_trigger_service
         trigger_service.tax_account_trigger_on_create(tax_account_id)
         logger.info(f"🎉 Done processing newly created TaxAccount #{tax_account_id}.")
@@ -439,6 +640,14 @@ def process_tax_account_create(tax_account_id: int):
 def process_tax_account_update(tax_account_id: int):
     logger.info(f"🔄 Handling updated TaxAccount id={tax_account_id}.")
     try:
+        config = Config()
+        db_settings = config.get_database_settings(config.USE_LOCAL)
+        try:
+            initialize_database(db_settings['url'])
+            logger.info("DB initialization is done.")
+        except Exception as e:
+            logger.error(f"DB initialization failed! Error={e}", exc_info=True)
+
         trigger_service = database_trigger_service
         trigger_service.tax_account_trigger_on_update(tax_account_id)
         logger.info(f"🎉 Done updating TaxAccount #{tax_account_id}.")
@@ -451,6 +660,14 @@ def process_tax_account_update(tax_account_id: int):
 def process_tax_account_delete(tax_account_id: int):
     logger.info(f"🗑️ Handling deleted TaxAccount id={tax_account_id}.")
     try:
+        config = Config()
+        db_settings = config.get_database_settings(config.USE_LOCAL)
+        try:
+            initialize_database(db_settings['url'])
+            logger.info("DB initialization is done.")
+        except Exception as e:
+            logger.error(f"DB initialization failed! Error={e}", exc_info=True)
+
         trigger_service = database_trigger_service
         trigger_service.tax_account_trigger_on_delete(tax_account_id)
         logger.info(f"✅ TaxAccount #{tax_account_id} deletion handled.")
@@ -460,18 +677,27 @@ def process_tax_account_delete(tax_account_id: int):
         raise
 # endregion
 
+
 # region 🌐 XERO BILL TASKS
 ########################################
 # XERO BILL TASKS
 ########################################
 
 @shared_task
-def update_xero_bill(bill_id: int):
+def process_xero_bill_update(bill_id: int):
     """
     The Celery task for handling updated XeroBills.
     """
     logger.info(f"🚀 Starting update_xero_bill shared task. bill_id={bill_id}.")
     try:
+        config = Config()
+        db_settings = config.get_database_settings(config.USE_LOCAL)
+        try:
+            initialize_database(db_settings['url'])
+            logger.info("DB initialization is done.")
+        except Exception as e:
+            logger.error(f"DB initialization failed! Error={e}", exc_info=True)
+
         trigger_service = database_trigger_service
         trigger_service.update_xero_bill_trigger(bill_id)
         logger.info(f"🎉 Done with XeroBill #{bill_id}.")
@@ -481,7 +707,7 @@ def update_xero_bill(bill_id: int):
         raise
 
 @shared_task
-def create_xero_bill(bill_id: str):
+def process_xero_bill_create(bill_id: str):
     """
     The Celery task for handling newly created XeroBills.
     """
@@ -509,6 +735,14 @@ def create_xero_bill_line_items(bill_id: int):
     """
     logger.info(f"🌀 Handling created line items for bill_id={bill_id}")
     try:
+        config = Config()
+        db_settings = config.get_database_settings(config.USE_LOCAL)
+        try:
+            initialize_database(db_settings['url'])
+            logger.info("DB initialization is done.")
+        except Exception as e:
+            logger.error(f"DB initialization failed! Error={e}", exc_info=True)
+
         trigger_service = database_trigger_service
         trigger_service.create_xero_bill_line_items_trigger(bill_id)
         logger.info(f"✅ XeroBill line items created for bill_id={bill_id}")
@@ -524,6 +758,13 @@ def update_xero_bill_line_item(line_item_id: int):
     """
     logger.info(f"🌀 Handling updated line item for line_item_id={line_item_id}")
     try:
+        config = Config()
+        db_settings = config.get_database_settings(config.USE_LOCAL)
+        try:
+            initialize_database(db_settings['url'])
+            logger.info("DB initialization is done.")
+        except Exception as e:
+            logger.error(f"DB initialization failed! Error={e}", exc_info=True)
         trigger_service = database_trigger_service
         trigger_service.update_xero_bill_line_item_trigger(line_item_id)
         logger.info(f"✅ XeroBill line item updated for id={line_item_id}")
@@ -533,12 +774,20 @@ def update_xero_bill_line_item(line_item_id: int):
         raise
 
 @shared_task
-def delete_xero_bill(bill_id: int):
+def process_xero_bill_delete(bill_id: int):
     """
     The Celery task for handling deleted XeroBills.
     """
     logger.info(f"🗑️ Handling deleted XeroBill bill_id={bill_id}.")
     try:
+        config = Config()
+        db_settings = config.get_database_settings(config.USE_LOCAL)
+        try:
+            initialize_database(db_settings['url'])
+            logger.info("DB initialization is done.")
+        except Exception as e:
+            logger.error(f"DB initialization failed! Error={e}", exc_info=True)
+
         trigger_service = database_trigger_service
         trigger_service.delete_xero_bill_trigger(bill_id)
         logger.info(f"✅ XeroBill #{bill_id} deletion handled.")
@@ -554,6 +803,14 @@ def delete_xero_bill_line_item(line_item_id: int):
     """
     logger.info(f"🗑️ Handling deleted line item for line_item_id={line_item_id}")
     try:
+        config = Config()
+        db_settings = config.get_database_settings(config.USE_LOCAL)
+        try:
+            initialize_database(db_settings['url'])
+            logger.info("DB initialization is done.")
+        except Exception as e:
+            logger.error(f"DB initialization failed! Error={e}", exc_info=True)
+
         trigger_service = database_trigger_service
         trigger_service.delete_xero_bill_line_item_trigger(line_item_id)
         logger.info(f"✅ XeroBill line item #{line_item_id} deletion handled.")
@@ -561,4 +818,7 @@ def delete_xero_bill_line_item(line_item_id: int):
     except Exception as e:
         logger.error(f"💥 Problem with delete_xero_bill_line_item({line_item_id}): {e}", exc_info=True)
         raise
-# endregionffff
+
+#endregion
+
+

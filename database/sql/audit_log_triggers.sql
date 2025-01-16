@@ -52,7 +52,7 @@ END $$
 -----------------------------------------------------
 
 CREATE TRIGGER `aicp_code_ai`
-AFTER INSERT ON `aicp_code`
+AFTER INSERT ON account_code
 FOR EACH ROW
 BEGIN
     INSERT INTO `audit_log` (table_name, operation, record_id, message)
@@ -60,7 +60,7 @@ BEGIN
 END $$
 
 CREATE TRIGGER `aicp_code_au`
-AFTER UPDATE ON `aicp_code`
+AFTER UPDATE ON account_code
 FOR EACH ROW
 BEGIN
     INSERT INTO `audit_log` (table_name, operation, record_id, message)
@@ -68,7 +68,7 @@ BEGIN
 END $$
 
 CREATE TRIGGER `aicp_code_ad`
-AFTER DELETE ON `aicp_code`
+AFTER DELETE ON account_code
 FOR EACH ROW
 BEGIN
     INSERT INTO `audit_log` (table_name, operation, record_id, message)

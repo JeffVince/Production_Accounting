@@ -5,7 +5,7 @@ from unittest.mock import patch, MagicMock
 from datetime import datetime
 from monday_database_util import MondayDatabaseUtil
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-from database.models import PurchaseOrder, DetailItem, Contact, AicpCode
+from database.models import PurchaseOrder, DetailItem, Contact, AccountCode
 
 class TestMondayDatabaseUtil(unittest.TestCase):
     def setUp(self):
@@ -124,18 +124,18 @@ class TestMondayDatabaseUtil(unittest.TestCase):
         }
         # Mock necessary methods and data
         with patch.object(self.db_util.monday_util, 'SUB_ITEM_COLUMN_ID_TO_DB_FIELD', {
-            'text0': 'detail_item_number',
+            'text0': 'detail_number',
             'text98': 'description',
             'numbers0': 'quantity'
         }):
             with patch.object(self.db_util, 'get_purchase_order_surrogate_id_by_pulse_id', return_value=1):
-                with patch.object(self.db_util, 'get_aicp_code_surrogate_id', return_value=1):
+                with patch.object(self.db_util, 'get_account_code_surrogate_id', return_value=1):
                     with patch.object(self.db_util, 'get_purchase_order_type_by_pulse_id', return_value='Vendor'):
                         result = self.db_util.prep_sub_item_event_for_db_creation(event)
                         expected = {
                             "pulse_id": 456,
                             "parent_id": 1,
-                            "detail_item_number": "FileID123",
+                            "detail_number": "FileID123",
                             "description": "Description",
                             "quantity": 2.0,
                             "account_number_id": 1,
@@ -326,24 +326,24 @@ class TestMondayDatabaseUtil(unittest.TestCase):
         self.assertIsNone(result)
 
     @patch('monday_database_util.get_db_session')
-    def test_get_aicp_code_surrogate_id_found(self, mock_get_db_session):
+    def test_get_account_code_surrogate_id_found(self, mock_get_db_session):
         """
-        Test retrieving AICP code surrogate ID when found.
+        Test retrieving Account code surrogate ID when found.
         """
         # Mock session
         session = mock_get_db_session.return_value.__enter__.return_value
 
-        # Mock AicpCode
-        aicp_code_entry = AicpCode(code='5000', aicp_code_surrogate_id=1)
-        session.query.return_value.filter_by.return_value.one_or_none.return_value = aicp_code_entry
+        # Mock AccountCode
+        account_code_entry = AccountCode(code='5000', account_code_surrogate_id=1)
+        session.query.return_value.filter_by.return_value.one_or_none.return_value = account_code_entry
 
-        result = self.db_util.get_aicp_code('5000')
+        result = self.db_util.get_account_code('5000')
         self.assertEqual(result, 1)
 
     @patch('monday_database_util.get_db_session')
-    def test_get_aicp_code_surrogate_id_not_found(self, mock_get_db_session):
+    def test_get_account_code_surrogate_id_not_found(self, mock_get_db_session):
         """
-        Test retrieving AICP code surrogate ID when not found.
+        Test retrieving Account code surrogate ID when not found.
         """
         # Mock session
         session = mock_get_db_session.return_value.__enter__.return_value
@@ -351,7 +351,7 @@ class TestMondayDatabaseUtil(unittest.TestCase):
         # Mock query to return None
         session.query.return_value.filter_by.return_value.one_or_none.return_value = None
 
-        result = self.db_util.get_aicp_code('9999')
+        result = self.db_util.get_account_code('9999')
         self.assertIsNone(result)
 
     @patch('monday_database_util.get_db_session')

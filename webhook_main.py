@@ -11,10 +11,11 @@ from dropbox_files.dropbox_webhook_handler import dropbox_blueprint
 from po_log_database_util import po_log_database_util
 from utilities.logger import setup_logging
 from flask import render_template
+# 1) Import your new utility
+from database_view_util import DatabaseViewUtil
 
-# Initialize logging
-logger = logging.getLogger(__name__)
-setup_logging()
+from routes.account_tax_routes import account_tax_bp
+
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -23,7 +24,46 @@ orchestrator = Orchestrator()
 # Register Blueprints with URL prefixes
 app.register_blueprint(monday_blueprint, url_prefix='/webhook/monday')
 app.register_blueprint(dropbox_blueprint, url_prefix='/webhook/dropbox')
+app.register_blueprint(account_tax_bp)
 
+
+
+logger = logging.getLogger(__name__)
+setup_logging()
+
+
+# 2) Instantiate your new class
+db_view_util = DatabaseViewUtil()
+
+
+@app.route("/account_tax_view", methods=["GET"])
+def account_tax_view():
+    """
+    Shows an Excel-like table to edit accountCodes + TaxAccounts together.
+    Accepts optional ?sort=account_code or ?sort=tax_code
+    """
+    sort = request.args.get("sort")
+    # 3) Use our new method to fetch joined data
+    records = db_view_util.get_all_account_with_tax(sort_by=sort)
+    return render_template("map_codes_view.html", records=records, sort=sort)
+
+
+@app.route("/bulk_update_account_tax", methods=["POST"])
+def bulk_update_account_tax():
+    """
+    Accepts JSON data from the front-end with a list of updated rows.
+    Calls the new method in DatabaseViewUtil to commit changes to DB.
+    """
+    data = request.get_json()
+    if not data or not isinstance(data, list):
+        return jsonify({"status": "error", "message": "Invalid input data"}), 400
+
+    try:
+        db_view_util.bulk_update_account_tax(data)
+        return jsonify({"status": "success"}), 200
+    except Exception as e:
+        logger.error(f"Error during bulk update: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 # Optional: Root route for health check or info
 @app.route('/health', methods=['GET'])
@@ -75,7 +115,7 @@ def toggle_temp_file():
 @app.route("/trigger_function", methods=["POST"])
 def trigger_function():
     """
-    Triggers the requested function in the Orchestrator based on form input.
+    Triggers the requested function in the Orchestrator based odn form input.
     """
     logger = logging.getLogger("app_logger")
     function_name = request.form.get("function_name", "")
@@ -119,3 +159,17 @@ def trigger_function():
 
     # Redirect back to the control panel (or wherever you'd like)
     return redirect(url_for("control_panel"))
+
+
+# region NEW MAP CODE VIEW & ROUTES
+# -------------------------------------------------------------------------
+@app.route("/map_codes_view", methods=["GET"])
+def map_codes_view():
+    """
+    New approach: Renders a template with tabs for each map_code,
+    each containing the two-panel (Account left / Tax right) layout,
+    local storage logic, pagination, etc.
+    """
+    return render_template("map_codes_view.html")
+
+

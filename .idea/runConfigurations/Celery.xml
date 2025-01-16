@@ -13,7 +13,7 @@
     <option name="ADD_SOURCE_ROOTS" value="true" />
     <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
     <option name="SCRIPT_NAME" value="$USER_HOME$/Documents/Dropbox Listener/bin/celery" />
-    <option name="PARAMETERS" value="-A celery_server:celery_app worker --loglevel=DEBUG --events" />
+    <option name="PARAMETERS" value="-A celery_server:celery_app worker" />
     <option name="SHOW_COMMAND_LINE" value="false" />
     <option name="EMULATE_TERMINAL" value="false" />
     <option name="MODULE_MODE" value="false" />

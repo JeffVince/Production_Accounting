@@ -346,9 +346,9 @@ class TestMondayService(unittest.TestCase):
 
         mock_db_util_instance = MagicMock()
         mock_db_util_instance.prep_sub_item_event_for_db_creation.side_effect = [
-            {'pulse_id': 1, 'parent_id': 100, 'detail_item_number': 'D1', 'description': 'Desc1', 'quantity': 1.0,
+            {'pulse_id': 1, 'parent_id': 100, 'detail_number': 'D1', 'description': 'Desc1', 'quantity': 1.0,
              'account_number_id': 1, 'is_receipt': 0},
-            {'pulse_id': 2, 'parent_id': 200, 'detail_item_number': 'D2', 'description': 'Desc2', 'quantity': 2.0,
+            {'pulse_id': 2, 'parent_id': 200, 'detail_number': 'D2', 'description': 'Desc2', 'quantity': 2.0,
              'account_number_id': 1, 'is_receipt': 0}
         ]
         mock_db_util_instance.create_or_update_sub_item_in_db.side_effect = [
@@ -419,7 +419,7 @@ class TestMondayService(unittest.TestCase):
         mock_db_util_instance = MagicMock()
         mock_db_util_instance.prep_sub_item_event_for_db_creation.side_effect = [
             None,
-            {'pulse_id': 2, 'parent_id': 200, 'detail_item_number': 'D2',
+            {'pulse_id': 2, 'parent_id': 200, 'detail_number': 'D2',
              'description': 'Desc2', 'quantity': 2.0,
              'account_number_id': 1, 'is_receipt': 0}
         ]
@@ -436,7 +436,7 @@ class TestMondayService(unittest.TestCase):
         # Assert
         self.assertIn('Skipping sub-item with pulse_id 1 due to missing parent.', log.output[0])
         mock_db_util_instance.create_or_update_sub_item_in_db.assert_called_once_with({
-            'pulse_id': 2, 'parent_id': 200, 'detail_item_number': 'D2',
+            'pulse_id': 2, 'parent_id': 200, 'detail_number': 'D2',
             'description': 'Desc2', 'quantity': 2.0,
             'account_number_id': 1, 'is_receipt': 0
         })
@@ -454,7 +454,7 @@ class TestMondayService(unittest.TestCase):
 
         mock_db_util_instance = MagicMock()
         mock_db_util_instance.prep_sub_item_event_for_db_creation.return_value = {
-            'pulse_id': 1, 'parent_id': 100, 'detail_item_number': 'D1',
+            'pulse_id': 1, 'parent_id': 100, 'detail_number': 'D1',
             'description': 'Desc1', 'quantity': 1.0,
             'account_number_id': 1, 'is_receipt': 0
         }

@@ -41,7 +41,7 @@ CREATE UNIQUE INDEX `id_UNIQUE`
 -- -----------------------------------------------------
 -- Table: aicp_code
 -- -----------------------------------------------------
-DROP TABLE IF EXISTS `aicp_code`;
+DROP TABLE IF EXISTS account_code;
 CREATE TABLE IF NOT EXISTS `aicp_code` (
   `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `aicp_code` VARCHAR(45) NOT NULL,
@@ -59,13 +59,13 @@ DEFAULT CHARSET = utf8mb4
 COLLATE = utf8mb4_unicode_ci;
 
 CREATE UNIQUE INDEX `aicp_code`
-  ON `aicp_code` (`aicp_code` ASC);
+  ON account_code (code ASC);
 
 CREATE UNIQUE INDEX `id_UNIQUE`
-  ON `aicp_code` (`id` ASC);
+  ON account_code (`id` ASC);
 
 CREATE INDEX `fk_tax_account_idx`
-  ON `aicp_code` (`tax_id` ASC);
+  ON account_code (`tax_id` ASC);
 
 -- -----------------------------------------------------
 -- Table: xero_bill
@@ -259,7 +259,7 @@ CREATE TABLE IF NOT EXISTS `detail_item` (
   `po_id` INT UNSIGNED NOT NULL,
   `state` ENUM('PENDING','OVERDUE','ISSUE','RTP','RECONCILED','PAID','APPROVED') NOT NULL DEFAULT 'PENDING',
   `detail_number` INT UNSIGNED NOT NULL,
-  `line_id` INT UNSIGNED NOT NULL,
+  `line_number` INT UNSIGNED NOT NULL,
   `aicp_code` INT UNSIGNED NOT NULL,
   `vendor` VARCHAR(255) NULL DEFAULT NULL,
   `description` VARCHAR(255) NULL DEFAULT NULL,
@@ -278,7 +278,7 @@ CREATE TABLE IF NOT EXISTS `detail_item` (
   PRIMARY KEY (`id`),
   CONSTRAINT `fk_detail_item_aicp_code`
     FOREIGN KEY (`aicp_code`)
-    REFERENCES `aicp_code` (`id`),
+    REFERENCES account_code (`id`),
   CONSTRAINT `fk_detail_item_purchase_order`
     FOREIGN KEY (`po_id`)
     REFERENCES `purchase_order` (`id`)
@@ -295,7 +295,7 @@ CREATE INDEX `po_id`
   ON `detail_item` (`po_id` ASC);
 
 CREATE INDEX `fk_aicp_code_idx`
-  ON `detail_item` (aicp_code_id ASC);
+  ON `detail_item` (account_code ASC);
 
 -- -----------------------------------------------------
 -- Table: bill_line_item
@@ -326,7 +326,7 @@ CREATE INDEX `fk_detail_item_idx`
   ON `bill_line_item` (`detail_item_id` ASC);
 
 CREATE INDEX `fk_xero_bill_idx`
-  ON `bill_line_item` (`xero_bill_id` ASC);
+  ON `bill_line_item` (parent_id ASC);
 
 -- -----------------------------------------------------
 -- Table: invoice
