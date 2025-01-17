@@ -1,33 +1,9 @@
-# celery_task_services.py
-
-# region 🍱 Imports
 import logging
 from utilities.singleton import SingletonMeta
-
-# Import from each new triggers file
-from triggers.xero_triggers import (
-    handle_spend_money_create, handle_spend_money_update, handle_spend_money_delete,
-    handle_xero_bill_create, handle_xero_bill_update, handle_xero_bill_delete,
-    handle_xero_bill_line_item_create, handle_xero_bill_line_item_update, handle_xero_bill_line_item_delete
-)
-from triggers.po_triggers import (
-    handle_project_create, handle_project_update, handle_project_delete,
-    handle_purchase_order_create, handle_purchase_order_update, handle_purchase_order_delete,
-    handle_detail_item_create, handle_detail_item_update, handle_detail_item_delete
-)
-from triggers.invoice_receipt_triggers import (
-    handle_invoice_create_or_update, handle_invoice_delete,
-    handle_receipt_create, handle_receipt_update, handle_receipt_delete
-)
-from triggers.contact_triggers import (
-    handle_contact_create, handle_contact_update, handle_contact_delete,
-    handle_tax_account_create, handle_tax_account_update, handle_tax_account_delete,
-    handle_account_code_create, handle_account_code_update, handle_account_code_delete
-)
-# endregion
-
-
-
+from triggers.xero_triggers import handle_spend_money_create, handle_spend_money_update, handle_spend_money_delete, handle_xero_bill_create, handle_xero_bill_update, handle_xero_bill_delete, handle_xero_bill_line_item_create, handle_xero_bill_line_item_update, handle_xero_bill_line_item_delete
+from triggers.po_triggers import handle_project_create, handle_project_update, handle_project_delete, handle_purchase_order_create, handle_purchase_order_update, handle_purchase_order_delete, handle_detail_item_create, handle_detail_item_update, handle_detail_item_delete
+from triggers.invoice_receipt_triggers import handle_invoice_create_or_update, handle_invoice_delete, handle_receipt_create, handle_receipt_update, handle_receipt_delete
+from triggers.contact_triggers import handle_contact_create, handle_contact_update, handle_contact_delete, handle_tax_account_create, handle_tax_account_update, handle_tax_account_delete, handle_account_code_create, handle_account_code_update, handle_account_code_delete
 
 class CeleryTaskService(metaclass=SingletonMeta):
     """
@@ -37,9 +13,8 @@ class CeleryTaskService(metaclass=SingletonMeta):
     """
 
     def __init__(self):
-        self.logger = logging.getLogger("database_logger")
+        self.logger = logging.getLogger('database_logger')
 
-    # region 🏦 XERO Bill, BillLineItem, SpendMoney TRIGGERS
     def bill_line_item_trigger_on_create(self, bill_line_item_id: int):
         return handle_xero_bill_line_item_create(bill_line_item_id)
 
@@ -75,9 +50,7 @@ class CeleryTaskService(metaclass=SingletonMeta):
 
     def delete_xero_bill_line_item_trigger(self, line_item_id: int):
         return handle_xero_bill_line_item_delete(line_item_id)
-    # endregion
 
-    # region 📋 PROJECT, PO, DETAIL ITEM TRIGGERS
     def project_trigger_on_create(self, project_id: int):
         return handle_project_create(project_id)
 
@@ -104,9 +77,7 @@ class CeleryTaskService(metaclass=SingletonMeta):
 
     def detail_item_on_delete(self, detail_item_id: int):
         return handle_detail_item_delete(detail_item_id)
-    # endregion
 
-    # region 🧾 INVOICE, RECEIPT TRIGGERS
     def invoice_trigger_on_create_or_update(self, invoice_id: int):
         return handle_invoice_create_or_update(invoice_id)
 
@@ -121,9 +92,7 @@ class CeleryTaskService(metaclass=SingletonMeta):
 
     def receipt_trigger_on_delete(self, receipt_id: int):
         return handle_receipt_delete(receipt_id)
-    # endregion
 
-    # region 👥 CONTACT, TAX ACCOUNT, ACCOUNT CODE TRIGGERS
     def contact_trigger_on_create(self, contact_id: int):
         return handle_contact_create(contact_id)
 
@@ -150,8 +119,4 @@ class CeleryTaskService(metaclass=SingletonMeta):
 
     def account_code_trigger_on_delete(self, account_code_id: int):
         return handle_account_code_delete(account_code_id)
-    # endregion
-
-
-# Singleton instance imported by Celery tasks
 database_trigger_service = CeleryTaskService()

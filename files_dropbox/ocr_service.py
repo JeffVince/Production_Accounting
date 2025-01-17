@@ -1,4 +1,3 @@
-# services/ocr_service.py
 import json
 import os
 import pdfplumber
@@ -6,24 +5,18 @@ import pytesseract
 from PIL import Image
 import io
 import logging
-
 from openai import OpenAI
-
 from singleton import SingletonMeta
-
-logger = logging.getLogger("dropbox_logger")
+logger = logging.getLogger('dropbox_logger')
 
 class OCRService(metaclass=SingletonMeta):
 
     def __init__(self):
         if not hasattr(self, '_initialized'):
-            # Set up logging
-            self.logger = logging.getLogger("dropbox_logger")
+            self.logger = logging.getLogger('dropbox_logger')
             self.client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-
-            self.logger.info("OCR Service initialized")
+            self.logger.info('[__init__] - OCR Service initialized')
             self._initialized = True
-
 
     def extract_text_from_file(self, file_data: bytes) -> str:
         """Extract text from a file (invoice, receipt, or W-9)."""
@@ -32,8 +25,8 @@ class OCRService(metaclass=SingletonMeta):
             text = pytesseract.image_to_string(image)
             return text
         except Exception as e:
-            logger.error(f"OCR extraction failed: {e}")
-            return ""
+            logger.error(f'OCR extraction failed: {e}')
+            return ''
 
     def extract_text_from_invoice(self, file_data: bytes) -> str:
         """Extract text specifically from an invoice file."""
@@ -58,7 +51,7 @@ class OCRService(metaclass=SingletonMeta):
         """Parse details from a W-9 form."""
         details = {}
         lines = text_data.split('\n')
-        for i, line in enumerate(lines):
+        for (i, line) in enumerate(lines):
             if 'Name' in line:
                 details['name'] = lines[i + 1].strip()
             if 'Tax ID' in line:
@@ -72,77 +65,33 @@ class OCRService(metaclass=SingletonMeta):
     def parse_receipt_details(self, text_data: str) -> dict:
         """Parse receipt details from extracted text."""
         details = {}
-        # Implement parsing logic specific to receipts
         return details
 
     def extract_info_with_openai(self, text):
-        messages = [
-            {
-                "role": "system",
-                "content": """You are an AI assistant that extracts information from financial documents for a production company / digital creative studio. Extract the following details from the text:
-                   Invoice Date (Formatted as YYYY-MM-DD),  Total Amount, Payment Term.
-                   Respond with pure, parsable, JSON (no leading or trailing apostrophes) with keys: 'invoice_date', 'total_amount', 'payment_term' If any fields are empty make their value None"""
-            },
-            {"role": "user", "content": text}
-        ]
-
-        response = self.client.chat.completions.create(
-            model="gpt-3.5-turbo",  # or 'gpt-4' if you have access
-            messages=messages,
-            max_tokens=1000,
-            temperature=0
-        )
-
+        messages = [{'role': 'system', 'content': "You are an AI assistant that extracts information from financial documents for a production company / digital creative studio. Extract the following details from the text:\n                   Invoice Date (Formatted as YYYY-MM-DD),  Total Amount, Payment Term.\n                   Respond with pure, parsable, JSON (no leading or trailing apostrophes) with keys: 'invoice_date', 'total_amount', 'payment_term' If any fields are empty make their value None"}, {'role': 'user', 'content': text}]
+        response = self.client.chat.completions.create(model='gpt-3.5-turbo', messages=messages, max_tokens=1000, temperature=0)
         extracted_info = response.choices[0].message.content.strip()
-        # print("OPEN AI INFO", extracted_info)
-        # Parse the JSON response
-
         try:
             info = json.loads(extracted_info)
-
-            return info, None  # No error
+            return (info, None)
         except json.JSONDecodeError:
-            logging.error("Failed to parse JSON from OpenAI response")
-            return None, 'json_decode_error'
+            logging.error('Failed to parse JSON from OpenAI response')
+            return (None, 'json_decode_error')
         except Exception as e:
-            logging.error(f"An error occurred in extract_info_with_openai: {e}")
-            return None, 'unknown_error'
+            logging.error(f'An error occurred in extract_info_with_openai: {e}')
+            return (None, 'unknown_error')
 
     def extract_receipt_info_with_openai(self, text):
-
-        messages = [
-            {
-                "role": "system",
-                "content": """You are an AI assistant that extracts information from receipts.
-                    Extract the following details from the text: 
-                    Total Amount (numbers only, no symbols), 
-                    Date of purchase (format YYYY-MM-DD), and 
-                    generate a description (summarize to 20 characters maximum). 
-                    If the total is a refund then the value should be negative. 
-                    Provide the information in JSON format with keys: 'total_amount', 'description', 'date'."""
-            },
-            {"role": "user", "content": text}
-        ]
-
-        response = self.client.chat.completions.create(
-            model="gpt-3.5-turbo",  # or 'gpt-4' if you have access
-            messages=messages,
-            max_tokens=1000,
-            temperature=0
-        )
-
+        messages = [{'role': 'system', 'content': "You are an AI assistant that extracts information from receipts.\n                    Extract the following details from the text: \n                    Total Amount (numbers only, no symbols), \n                    Date of purchase (format YYYY-MM-DD), and \n                    generate a description (summarize to 20 characters maximum). \n                    If the total is a refund then the value should be negative. \n                    Provide the information in JSON format with keys: 'total_amount', 'description', 'date'."}, {'role': 'user', 'content': text}]
+        response = self.client.chat.completions.create(model='gpt-3.5-turbo', messages=messages, max_tokens=1000, temperature=0)
         extracted_info = response.choices[0].message.content.strip()
-        # print("RAW DATA", extracted_info)
-        extracted_info_clean = extracted_info.replace("```json", "").replace("```", "").strip()
-
-        # Parse the JSON response
+        extracted_info_clean = extracted_info.replace('```json', '').replace('```', '').strip()
         try:
             info = json.loads(extracted_info_clean)
             return info
         except json.JSONDecodeError:
-            logging.error("Failed to parse JSON from OpenAI response")
+            logging.error('Failed to parse JSON from OpenAI response')
             return None
-
 
     def extract_text(self, local_file_path: str) -> str:
         """
@@ -151,24 +100,19 @@ class OCRService(metaclass=SingletonMeta):
         :param local_file_path: The local file path of the document or image.
         :return: A string containing all text extracted from the file.
         """
-        # Basic file extension check
-        _, ext = os.path.splitext(local_file_path.lower())
-        text_content = ""
-
+        (_, ext) = os.path.splitext(local_file_path.lower())
+        text_content = ''
         try:
-            # If it's a PDF, try using pdfplumber
-            if ext == ".pdf":
-                logging.info(f"🔎 [OCRService] Processing PDF with pdfplumber: {local_file_path}")
+            if ext == '.pdf':
+                logging.info(f'🔎 [OCRService] Processing PDF with pdfplumber: {local_file_path}')
                 with pdfplumber.open(local_file_path) as pdf:
                     for page in pdf.pages:
-                        page_text = page.extract_text() or ""
-                        text_content += page_text + "\n"
+                        page_text = page.extract_text() or ''
+                        text_content += page_text + '\n'
             else:
-                # Otherwise, treat it as an image and use pytesseract
-                logging.info(f"🔎 [OCRService] Processing image with pytesseract: {local_file_path}")
+                logging.info(f'🔎 [OCRService] Processing image with pytesseract: {local_file_path}')
                 image = Image.open(local_file_path)
                 text_content = pytesseract.image_to_string(image)
         except Exception as e:
-            logging.error(f"❌ [OCRService] Failed to extract text from file {local_file_path}: {e}", exc_info=True)
-
+            logging.error(f'❌ [OCRService] Failed to extract text from file {local_file_path}: {e}', exc_info=True)
         return text_content.strip()

@@ -1,5 +1,3 @@
-# tests/base_test.py
-
 import unittest
 from sqlalchemy import create_engine, inspect, event
 from sqlalchemy.orm import sessionmaker, scoped_session
@@ -18,45 +16,28 @@ class BaseTestCase(unittest.TestCase):
         """
         Set up a fresh in-memory SQLite database and bind it to the Base metadata before each test.
         """
-        # Create a new in-memory SQLite engine
         self.engine = create_engine('sqlite:///:memory:', echo=False)
 
-        # Enable foreign key constraints
-        @event.listens_for(self.engine, "connect")
+        @event.listens_for(self.engine, 'connect')
         def set_sqlite_pragma(dbapi_connection, connection_record):
-            if isinstance(dbapi_connection, sqlite3.Connection):  # play safe with other DB backends
+            if isinstance(dbapi_connection, sqlite3.Connection):
                 cursor = dbapi_connection.cursor()
-                cursor.execute("PRAGMA foreign_keys=ON;")
+                cursor.execute('PRAGMA foreign_keys=ON;')
                 cursor.close()
-
-        # Create a new scoped session with expire_on_commit=False to prevent DetachedInstanceError
         self.Session = scoped_session(sessionmaker(bind=self.engine, expire_on_commit=False))
-
-        # Initialize the session factory used by db_util.py
         initialize_session_factory(self.Session)
-
-        # Create all tables in the in-memory database
         Base.metadata.create_all(self.engine)
-
-        # Verify table creation (optional, for debugging)
         inspector = inspect(self.engine)
         tables = inspector.get_table_names()
-        print("Tables in the database:", tables)
-
-        # Create a new session for the test
+        print('Tables in the database:', tables)
         self.session = self.Session()
 
     def tearDown(self):
         """
         Drop all tables and dispose of the engine after each test.
         """
-        # Close the session
         self.session.close()
-
-        # Drop all tables
         Base.metadata.drop_all(self.engine)
-
-        # Dispose of the engine
         self.engine.dispose()
 
     @contextmanager

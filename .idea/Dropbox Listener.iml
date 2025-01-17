@@ -17,6 +17,7 @@
       <sourceFolder url="file://$MODULE_DIR$/files_xero" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/server_celery" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/server_webhook/orchestration" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/server_webhook" isTestSource="false" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
