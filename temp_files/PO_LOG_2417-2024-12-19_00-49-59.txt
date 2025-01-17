@@ -1,0 +1,164 @@
+Date	Type	Pay ID	Account	ID	Vendor	Description	PO	Factors	Sub-Total $	Fringes $		
+	
+11/27/24	INV		5020		Powell Visual		24	1  x 4,500	4,500.00			
+11/6/24	INV		4230		Like It's Hot LLC	Sound Design	25	3  x 1,250	3,750.00			
+11/6/24	EFT	Net30	10000-1		Vanish Point Productions LLC	Motion Graphics	33	2 allow x 1,500	3,000.00			
+11/6/24	INV		2060		Like It's Hot LLC	Editor	25	2  x 4,500	9,000.00			
+10/31/24	CRD	5147	193		Capsule (JEMLEYKENATO)	Camera Rentals Tokyo	20	1  x 172.8	172.80			
+10/15/24	EFT		55	01	Michael Guntetong	AC/Gaff - Shoot Days	19	5  x 600	3,000.00			
+10/15/24	EFT		5	01	Michael Guntetong	AC/Gaff - Travel Days	19	5  x 300	1,500.00			
+10/18/24	EFT		127	02	Michael Guntetong	Gas Reimbursement	19	1  x 45.18	45.18			
+11/2/24	CRD	1004	134		Cucina Cafe Oliva Tokyo JP	Set meal Tokyo Nov 2 (Unreal Fest)	21	1  x 127.16	127.16			
+10/29/24	CRD	2003	130	01	APA Hotel Co., Ltd.	Hotel Tokyo	22	1  x 719.28	719.28			
+10/29/24	CRD	2003	130	04	APA Hotel Co., Ltd.	Hotel Tokyo	22	1  x 719.28	719.28			
+10/29/24	CRD	2003	130	03	APA Hotel Co., Ltd.	Hotel Tokyo	22	1  x 719.28	719.28			
+10/29/24	CRD	2003	130	02	APA Hotel Co., Ltd.	Hotel Tokyo	22	1  x 719.28	719.28			
+11/1/24	CRD	2003	114	06	Atom Tokyo	Location Fees	22	1  x 2.64	2.64			
+11/1/24	CRD	2003	114	05	Atom Tokyo	Location Fees	22	1  x 181.84	181.84			
+10/16/24	EFT		80		Addison Gray Wolf	Sound Mixer San Diego	18	1 days x 650	650.00			
+10/16/24	EFT		194		Addison Gray Wolf	Sound Mixer Equipment Rental San Diego	18	1 days x 300	300.00			
+10/15/24	CRD	5147	193		On The Mark Media, LLC	Camera Rentals LA	17	1  x 323.63	323.63			
+10/15/24	CRD	5147	195		On The Mark Media, LLC		17	1  x 323.62	323.62			
+10/13/24	EFT		80		Jon Mendel Sound LLC	Sound Mixer Massachusetts	16	1  x 750	750.00			
+10/13/24	EFT		194		Jon Mendel Sound LLC	Sound Mixer Equipment Rental Massachusetts	16	1  x 600	600.00			
+10/10/24	CRD	5147	193		Rule Broadcast Systems, Inc.	Camera Rental Massachusetts	15	1  x 385.69	385.69			
+10/10/24	CRD	5147	193		Rule Broadcast Systems, Inc.	Camera Rental Massachusetts	15	1  x 385.69	385.69			
+10/3/24	EFT		98		Steven Poczkalski	Production Assistant Miami	14	1  x 300	300.00			
+10/3/24	EFT		127		Steven Poczkalski	PA Reimbursements Parking Miami	14	1  x 48.98	48.98			
+10/4/24	EFT		80		Khaleel Bailey	Sound Mixer Miami	13	1  x 600	600.00			
+10/4/24	EFT		194		Khaleel Bailey	Sound Mixer Equipment Rental Miami	13	1  x 350	350.00			
+10/2/24	CRD	5147	193	01	HD House LLC	Camera Rental Miami	12	1  x 813.74	813.74			
+10/2/24	CRD	5147	195	02	HD House LLC	Camera Rental Miami	12	1  x 544.68	544.68			
+11/4/24	INV		4	01	Jordan Sakai	DP Prep	11	3 days x 1,500	4,500.00			
+11/4/24	INV		54	01	Jordan Sakai	DP Shoot	11	6 days x 1,500	9,000.00			
+11/4/24	INV		54	01	Jordan Sakai	DP Kill Fee	11	1  x 2,000	2,000.00			
+11/4/24	INV		193	01	Jordan Sakai	DP Kit Fee (Camera Rental)	11	1  x 2,250	2,250.00			
+11/4/24	INV		128	02	Jordan Sakai	DP Reimbursements (Luggage)	11	1  x 205	205.00			
+11/4/24	INV		136	02	Jordan Sakai	DP Reimbursements (Taxis and Ubers)	11	1  x 193.46	193.46			
+11/4/24	INV		127	02	Jordan Sakai	DP Reimbursements (Gas and Mileage)	11	1  x 52	52.00			
+Date	Type	Pay ID	Account	ID	Vendor	Description	PO	Factors	Sub-Total $	Fringes $		
+11/4/24	INV		114	02	Jordan Sakai	DP Reimbursements (Location Fees)	11	1  x 65.67	65.67			
+9/28/24	CRD	5147	80		Jared J Hammond	Sound Mixer Tennessee	10	1.5  x 650	975.00			
+9/28/24	CRD	5147	194		Jared J Hammond	Sound Mixer Equipment Rental Tennessee	10	1.5  x 300	450.00			
+9/27/24	CRD	5147	193		Contrast Visuals, Inc	Camera Rental Tennessee	9	1  x 676.07	676.07			
+9/27/24	CRD	5147	195		Contrast Visuals, Inc	Lighting Rental Tennessee	9	1  x 676.06	676.06			
+10/7/24	PC	2417_01	131		Sho Schrock-Manabe	Per Diem		25 days x 50	1,250.00			
+10/7/24	PC	2417_01	131		Jordan Sakai	Per Diem		25 days x 50	1,250.00			
+10/7/24	PC	2417_01	131		Sean Matsuyama	Per Diem		25 days x 50	1,250.00			
+10/7/24	PC	2417_01	131		Michael Guntetong	Per Diem		21 days x 50	1,050.00			
+10/23/24	INV		51	01	Sho Schrock-Manabe	Producer Kill Fee for Orlando shoot	7	1  x 2,000	2,000.00			
+11/5/24	INV		1	02	Sho Schrock-Manabe	Producer (Prep)	7	8 days x 1,000	8,000.00			
+11/5/24	INV		51	02	Sho Schrock-Manabe	Producer (Prep)	7	5 days x 1,000	5,000.00			
+11/6/24	INV		223	03	Sho Schrock-Manabe	Producer (Reimbursements, Transcription)	7	1  x 28.75	28.75			
+11/6/24	INV		134	03	Sho Schrock-Manabe	Producer (Reimbursements, Set Meals)	7	1  x 121.97	121.97			
+11/6/24	INV		136	03	Sho Schrock-Manabe	Producer (Reimbursements, Transcription)	7	1  x 317.72	317.72			
+11/6/24	INV		181	03	Sho Schrock-Manabe	Producer (Reimbursements, Transcription)	7	1  x 102.05	102.05			
+11/6/24	INV		132	03	Sho Schrock-Manabe	Producer (Reimbursements, Crafty)	7	1  x 61.31	61.31			
+11/6/24	INV		223	03	Sho Schrock-Manabe	Producer (Reimbursements, Transcription)	7	1  x 27.22	27.22			
+10/4/24	INV		128	04	Millennialfilms	Director Reimbursement (Luggage)	8	1  x 45	45.00			
+10/4/24	INV		136	04	Millennialfilms	Director Reimbursement (Transpo)	8	1  x 98.63	98.63			
+10/17/24	INV		229	02	Millennialfilms	Director (Kill fee for Orlando shoot)	8	1  x 2,000	2,000.00			
+10/4/24	INV		229	03	Millennialfilms	Directing Fee	8	1  x 15,000	15,000.00			
+10/4/24	INV		136	01	Millennialfilms	Director Reimbursement (Transpo)	8	1  x 114.6	114.60			
+10/4/24	INV		128	01	Millennialfilms	Director Reimbursement (Luggage)	8	1  x 80	80.00			
+9/23/24	CRD	5147	129	01	Spirit Airlines	Airfares LA >> Tennessee (Prod and AC)	4	1  x 1,008.68	1,008.68			
+9/24/24	CRD	5147	130	02	Airbnb	Airbnb Tullahoma	4	1  x 850.92	850.92			
+9/24/24	CRD	5147	129	03	Thales Avionics Inc Spirit Airlines	In-Flight Wifi	4	1  x 27.98	27.98			
+9/24/24	CRD	5147	223	04	Amazon	Printer Ink	4	1  x 73.24	73.24			
+9/26/24	CRD	5147	130	05	Airbnb	Airbnb Tullahoma Extension	4	1  x 239.29	239.29			
+Date	Type	Pay ID	Account	ID	Vendor	Description	PO	Factors	Sub-Total $	Fringes $		
+9/26/24	CRD	5147	130	06	Airbnb	Airbnb Nashville	4	1  x 302.25	302.25			
+9/28/24	CRD	5147	130	42	Airbnb	Price difference for switched airbnb in Nashville	4	1  x 3.11	3.11			
+9/30/24	CRD	5147	121	08	Travel Guard	Rental Car Protection Plan	4	1  x 40	40.00			
+9/30/24	CRD	5147	129	09	American Airlines	Flights Miami >> Boston	4	1  x 835.76	835.76			
+10/1/24	CRD	5147	129	10	American Airlines	Flights Miami >> Boston	4	1  x 627.24	627.24			
+10/1/24	CRD	5147	129	11	American Airlines	REFUNDS Flights Miami >> Boston	4	1  x -15.89	-15.89			
+10/1/24	CRD	5147	129	12	American Airlines	REFUNDS Flights Miami >> Boston	4	1  x -15.05	-15.05			
+10/1/24	CRD	5147	129	13	American Airlines	REFUNDS Flights Miami >> Boston	4	1  x -15.89	-15.89			
+10/1/24	CRD	5147	129	14	American Airlines	REFUNDS Flights Miami >> Boston	4	1  x -15.05	-15.05			
+10/1/24	CRD	5147	129	15	American Airlines	REFUNDS Flights Miami >> Boston	4	1  x -193.47	-193.47			
+10/1/24	CRD	5147	129	16	American Airlines	REFUNDS Flights Miami >> Boston	4	1  x -193.47	-193.47			
+10/1/24	CRD	5147	129	17	American Airlines	REFUNDS Flights Miami >> Boston	4	1  x -193.47	-193.47			
+10/1/24	CRD	5147	129	18	American Airlines	REFUNDS Flights Miami >> Boston	4	1  x -193.47	-193.47			
+11/6/24	CRD	5147	130	19	Airbnb	Airbnb Massachusetts	4	1  x 2,454.25	2,454.25			
+10/1/24	CRD	5147	129	20	American Airlines	Flight Miami >> Boston (DP)	4	1  x 248.53	248.53			
+10/2/24	CRD	5147	129	21	Delta Airlines	Flights Orlando >> San Diego	4	1  x 178.98	178.98			
+10/2/24	CRD	5147	129	22	Delta Airlines	Flights Orlando >> San Diego	4	1  x 178.98	178.98			
+10/2/24	CRD	5147	129	23	Delta Airlines	Flights Orlando >> San Diego	4	1  x 178.98	178.98			
+10/2/24	CRD	5147	129	24	Delta Airlines	Flights Orlando >> San Diego	4	1  x 178.98	178.98			
+10/2/24	CRD	5147	129	25	Delta Airlines	REFUNDS Flights Orlando >> San Diego	4	1  x -178.98	-178.98			
+10/2/24	CRD	5147	129	26	Delta Airlines	REFUNDS Flights Orlando >> San Diego	4	1  x -178.98	-178.98			
+10/2/24	CRD	5147	129	27	Delta Airlines	REFUNDS Flights Orlando >> San Diego	4	1  x -178.98	-178.98			
+10/2/24	CRD	5147	129	28	Delta Airlines	REFUNDS Flights Orlando >> San Diego	4	1  x -178.98	-178.98			
+10/2/24	CRD	5147	129	29	Southwest Airlines	Flights Orlando >> LA	4	4  x 277.98	1,111.92			
+10/3/24	CRD	5147	128	30	American Airlines	Luggage Miami >> Boston	4	1  x 105	105.00			
+10/3/24	CRD	5147	128	31	American Airlines	Luggage Miami >> Boston	4	1  x 35	35.00			
+10/6/24	CRD	5147	130	32	Airbnb	Airbnb Orlando	4	1  x 649.39	649.39			
+10/6/24	CRD	5147	130	33	Airbnb	Airbnb San Diego	4	1  x 485.46	485.46			
+10/7/24	CRD	5147	130	34	Airbnb	REFUND Airbnb Orlando	4	1  x -377.66	-377.66			
+10/7/24	CRD	5147	130	35	Airbnb	Director Airbnb in LA	4	1  x 624.82	624.82			
+10/13/24	CRD	5147	132	36	Uber Eats	Craft Services	4	1  x 29.93	29.93			
+10/21/24	CRD	5147	136	37	Uber	Uber to Jeff before Airport	4	1  x 7.39	7.39			
+10/11/24	CRD	5147	128	38	United Airlines	Luggage Boston >> LA	4	1  x 40	40.00			
+9/23/24	CRD	1120	129	01	American Express	Flights NY >> Tennessee	6	1  x 380.96	380.96			
+9/26/24	CRD	1120	129	02	American Express	Flights TN >> FL	6	1  x 515.88	515.88			
+Date	Type	Pay ID	Account	ID	Vendor	Description	PO	Factors	Sub-Total $	Fringes $		
+10/2/24	CRD	1120	129	03	American Express	Flights Boston >> FL	6	1  x 852.4	852.40			
+10/7/24	CRD	1120	129	04	American Express	Flights Boston >> Burbank	6	1  x 1,835.92	1,835.92			
+9/23/24	CRD	1120	129	05	American Express	REFUND Flights Boston >> FL	6	1  x -852.4	-852.40			
+10/9/24	CRD	1120	129	06	American Express	Flight Tokyo >> LA	6	1  x 605.81	605.81			
+10/9/24	CRD	1120	129	07	American Express	Flight NY >> Tokyo	6	1  x 583.3	583.30			
+10/11/24	CRD	1120	129	09	American Express	Flight LA >> New York	6	1  x 383.1	383.10			
+10/11/24	CRD	1120	129	10	American Express	Flight LA >> NY	6	1  x 343.1	343.10			
+10/8/24	CRD	1120	129	08	American Express	Flights NY >> Tokyo	6	1  x 2,083.82	2,083.82			
+9/17/24	CRD	1138	211	01	Amazon	Hard Drives	5	1  x 616.34	616.34			
+9/29/24	CRD	1138	129	02	American Airlines	Priority Seating Flight	5	1  x 113	113.00			
+9/29/24	CRD	1138	127	04	Citgo Oil	Gas for rental car	5	1  x 46.47	46.47			
+9/30/24	CRD	1138	128	03	American Airlines	Luggage	5	1  x 40	40.00			
+10/4/24	CRD	1138	121	05	Enterprise	Car rental Miami	5	1  x 346.86	346.86			
+10/1/24	CRD	1138	133	06	Publix	Breakfast Miami	5	1  x 142.22	142.22			
+11/6/24	CRD	1138	218	07	The UPS Store	Shipping	5	1  x 16.61	16.61			
+10/2/24	CRD	1138	121	08	Turo	Car rental Massachusetts	5	1  x 1,148.69	1,148.69			
+9/27/24	CRD	1138	134	09	Wawa Greek	Set Meal Tullahoma	5	1  x 76.75	76.75			
+9/30/24	CRD	1138	128	10	American Airlines	Luggage	5	1  x 40	40.00			
+10/3/24	CRD	1138	127	11	Metropolis	Parking Miami	5	1  x 26.99	26.99			
+10/3/24	CRD	1138	127	12	Metropolis	Parking Miami	5	1  x 26.99	26.99			
+10/3/24	CRD	1138	127	13	Metropolis	Parking Miami	5	1  x 23	23.00			
+10/9/24	CRD	1138	127	14	Canal District Partners	Parking MS	5	1  x 5	5.00			
+10/12/24	CRD	1138	127	15	Enterprise	Tolls Miami	5	1  x 18.7	18.70			
+10/29/24	CRD	1138	136	16	Uber	Uber Tokyo	5	1  x 15.24	15.24			
+10/28/24	CRD	1138	136	17	Uber	Uber to airport	5	1  x 134.55	134.55			
+10/3/24	CRD	1138	133	18	Publix	Breakfast Miami	5	1  x 31.83	31.83			
+9/30/24	INV		49		David Hamilton	PA (Prep)	23	1  x 200	200.00			
+9/30/24	INV		98		David Hamilton	PA (Shoot)	23	1  x 300	300.00			
+9/30/24	INV		127		David Hamilton	Mileage Reimbursement	23	1  x 111.89	111.89			
+10/3/24	CRD	1138	134	19	Credit Card 1138	Set meal Miami	5	1  x 75.71	75.71			
+10/7/24	CRD	1138	132	20	Price Chopper	Crafty Massachusetts	5	1  x 41.04	41.04			
+10/3/24	CRD	1138	132	21	Shell	Craft Services	5	1  x 18.91	18.91			
+9/27/24	CRD	1138	132	22	Publix	Craft Services	5	1  x 6.39	6.39			
+9/27/24	CRD	1138	133	23	Starbucks	Breakfast Tullahoma	5	1  x 27.93	27.93			
+10/9/24	CRD	1138	133	24	Starbucks	Breakfast MS	5	1  x 28.57	28.57			
+10/9/24	CRD	1138	134	25	Shawarma Palace	Set meal MS	5	1  x 85.58	85.58			
+10/27/24	CRD	1138	133	31	Starbucks	Breakfast Tullahoma	5	1  x 3.24	3.24			
+10/9/24	CRD	1138	181	26	Cake Shop Cafe	Props	5	1  x 42.97	42.97			
+10/9/24	CRD	1138	127	27	Energy North Webster	Gas for MS rental car	5	1  x 62.37	62.37			
+10/9/24	CRD	1138	133	28	Price Chopper	Breakfast MS	5	1  x 22.26	22.26			
+10/30/24	CRD	1138	136	29	Go Taxi	Taxi Tokyo	5	1  x 10.54	10.54			
+10/29/24	CRD	1138	136	30	Go Taxi	Taxi Tokyo	5	1  x 10.53	10.53			
+9/29/24	CRD	1138	121	32	Enterprise	Car rental Tennessee	5	1  x 670.73	670.73			
+10/9/24	CRD	1120	129	11	American Express	Jeff flight NY >> Tokyo	6	1  x 583.3	583.30			
+11/4/24	CRD	2003	129	07	American Express	Jeff Flight Tokyo >> LA	22	1  x 664.41	664.41			
+11/2/24	CRD	5147	193		HD House LLC	CC Fee	12	1  x 54.32	54.32			
+11/8/24	INV		2060	05	Millennialfilms	Editing Fee	8	1  x 4,500	4,500.00			
+11/8/24	INV		2080	05	Millennialfilms	Assistant Editing Fee	8	1  x 500	500.00			
+11/28/24	CRD	1120	129	12	American Airlines	Flight change	6	1  x 20	20.00			
+10/11/24	CRD	5147	128	39	United Airlines	Luggage Boston >> LA	4	1  x 40	40.00			
+10/11/24	CRD	5147	128	41	United Airlines	Luggage Boston >> LA	4	1  x 40	40.00			
+Date	Type	Pay ID	Account	ID	Vendor	Description	PO	Factors	Sub-Total $	Fringes $		
+10/11/24	CRD	5147	128	40	United Airlines	Luggage Boston >> LA	4	1  x 40	40.00			
+9/26/24	CRD	5147	130	07	Airbnb	Airbnb Miami	4	1  x 882.2	882.20			
+11/6/24	CRD	1138	132	34	Aldi	Crafty	5	1  x 106.55	106.55			
+9/26/24	CRD	1138	208	35	Walmart	Expendables (Waterproofing)	5	1  x 27.34	27.34			
+9/24/24	CRD	1138	121	36	Expedia	Car rentals (deposit for Nashville car)	5	1  x 50	50.00			
+11/6/24	INV		2080		Like It's Hot LLC	Assistant Editor	25	2  x 500	1,000.00			
+								TOTAL	121,787.93	 		

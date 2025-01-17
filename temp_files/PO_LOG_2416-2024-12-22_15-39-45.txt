@@ -1,0 +1,297 @@
+Date	Type	Pay ID	Account	ID	Vendor	Description	PO	Factors	Sub-Total $	Fringes $	
+	
+11/6/24	PRJ		4230		AUDIO PLACEHOLDER		80	1  x 5,000	5,000.00		
+11/6/24	EFT		5020		Powell Visual	Color Grading	81	1  x 3,000	3,000.00		
+11/6/24	PRJ		8010		EDITORIAL PLACEHOLDER		82	1  x 5,500	5,500.00		
+12/6/24	EFT		9001		Mohammadmahdi Asghari 	VFX	83	1  x 10,000	10,000.00		
+11/6/24	PRJ		227		DIRECTOR PLACEHOLDER		86	1  x 5,600	5,600.00		
+11/6/24	PRJ		001		CREATIVE DEVELOPMENT PLACEHOLDER		87	1  x 15,035.5	15,035.50		
+9/23/24	INV		007	01	Blake Bohls	Production Retainer	56	1  x 2,400	2,400.00		
+10/15/24	INV		007	02	Blake Bohls	Storyboards	56	1  x 2,240	2,240.00		
+10/23/24	INV		007	03	Blake Bohls	Storyboards	56	1  x 75	75.00		
+10/11/24	INV		206		Gotham City Drones, Inc	Drone operator and rental deposit	06	1  x 700	700.00		
+11/4/24	INV		206	01	Airborne Studios, LLC	Drone deposit	57	1  x 890	890.00		
+11/4/24	INV		206	02	Airborne Studios, LLC	Drone remaining fee	57	1  x 3,560	3,560.00		
+10/23/24	INV	PAID	155	01	Be Electric Studios LLC	Studio Package	07	1  x 56,841	56,841.00		
+10/23/24	INV		155	02	Be Electric Studios LLC	Additional Studio Rentals	07	1  x 1,183.31	1,183.31		
+10/23/24	INV		156	04	Be Electric Studios LLC	Studio Overtime	07	4  x 350	1,400.00		
+10/23/24	INV		204	02	Be Electric Studios LLC	Production Supply Adds	07	1  x 532.4	532.40		
+10/21/24	CRD	8738	181		Robert Taylor And Co LLC	Flats rentals	09	1  x 2,000	2,000.00		
+10/28/24	INV		43		Ryan Piotrowicz	Location Manager	10	4 days x 850	3,400.00		
+11/8/24	INV		207		Ryan Piotrowicz	Location Manager Kit Fees	10	4 days x 50	200.00		
+10/21/24	INV		43		Wolfgang Herting	Location Manager	11	1 days x 900	900.00		
+10/23/24	CRD	7787	133		My Kitchen Witch	Shoot Day Breakfast	12	1  x 1,079.79	1,079.79		
+10/28/24	CRD	1138	201		Tracking Shot	Dolly rental and delivery	13	1  x 1,535.14	1,535.14		
+10/29/24	CRD	8738	119		Courier Car Rental, Inc.	Truck rental	14	1  x 1,200	1,200.00		
+10/29/24	CRD	8738	119		Courier Car Rental, Inc.	Truck rental	14	1  x 200.6	200.60		
+10/25/24	CRD	8738	119		Courier Car Rental, Inc.	Truck rental	14	1  x 69.3	69.30		
+11/1/24	CRD	8738	119		Courier Car Rental, Inc.	Truck rental	14	1  x 59.88	59.88		
+10/29/24	CRD	8738	187		Street Team Studios LLC	Art production supplies for trucking	15	1  x 100.15	100.15		
+10/24/24	EFT		193		New York City Camera, Inc.	Camera Rental	16	1  x 4,396.2	4,396.20		
+10/25/24	EFT		193		New York City Camera, Inc.	Camera Rental Adds	16	1  x 612.05	612.05		
+11/5/24	INV		3		Adam Braun Productions LLC	Production Coordinator (Prep)	18	7 days x 450	3,150.00		
+11/5/24	INV		53		Adam Braun Productions LLC	Production Coordinator (Shoot)	18	1 days x 594.63	594.63		
+11/5/24	INV		006		Adam Braun Productions LLC	Bidding Producer	18	1 days x 500	500.00		
+11/5/24	INV		132		Adam Braun Productions LLC	Reimbursements	18	1 1 x 25.12	25.12		
+10/27/24	INV		38	01	Diane Lac	Photographer (Prep)	19	1  x 650	650.00		
+10/27/24	INV		88	01	Diane Lac	Photographer (Shoot)	19	1  x 650	650.00		
+10/27/24	INV		136	01	Diane Lac	Reimbursements	19	1  x 219.71	219.71		
+10/27/24	INV		75		Karen Roy	Hair and Makeup Artist	20	1  x 700	700.00		
+10/27/24	INV		148		Karen Roy	Hair and Makeup Artist	20	1  x 100	100.00		
+11/4/24	INV		4		Jordan Sakai	Director of Photography (Prep)	21	1  x 2,500	2,500.00		
+Date	Type	Pay ID	Account	ID	Vendor	Description	PO	Factors	Sub-Total $	Fringes $	
+11/4/24	INV		54		Jordan Sakai	Director of Photography (Shoot)	21	1  x 2,500	2,500.00		
+11/1/24	INV		17		Dwane Harris	BBG (Prelight)	22	1  x 893.75	893.75		
+11/1/24	INV		67		Dwane Harris	BBG (Shoot)	22	1  x 796.25	796.25		
+11/1/24	INV		17		Dwane Harris	BBG (Strike)	22	1  x 650	650.00		
+10/29/24	INV		172		Cynthia Jelke	Set Dresser (Strike)	23	1  x 250	250.00		
+10/29/24	INV		172		Cynthia Jelke	Set Dresser (Strike)	23	1  x 250	250.00		
+10/29/24	INV		172		Cynthia Jelke	Set Dresser (Shoot)	23	1  x 400	400.00		
+10/28/24	INV		170		Brandon Goodwin	Leadman	24	1  x 500	500.00		
+10/29/24	INV		28		Valentina Torresi	Wardrobe Assistant (Wrap)	25	1  x 250	250.00		
+10/29/24	INV		78		Valentina Torresi	Wardrobe Assistant (Shoot)	25	1  x 250	250.00		
+10/28/24	INV		89		Alec Luu	Photo Assist	26	1  x 600	600.00		
+10/28/24	INV		207		Alec Luu	Photo Assist Kit Fee	26	1 days x 200	200.00		
+10/30/24	INV		109		Background, Inc.	Casting Fees	27	1  x 1,385	1,385.00		
+10/30/24	INV		28		Kristen Mom	Stylist Assistant (Prep)	28	3 days x 350	1,050.00		
+10/30/24	INV		28		Kristen Mom	Stylist Assistant (Wrap)	28	2 days x 350	700.00		
+10/30/24	INV		78		Kristen Mom	Stylist Assistant (Shoot)	28	1 days x 350	350.00		
+10/30/24	INV		28		Kristen Mom	Stylist Assistant (Fitting (shoot on invoice))	28	1 days x 350	350.00		
+10/30/24	INV		148		Kristen Mom	Stylist Assistant (Shoot)	28	2 days x 50	100.00		
+10/31/24	INV		76		Mia Varrone	Hair and Makeup Assistant	29	1  x 650	650.00		
+10/31/24	INV		148		Mia Varrone	Hair and Makeup Assistant Kit Fee	29	1  x 50	50.00		
+10/31/24	INV		169		Luke Polihrom	Set Decorator (Prep)	30	6 days x 650	3,900.00		
+10/31/24	INV		169		Luke Polihrom	Set Decorator (Wrap)	30	1 days x 650	650.00		
+10/31/24	INV		169		Luke Polihrom	Set Decorator (Shoot)	30	1 days x 650	650.00		
+10/31/24	INV		73		Sawyer Oubre	Steadicam Operator	31	1  x 1,500	1,500.00		
+10/31/24	INV		205		Sawyer Oubre	Steadicam Rental	31	1  x 1,500	1,500.00		
+10/31/24	INV		136		Sawyer Oubre	Reimbursements	31	1  x 32.93	32.93		
+11/1/24	INV		8		Julianne Salemy	2nd AD (Fitting)	33	1  x 600	600.00		
+11/1/24	INV		58		Julianne Salemy	2nd AD (Shoot)	33	1  x 664.28	664.28		
+11/1/24	INV		13		Lucas A Becker-Lowe	3rd Electric (Strike)	34	1  x 650	650.00		
+11/1/24	INV		63		Lucas A Becker-Lowe	3rd Electric (Shoot)	34	1  x 787.07	787.07		
+11/1/24	INV		5		Hannah Lee	1st AC (Prep)	35	1  x 700	700.00		
+11/1/24	INV		5		Hannah Lee	1st AC (Shoot)	35	1  x 852.17	852.17		
+11/1/24	INV		207		Hannah Lee	1st AC Kit Fee	35	1  x 100	100.00		
+11/4/24	INV		98		Kyle Camacho	Production Assistant (Shoot)	36	1  x 300	300.00		
+11/4/24	INV		28		Dot Bass	Wardrobe Assistant (Measurements)	37	1  x 300	300.00		
+10/30/24	INV		27		Suthee Ritthaworn	Wardrobe Stylist (Prep)	38	3 days x 700	2,100.00		
+10/30/24	INV		27		Suthee Ritthaworn	Wardrobe Stylist (Fitting)	38	1 days x 945	945.00		
+10/30/24	INV		27		Suthee Ritthaworn	Wardrobe Stylist (Wrap)	38	2 days x 700	1,400.00		
+10/30/24	INV		77		Suthee Ritthaworn	Wardrobe Stylist (Shoot)	38	1 days x 910	910.00		
+10/30/24	INV		148		Suthee Ritthaworn	Wardrobe Stylist Kit Rental	38	2 days x 100	200.00		
+11/1/24	INV		48	01	Lukas Lennon	Production Assistant (Prep)	39	2  x 300 + $32.14 OT	632.14		
+11/1/24	INV		48	01	Lukas Lennon	Production Assistant (Wrap)	39	1  x 300	300.00		
+11/1/24	INV		98	01	Lukas Lennon	Production Assistant (Shoot)	39	1  x 400 + $42.86 OT	442.86		
+11/5/24	INV		132	02	Lukas Lennon	Reimbursements (Crafty)	39	1  x 217.36	217.36		
+11/5/24	INV		141	02	Lukas Lennon	Reimbursements (Art)	39	1  x 133.46	133.46		
+11/5/24	INV		136	02	Lukas Lennon	Reimbursements (Uber)	39	1  x 19.58	19.58		
+Date	Type	Pay ID	Account	ID	Vendor	Description	PO	Factors	Sub-Total $	Fringes $	
+10/28/24	INV		18		Maurice Guadalupe	3rd Grip (Prelight)	40	1  x 818.16	818.16		
+10/28/24	INV		16		Jesus Sanchez	Key Grip (Prep)	41	1  x 700	700.00		
+10/28/24	INV		16		Jesus Sanchez	Key Grip (Strike)	41	1  x 700	700.00		
+10/28/24	INV		16		Jesus Sanchez	Key Grip (Prelight)	41	1  x 962.5	962.50		
+10/28/24	INV		66		Jesus Sanchez	Key Grip (Shoot)	41	1  x 857.5	857.50		
+10/29/24	INV		7		Will Hudson	1st AD (Prep)	42	1.5 days x 1,300	1,950.00		
+10/29/24	INV		57		Will Hudson	1st AD (Shoot)	42	1 days x 1,300	1,300.00		
+10/29/24	INV		48		Contstantina Tzikas	Production Assistant (Wrap)	43	1  x 300	300.00		
+10/29/24	INV		98		Contstantina Tzikas	Production Assistant (Shoot)	43	1  x 300	300.00		
+10/29/24	INV		136		Contstantina Tzikas	Reimbursement (Uber)	43	1  x 30.9	30.90		
+10/29/24	INV		173		Alexia Towle	Painter/Set Decorator	44	1  x 300	300.00		
+10/29/24	INV		80		Trevor Misplay	Sound Mixer	45	1  x 700	700.00		
+10/29/24	INV		197		Trevor Misplay	Sound Mixer Equipment	45	1  x 650	650.00		
+10/30/24	INV		28		Jaden James	Wardrobe Assistant (Prep)	46	1  x 250	250.00		
+10/30/24	INV		28		Jaden James	Wardrobe Assistant (Prep)	46	1  x 250	250.00		
+10/31/24	INV		98		Stevie Wachtler	AD PA	47	1  x 300 + $42.86 OT	342.86		
+11/4/24	INV		168		Renna Pilar Hidalgo	Production Designer Flat Rate	48	1  x 4,000	4,000.00		
+11/5/24	INV		90	01	Han Nguyen	BTS Photographer	49	1  x 900	900.00		
+11/5/24	INV		172		Robie Scola	Set Dresser (Build)	50	1  x 400	400.00		
+11/5/24	INV		172		Robie Scola	Set Dresser (Shoot)	50	1  x 400	400.00		
+11/7/24	INV		008		Nadera Herbert-Bey	Executive Assistant	51	1  x 300	300.00		
+11/5/24	PRJ		12		Leanna Culver	BBE (Prelight)	52	1  x 650 + $299.00 OT	949.00		
+11/5/24	PRJ		62		Leanna Culver	BBE (Shoot)	52	1  x 650 + $195.00 OT	845.00		
+11/5/24	PRJ		137		Leanna Culver	BBE Kit Rental	52	2  x 200	400.00		
+10/6/24	INV		178		Abigail Harris	Set Assist / Truck Driver (Prep, Shoot, Wrap)	53	3 days x 250	750.00		
+10/6/24	INV		175		Abigail Harris	Scenic (Prep)	53	1  x 450	450.00		
+11/6/24	INV		172		Cyrus Gainer	Set Decorator	54	2 days x 400	800.00		
+11/7/24	INV		170		Natalia Ferrara	Leadman (Build, Shoot, Strike, Returns)	55	4 days x 500	2,000.00		
+11/8/24	INV		56		Allie Acono	2nd AC (Shoot)	58	1  x 853.12	853.12		
+11/8/24	INV		207		Allie Acono	2nd AC Kit Fee	58	1 days x 100	100.00		
+11/11/24	INV		11		Austin LoCicero	Gaffer (Scout)	59	1 days x 700	700.00		
+11/11/24	INV		11		Austin LoCicero	Gaffer (Prelight)	59	1 days x 700	700.00		
+11/11/24	INV		61		Austin LoCicero	Gaffer (Shoot)	59	1 days x 700 + 146.25 Misc	846.25		
+11/10/24	INV		12		Xhiba Curtis	3rd Electric (Strike)	60	1  x 650	650.00		
+11/8/24	INV		220		Ashlea Mayne	"Hiker #1" (Shoot)	63	1  x 300	300.00		
+11/8/24	INV		220		Sidney Paige Jenkins	"Hiker #2" (Shoot)	64	1  x 300	300.00		
+11/8/24	INV		220		Jeffrey Rivadeneyra	"Tennis Court Sweeper" (Shoot)	66	1  x 300	300.00		
+11/8/24	INV		218		Isadora Amorim	"Travel Guide" (Shoot)	67	1  x 450	450.00		
+11/8/24	INV		218		Javier Freire	"Fitness Shop Owner" (Shoot)	68	1  x 450	450.00		
+11/8/24	INV		217		Javier Freire	"Fitness Shop Owner" (Fitting)	68	1  x 225	225.00		
+11/8/24	INV		217		Isadora Amorim	"Travel Guide" (Fitting)	67	1  x 225	225.00		
+11/8/24	INV		219		Jeffrey Rivadeneyra	"Tennis Court Sweeper" (Fitting)	66	1  x 150	150.00		
+11/8/24	INV		220		Alina Pazynych	"Hiker #3" (Shoot)	65	1  x 300	300.00		
+11/8/24	INV		219		Ashlea Mayne	"Hiker #1" (Fitting)	63	1  x 150	150.00		
+Date	Type	Pay ID	Account	ID	Vendor	Description	PO	Factors	Sub-Total $	Fringes $	
+11/8/24	INV		220		Sydney Elizabeth	"Content Agency Employee #3" (Shoot)	62	1  x 300	300.00		
+11/8/24	INV		219		Sydney Elizabeth	"Content Agency Employee #3" (Fitting)	62	1  x 150	150.00		
+11/8/24	INV		220		Sekou Conde	"Content Agency Employee #2" (Shoot)	61	1  x 300	300.00		
+11/8/24	INV		219		Sekou Conde	"Content Agency Employee #2" (Fitting)	61	1  x 150	150.00		
+10/24/24	CRD	8738	181		State Supply	Set Dressing Rentals	69	1  x 762.13	762.13		
+10/24/24	CRD	8738	181		American Foliage	Set Dressing/Greenery rentals	70	1  x 1,162.21	1,162.21		
+10/23/24	CRD	7787	134		My Kitchen Witch	Shoot Day Lunch	12	1  x 1,079.79	1,079.79		
+11/18/24	INV		2		Stephen Michael Nicholas	Producer (Prep/Wrap)	72	9  x 800	7,200.00		
+11/18/24	INV		52		Stephen Michael Nicholas	Producer (Shoot)	72	1  x 800	800.00		
+11/8/24	INV		1		Sho Schrock-Manabe	Producer (Prep/Wrap)	08	9  x 800	7,200.00		
+11/8/24	INV		51		Sho Schrock-Manabe	Producer (Shoot)	08	1  x 800	800.00		
+11/8/24	INV		136		Sho Schrock-Manabe	Reimbursements	08	1  x 35.55	35.55		
+10/25/24	CRD	8738	181		Oliphant Studio	Backdrop Rental, Set Dressin	71	1  x 626.03	626.03		
+10/6/24	CRD	1120	102	01	American Express	Airfares - Producers	05	1  x 646.2	646.20		
+10/6/24	CRD	1120	102	02	American Express	Airfares - Producers	05	1  x 168.1	168.10		
+10/6/24	CRD	8738	102	01	Airbnb	Airbnb - Producers	02	1  x 2,341.47	2,341.47		
+10/17/24	CRD	8738	211	02	Amazon	Hard Drives	02	1  x 650.12	650.12		
+10/17/24	CRD	8738	208	03	Amazon	Expendables	02	1  x 14.28	14.28		
+10/21/24	CRD	8738	211	04	Amazon	Hard Drives	02	1  x 646.42	646.42		
+10/21/24	CRD	8738	208	05	Amazon	Expendables	02	1  x 18.28	18.28		
+10/25/24	CRD	8738	132	06	Amazon	Craft Services	02	1  x 435.11	435.11		
+10/22/24	CRD	8738	226	07	New York State Department of Labor	Child Labor Permit	02	1  x 360.47	360.47		
+10/24/24	CRD	8738	112	08	Uber Eats	Coffee	02	1  x 38.73	38.73		
+10/25/24	CRD	8738	136	09	Uber	Uber	02	1  x 18.95	18.95		
+10/25/24	CRD	8738	134	10	Chipotle	Prelight Day Lunch	02	1  x 473	473.00		
+10/25/24	CRD	8738	133	11	Cater Cow	Build Day Breakfast	02	1  x 291.67	291.67		
+10/26/24	CRD	8738	133	12	Cater Cow	Prelight Day Breakfast	02	1  x 363.71	363.71		
+11/8/24	CRD	8738	133	13	Sharegrid	Teleprompter Rental	02	1  x 102.23	102.23		
+10/25/24	CRD	8738	134	14	Doordash	Build Day Lunch	02	1  x 278.47	278.47		
+10/25/24	INV		134	15	Adam Braun Productions LLC	Build Day Lunch Reimbursement	18	1  x 43.66	43.66		
+10/26/24	CRD	8738	132	16	Amazon	Craft Services	02	1  x 111.09	111.09		
+10/27/24	CRD	8738	133	17	Cater Cow	Shoot Day Breakfast	02	1  x 289.16	289.16		
+10/28/24	CRD	8738	133	18	Doordash	Strike Day Breakfast	02	1  x 89.64	89.64		
+10/28/24	CRD	8738	134	19	Doordash	Strike Day Lunch	02	1  x 334.89	334.89		
+10/29/24	CRD	8738	211	20	Amazon	Hard Drives REFUND	02	1  x -325.06	-325.06		
+10/29/24	CRD	8738	211	21	Amazon	Hard Drives REFUND	02	1  x -325.06	-325.06		
+10/21/24	CRD	1138	136	01	Uber	Uber	03	1  x 24.97	24.97		
+10/21/24	CRD	1138	136	02	Uber	Uber	03	1  x 19.94	19.94		
+10/21/24	CRD	1138	136	03	Uber	Uber	03	1  x 24.96	24.96		
+10/25/24	CRD	1138	132	05	Atlantis Fresh Market	Craft Services	03	1  x 30.19	30.19		
+10/25/24	CRD	1138	133	06	Dunkin	Coffee	03	1  x 30.47	30.47		
+10/25/24	CRD	1138	133	07	Three Legged Cat	Coffee	03	1  x 27	27.00		
+10/25/24	CRD	1138	136	08	Uber	Uber	03	1  x 16.73	16.73		
+10/25/24	CRD	1138	181	09	The Home Depot	Set Dressing Purchases	03	1  x 131.99	131.99		
+10/25/24	CRD	1138	181	10	Uber	Uber	03	1  x 22.97	22.97		
+10/25/24	CRD	1138	132	11	Atlantis Fresh Market	Office Supplies	03	1  x 3.26	3.26		
+10/25/24	CRD	1138	133	12	Dunkin	Breakfast	03	1  x 15.49	15.49		
+10/26/24	CRD	1138	132	13	Atlantis Fresh Market	Craft Services	03	1  x 16.63	16.63		
+10/27/24	CRD	1138	136	14	Uber	Uber	03	1  x 7.56	7.56		
+Date	Type	Pay ID	Account	ID	Vendor	Description	PO	Factors	Sub-Total $	Fringes $	
+10/27/24	CRD	1138	133	15	Three Legged Cat	Coffee	03	1  x 50	50.00		
+10/27/24	CRD	1138	135	16	TA Gourmet Deli	Dinner	03	1  x 11.96	11.96		
+10/26/24	CRD	1138	136	17	Uber	Uber	03	1  x 20.82	20.82		
+10/27/24	CRD	1138	136	18	Uber	Uber	03	1  x 20.96	20.96		
+10/29/24	CRD	1138	136	19	Uber	Uber	03	1  x 44.95 + 4.49 Misc	49.44		
+10/28/24	CRD	1138	136	21	Uber	Uber	03	1  x 28.93	28.93		
+10/27/24	CRD	1138	136	22	Uber	Uber	03	1  x 21.96	21.96		
+10/28/24	CRD	1138	136	23	Uber	Uber	03	1  x 24.92	24.92		
+10/25/24	CRD	1138	112	24	Uber	Working Meal	03	1  x 33.41	33.41		
+10/24/24	CRD	1138	112	25	Uber	Working Meal	03	1  x 35.94	35.94		
+10/20/24	CRD	1138	112	26	Uber	Working Meal	03	1  x 32.42	32.42		
+10/22/24	CRD	1138	112	27	Uber	Working Meal	03	1  x 33.36	33.36		
+10/22/24	CRD	1138	112	28	Uber	Working Meal	03	1  x 27.02	27.02		
+10/23/24	CRD	1138	112	29	Uber	Working Meals	03	1  x 27.82	27.82		
+10/26/24	CRD	1138	112	30	Uber	Working Meals	03	1  x 43.1	43.10		
+10/22/24	CRD	1138	112	31	Uber	Working Meals	03	1  x 43.57	43.57		
+10/23/24	CRD	1138	112	32	Uber	Working Meals	03	1  x 41.19	41.19		
+10/21/24	CRD	1138	112	33	Uber	Working Meals	03	1  x 36.47	36.47		
+10/26/24	CRD	1138	181	34	Best Buy	Streamer setup, set dressing	03	1  x 2,408.11	2,408.11		
+10/28/24	CRD	1138	181	35	Best Buy	Streamer setup, set dressing REFUND	03	1  x -2,098.95	-2,098.95		
+10/26/24	CRD	1138	181	36	Staples	Set dressing purchases	03	1  x 145.56	145.56		
+10/26/24	CRD	1138	127	37	Atlantic Center Mall	Parking	03	1  x 5	5.00		
+10/27/24	CRD	1138	208	38	Bravo Supermarket	Production Expendables	03	1  x 34.27	34.27		
+10/27/24	CRD	1138	132	39	CVS Pharmacy	Throat soothing items	03	1  x 21.17	21.17		
+10/27/24	CRD	1138	132	41	Late Night 905	Craft Services, redbull etc	03	1  x 56.97	56.97		
+10/26/24	CRD	1138	145	43	Vuori	Wardrobe	03	1  x 214	214.00		
+10/28/24	CRD	1138	145	44	Vuori	Wardrobe RETURN	03	1  x -136	-136.00		
+10/24/24	CRD	1138	145	45	Uniqlo	Wardrobe	03	1  x 673.4	673.40		
+10/28/24	CRD	1138	145	46	Uniqlo	Wardrobe REFUND	03	1  x -493.8	-493.80		
+10/24/24	CRD	1138	145	47	Cotton On	Wardrobe	03	1  x 200.07	200.07		
+10/28/24	CRD	1138	145	48	Cotton On	Wardrobe REFUND	03	1  x -149.97	-149.97		
+10/20/24	CRD	1138	112	49	Loteria	Working Meal - Airport	03	1  x 66.64	66.64		
+10/25/24	CRD	1138	145	50	Cotton On	Wardrobe	03	1  x 202.51	202.51		
+10/28/24	CRD	1138	145	51	Cotton On	Wardrobe REFUND	03	1  x -166.41	-166.41		
+10/20/24	CRD	1138	136	52	Curb Mobility	Taxi from airport - Producers	03	1  x 43.65	43.65		
+10/25/24	CRD	1138	208	53	Atlantis Fresh Market	Production Expendables	03	1  x 16.95	16.95		
+10/21/24	CRD	1138	110	54	Staples	Office Supplies, Printer Ink	03	1  x 90.36	90.36		
+10/26/24	CRD	1138	145	55	Athleta	Wardrobe	03	1  x 176	176.00		
+10/29/24	CRD	1138	145	56	Athleta	Wardrobe REFUND	03	1  x -176	-176.00		
+10/28/24	CRD	1138	145	57	Nordstrom Rack	Wardrobe REFUND	03	1  x -39.97	-39.97		
+10/25/24	CRD	1138	145	58	Nordstrom Rack	Wardrobe	03	1  x 328.85	328.85		
+10/21/24	CRD	1138	110	59	Staples	Printing	03	1  x 93.63	93.63		
+10/24/24	CRD	1138	101	60	JetBlue	Luggage	03	1  x 150	150.00		
+10/24/24	CRD	1138	145	61	H&M	Wardrobe	03	1  x 295.9	295.90		
+10/29/24	CRD	1138	145	62	H&M	Wardrobe REFUND	03	1  x -229.94	-229.94		
+10/25/24	CRD	1138	145	63	Urban Outfitters	Wardrobe	03	1  x 189.22	189.22		
+10/28/24	CRD	1138	145	64	Urban Outfitters	Wardrobe	03	1  x -174.22	-174.22		
+10/24/24	CRD	1138	145	65	Zara	Wardrobe	03	1  x 270.2	270.20		
+10/24/24	CRD	1138	145	66	Zara	Wardrobe	03	1  x 1,600.46	1,600.46		
+10/24/24	CRD	1138	112	67	Mangia	Working Meal - Wardrobe	03	1  x 10.8	10.80		
+10/25/24	CRD	1138	112	68	Mangia	Working Meal - Wardrobe	03	1  x 23.35	23.35		
+Date	Type	Pay ID	Account	ID	Vendor	Description	PO	Factors	Sub-Total $	Fringes $	
+10/28/24	CRD	1138	145	69	Zara	Wardrobe REFUND	03	1  x -1,301.06	-1,301.06		
+10/28/24	CRD	1138	145	70	Zara	Wardrobe REFUND	03	1  x -85.8	-85.80		
+10/29/24	CRD	1138	145	71	Zara	Wardrobe REFUND	03	1  x -869.68	-869.68		
+10/28/24	CRD	1138	145	75	Zara	Wardrobe REFUND	03	1  x -616	-616.00		
+10/25/24	CRD	1138	145	76	Zara	Wardrobe	03	1  x 715.91	715.91		
+10/25/24	CRD	1138	145	77	Zara	Wardrobe	03	1  x 1,115.61	1,115.61		
+10/23/24	CRD	1138	181	72	Amazon	Set Dressing purchases	03	1  x 294.59	294.59		
+10/23/24	CRD	1138	181	73	Amazon	Set dressing purchases	03	1  x 113.12	113.12		
+10/23/24	CRD	1138	181	74	The Home Depot	Set Dressing purchases	03	1  x 1,166.86	1,166.86		
+11/11/24	INV		207		Austin LoCicero	Gaffer Kit Rental	59	2  x 200	400.00		
+10/23/24	CRD	8738	181	22	Amazon	Set Dressing Purchases	02	1  x 18.6	18.60		
+10/23/24	CRD	8738	181	23	Amazon	Set Dressing Purchases	02	1  x 1,555.99	1,555.99		
+10/22/24	CRD	8738	181	24	Amazon	Set Dressing Purchases	02	1  x 167.66	167.66		
+10/22/24	CRD	8738	181	25	Amazon	Set Dressing Purchases	02	1  x 1,280.45	1,280.45		
+10/23/24	CRD	8738	181	26	Amazon	Set Dressing Purchases	02	1  x 65.31	65.31		
+10/25/24	CRD	8738	181	27	Amazon	Set Dressing Purchases	02	1  x 218.32	218.32		
+10/26/24	PC	PC_2416_03	145		Rag & Bone	Wardrobe		1  x 2,231.94	2,231.94		
+10/28/24	PC	PC_2416_03	145		Rag & Bone	Wardrobe REFUND		1  x -1,537.32	-1,537.32		
+10/26/24	PC	PC_2416_04	136	01	Uber	Uber		1  x 26.93	26.93		
+10/26/24	PC	PC_2416_04	136	02	Uber	Uber		1  x 35.96	35.96		
+10/26/24	PC	PC_2416_04	136	03	Uber	Uber		1  x 33.98	33.98		
+10/26/24	PC	PC_2416_04	136	04	Uber	Uber		1  x 50.57	50.57		
+10/26/24	PC	PC_2416_04	136	05	Uber	Uber		1  x 27.01	27.01		
+10/26/24	PC	PC_2416_04	136	06	Uber	Uber		1  x 45.97	45.97		
+10/26/24	PC	PC_2416_04	136	07	Uber	Uber		1  x 43.95	43.95		
+10/28/24	CRD	7787	145	02	Uniqlo	Wardrobe	73	1  x 847.6	847.60		
+10/29/24	CRD	7787	145	08	Uniqlo	Wardrobe REFUND	73	1  x -847.5	-847.50		
+10/28/24	CRD	7787	136	06	Uber	Uber	73	1  x 3.44	3.44		
+10/28/24	CRD	7787	145	09	Target	Wardrobe REFUND	73	1  x -44.96	-44.96		
+10/28/24	CRD	7787	136	04	Uber	Uber	73	1  x 22.95	22.95		
+10/28/24	CRD	7787	136	05	Uber	Uber	73	1  x 26.36	26.36		
+10/28/24	CRD	7787	136	10	Uber	Uber	73	1  x 34.47	34.47		
+10/28/24	CRD	7787	145	03	Target	Wardrobe	73	1  x 44.96	44.96		
+10/28/24	PC	PC_2416_02	181	01	Amazon	Set Dressing Purchases		1  x 15.18	15.18		
+10/25/24	PC	PC_2416_02	136	02	Uber	Uber		1  x 22.02	22.02		
+10/26/24	PC	PC_2416_02	136	03	Uber	Uber		1  x 29.41	29.41		
+10/26/24	PC	PC_2416_02	136	04	Uber	Uber		1  x 22.98	22.98		
+10/27/24	PC	PC_2416_02	136	05	Uber	Uber		1  x 39.93	39.93		
+10/28/24	PC	PC_2416_02	136	06	Uber	Uber		1  x 24.03	24.03		
+10/30/24	PC	PC_2416_02	136	07	Uber	Uber		1  x 15.99	15.99		
+10/30/24	PC	PC_2416_02	136	08	Uber	Uber		1  x 24.04	24.04		
+11/22/24	INV		48	02	Han Nguyen	PA - Drone footage handoff	49	1  x 200	200.00		
+Date	Type	Pay ID	Account	ID	Vendor	Description	PO	Factors	Sub-Total $	Fringes $	
+11/14/24	INV		8090	02	Diane Lac	Photo retouching	19	1  x 750	750.00		
+11/18/24	INV		136		Stephen Michael Nicholas	Uber - NYC Airport Transfer	72	1  x 92.4	92.40		
+11/18/24	INV		136		Stephen Michael Nicholas	Uber - NYC Airport Transfer	72	1  x 126.5	126.50		
+11/18/24	INV		207		Stephen Michael Nicholas	Kit Fee	72	1  x 200	200.00		
+11/18/24	INV		101		Stephen Michael Nicholas	Luggage	72	1  x 45	45.00		
+11/18/24	INV		101		Stephen Michael Nicholas	Luggage	72	1  x 60	60.00		
+12/10/24	EFT		10000-1		David Lee	Motion Graphics	04	1  x 12,000	12,000.00		
+12/10/24	EFT		10000-2		David Lee	Motion Graphics	04	1  x 6,000	6,000.00		
+12/10/24	EFT		002		David Lee	Art Director	04	1  x 36,000	36,000.00		
+12/10/24	EFT		003		David Lee	Art Director	04	1  x 900	900.00		
+12/11/24	EFT		004		Juan Felipe Diaz Herrera	PM	74	8 weeks x 2,000	16,000.00		
+12/11/24	EFT		005		Juan Felipe Diaz Herrera	OT	74	1  x 1,312.5	1,312.50		
+12/16/24	CRD	8738	181	30	Target	Set Dressing Purchases	02	1  x 115.93	115.93		
+10/31/24	CRD	8738	145	31	Target	Wardrobe REFUND	02	1  x -87.1	-87.10		
+10/26/24	TMC		217	429245	Kimberly Leary	Kimberly Leary, Timecard	32	1  x 257.14 + $-32.15 OT	224.99	56.40	
+10/27/24	TMC		218	429245	Kimberly Leary	Kimberly Leary, Timecard	32	1  x 257.14 + $192.87 OT	450.01	112.79	
+11/6/24	EFT		5020		Powell Visual	DIT	81	1  x 800	800.00		
+								TOTAL	313,675.42	169.19	
