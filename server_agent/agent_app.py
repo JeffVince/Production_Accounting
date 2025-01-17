@@ -10,7 +10,7 @@ from chat_service import ChatService
 from codegen_service import _ai_log_handler
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)s:%(name)s:%(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 logger = setup_logging('agent_logger')
-dotenv.load_dotenv()
+dotenv.load_dotenv('../.env')
 
 def load_schema_instructions(models_file_path='database/models.py'):
     """

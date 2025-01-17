@@ -1,9 +1,10 @@
+<!-- ================================ 1) map_codes_view.html ================================ -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Account <-> Tax Ledger / Code Mapper</title>
-  <!-- Bootstrap CSS CDN -->
+  <title>Budget Accounts <-> Tax Ledger | Mapping System</title>
+  <!-- Bootstrap CSS -->
   <link
     rel="stylesheet"
     href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css"
@@ -21,8 +22,11 @@
       margin-top: 20px;
       margin-bottom: 40px;
     }
-    h1, h3, h4 {
+    h1 {
       font-weight: 600;
+      text-align: center;
+      margin-bottom: 24px;
+      font-size: 1.9rem;
     }
     .tab-content {
       border: 1px solid #ccc;
@@ -44,975 +48,1078 @@
       color: #000;
     }
     .mapper-panels {
-      display: flex;
-      flex-direction: row;
-      gap: 20px;
+      display: flex; flex-direction: row; gap: 20px; flex-wrap: wrap;
     }
     .panel-block {
-      flex: 1;
-      border-radius: 6px;
-      background-color: #ffffff;
-      padding: 15px;
-      border: 1px solid #e0e0e0;
-      position: relative; /* so we can position "Add Tax Code" inside it if needed */
+      flex: 1; min-width: 300px;
+      border-radius: 6px; background-color: #ffffff;
+      padding: 15px; border: 1px solid #e0e0e0; position: relative;
     }
-    .table-responsive {
-      margin-top: 10px;
-    }
+    .table-responsive { margin-top: 10px; }
     table {
-      background-color: #fff;
-      border: 1px solid #ccc;
-      border-collapse: collapse;
-      width: 100%;
+      background-color: #fff; border: 1px solid #ccc; border-collapse: collapse; width: 100%;
     }
     table th, table td {
-      border: 1px solid #dee2e6;
-      vertical-align: middle;
+      border: 1px solid #dee2e6; vertical-align: middle; padding: 8px; text-align: left;
     }
-    .table-sm th, .table-sm td {
-      padding: 8px;
-    }
-    table thead {
-      background-color: #f2f2f2;
-    }
-    .table-sm tbody tr:nth-child(odd) {
-      background-color: #ffffff;
-    }
-    .table-sm tbody tr:nth-child(even) {
-      background-color: #f9f9f9;
-    }
-    table tbody tr:hover {
-      background-color: #fafafa;
-    }
-    .sortable-header {
-      cursor: pointer;
-      text-decoration: underline;
-    }
+    table thead { background-color: #f2f2f2; }
+    .sortable-header { cursor: pointer; text-decoration: underline; }
     .assignBtn {
-      margin-top: 12px;
-      padding: 8px 14px;
-      background-color: #0071e3;
-      color: #fff;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      font-weight: 500;
-      transition: background-color 0.2s;
+      margin-top: 12px; padding: 8px 14px;
+      background-color: #0071e3; color: #fff;
+      border: none; border-radius: 6px; cursor: pointer; font-weight: 500;
+      transition: background-color 0.2s; width: 100%;
     }
-    .assignBtn:hover {
-      background-color: #005bb5;
-    }
-    .btn-action {
-      padding: 6px 10px;
-      border-radius: 4px;
-      font-size: 0.9rem;
-    }
+    .assignBtn:hover { background-color: #005bb5; }
     .assigned-counter {
-      font-size: 1rem;
-      margin-top: 1rem;
-      font-weight: 500;
-    }
-    .btn-sm-save {
-      background-color: #28a745;
-      color: #fff;
-      border: none;
-      margin-left: 8px;
-    }
-    .btn-sm-save:hover {
-      background-color: #218838;
+      font-size: 1rem; margin-top: 1rem; font-weight: 500;
     }
     /* Notification */
     #notification-container {
-      position: fixed;
-      top: 40px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 9999;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
+      position: fixed; top: 40px; left: 50%;
+      transform: translateX(-50%); z-index: 9999;
+      display: flex; flex-direction: column; align-items: center;
     }
     .notification {
-      background: #fff;
-      border: 1px solid #ccc;
-      border-radius: 6px;
-      padding: 10px 20px;
-      margin-bottom: 10px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-      animation: fadein 0.3s ease forwards;
-      font-weight: 500;
+      background: #fff; border: 1px solid #ccc; border-radius: 6px;
+      padding: 10px 20px; margin-bottom: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+      animation: fadein 0.3s ease forwards; font-weight: 500;
     }
-    .notification.success {
-      border-color: #28a745;
-    }
-    .notification.error {
-      border-color: #dc3545;
-    }
-    .fade-out {
-      animation: fadeout 0.5s ease forwards;
-    }
+    .notification.success { border-color: #28a745; }
+    .notification.error { border-color: #dc3545; }
+    .fade-out { animation: fadeout 0.5s ease forwards; }
     @keyframes fadein {
-      0% {
-        opacity: 0;
-        transform: translateY(-10px);
-      }
-      100% {
-        opacity: 1;
-        transform: translateY(0);
-      }
+      0% { opacity: 0; transform: translateY(-10px); }
+      100% { opacity: 1; transform: translateY(0); }
     }
     @keyframes fadeout {
-      0% {
-        opacity: 1;
-        transform: translateY(0);
-      }
-      100% {
-        opacity: 0;
-        transform: translateY(-10px);
-      }
+      0% { opacity: 1; transform: translateY(0); }
+      100% { opacity: 0; transform: translateY(-10px); }
     }
     /* DB Status */
     .db-status {
-      width: 16px;
-      height: 16px;
-      border-radius: 50%;
-      margin: 48px;
-      position: fixed;
-      bottom: 0px;
-      right: 0px;
-      font-family: Helvetica,sans-serif;
-      font-weight: lighter;
-      font-style: italic;
-      font-size: 9pt;
+      width: 16px; height: 16px; border-radius: 50%;
+      margin: 48px; position: fixed; bottom: 0px; right: 0px;
+      font-family: Helvetica,sans-serif; font-weight: lighter; font-style: italic; font-size: 9pt;
       overflow: visible;
     }
-    .db-status-green {
-      background-color: #28a745;
-    }
-    .db-status-red {
-      background-color: #dc3545;
-    }
+    .db-status-green { background-color: #28a745; }
+    .db-status-red { background-color: #dc3545; }
     .db-status-text {
-      position: relative;
-      left: -100px;
-      width: 200px;
+      position: relative; left: -125px; width: 200px;
     }
   </style>
 </head>
 
 <body>
-  <div class="container-fluid">
-    <!-- Title & Mapping Deletion -->
-    <div class="row align-items-center mb-3">
-      <div class="col">
-        <h1 class="my-4">Account <-> Tax Ledger / Code Mapper</h1>
-      </div>
-      <div class="col-auto">
-        <!-- New Map creation -->
-        <button class="btn btn-success" id="toggleMapBtn" title="New Map">New Map</button>
-        <button class="btn btn-light" id="cancelMapBtn">Cancel</button>
-        <!-- Delete Mapping -->
-        <button class="btn btn-danger ml-2" id="deleteMappingBtn" title="Delete a Mapping">Delete Mapping</button>
-      </div>
-    </div>
+<div class="container-fluid">
+  <h1>Budget Accounts <-> Tax Ledger | Mapping System</h1>
 
-    <!-- Intro text & instructions -->
-    <div class="row">
-      <div class="col-12">
-        <p class="lead">
-          Left side: Accounts belonging to the current Map.
-          Right side: The selected Ledger’s Tax Codes.
-          “Select All” is an emoji icon for quick multi-select.
-          “Cog” toggles edit mode for a tax record.
-          “+” near the tax table to add a new tax code.
-          “X” near the ledger to remove it.
-          You can rename the ledger in a small modal.
-        </p>
-      </div>
-    </div>
-
-    <!-- Map Tabs -->
-    <div class="row mb-3">
-      <div class="col-12">
-        <ul class="nav nav-tabs" id="mapNameTabs" role="tablist"></ul>
-      </div>
-    </div>
-
-    <!-- Tab Content -->
-    <div class="tab-content" id="mapNameTabsContent"></div>
-  </div>
-
-  <div id="dbStatusIndicator" class="db-status db-status-green" title="DB Connection OK">
-    <div class="db-status-text">DB Conn. Status</div>
-  </div>
-
-  <!-- Delete Mapping Modal -->
-  <div class="modal fade" id="deleteMappingModal" tabindex="-1" role="dialog"
-       aria-labelledby="deleteMappingModalLabel" aria-hidden="true">
-    <div class="modal-dialog" role="document">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title" id="deleteMappingModalLabel">Delete Mapping</h5>
-          <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-            <span>&times;</span>
-          </button>
-        </div>
-        <div class="modal-body">
-          <p>Type the exact name of the Map you want to delete:</p>
-          <input type="text" class="form-control" id="deleteMappingName" placeholder="Exact Map Name">
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
-          <button type="button" class="btn btn-danger" id="confirmDeleteMapping">Delete</button>
-        </div>
-      </div>
+  <!-- Top row: New Map & Delete Mapping -->
+  <div class="row mb-3">
+    <div class="col-auto">
+      <button class="btn btn-success" id="toggleMapBtn" title="New Map">New Map</button>
+      <button class="btn btn-light" id="cancelMapBtn" style="display:none;">Cancel</button>
+      <button class="btn btn-danger ml-2" id="deleteMappingBtn" title="Delete Mapping">Delete Mapping</button>
     </div>
   </div>
 
-  <!-- The hidden container for creating a new Map -->
-  <div id="mapCreationContainer" style="
-      display: none;
-      position: absolute;
-      top: 100px;
-      left: 50px;
-      background: #fff;
-      padding: 12px;
-      border: 1px solid #ccc;
-      border-radius: 6px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-      z-index: 999;
-      width: 320px;">
-    <div class="form-inline">
-      <div class="form-group mb-2">
-        <label for="newMapName" class="sr-only">New Map Name</label>
-        <input
-          type="text"
-          class="form-control"
-          id="newMapName"
-          placeholder="New Map Name"
-          required
-        >
+  <!-- Map Tabs -->
+  <div class="row mb-3">
+    <div class="col-12">
+      <ul class="nav nav-tabs" id="mapNameTabs" role="tablist"></ul>
+    </div>
+  </div>
+  <div class="tab-content" id="mapNameTabsContent"></div>
+</div>
+
+<div id="dbStatusIndicator" class="db-status db-status-green" title="DB Connection OK">
+  <div class="db-status-text">DB Connection Status</div>
+</div>
+
+<!-- Delete Mapping Modal -->
+<div class="modal fade" id="deleteMappingModal" tabindex="-1" role="dialog"
+     aria-labelledby="deleteMappingModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Delete Mapping</h5>
+        <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
       </div>
-      <div class="form-group mb-2 ml-2">
-        <label for="copyFromMapName" class="sr-only">Copy from:</label>
-        <select class="form-control" id="copyFromMapName">
-          <option value="NONE">None (create blank)</option>
-        </select>
+      <div class="modal-body">
+        <p>Type the exact name of the Map you want to delete:</p>
+        <input type="text" class="form-control" id="deleteMappingName" placeholder="Exact Map Name">
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+        <button class="btn btn-danger" id="confirmDeleteMapping">Delete</button>
       </div>
     </div>
   </div>
+</div>
 
-  <!-- Ledger Edit / Rename / Delete Modal -->
-  <div class="modal fade" id="editLedgerModal" tabindex="-1" role="dialog"
-       aria-labelledby="editLedgerModalLabel" aria-hidden="true">
-    <div class="modal-dialog" role="document">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title">Ledger Tools</h5>
-          <button type="button" class="close" data-dismiss="modal">
-            <span>&times;</span>
-          </button>
-        </div>
-        <div class="modal-body">
-          <p>Rename Ledger:</p>
-          <input type="text" class="form-control mb-3" id="renameLedgerInput" placeholder="New Ledger Name">
+<!-- Map Creation Popover -->
+<div id="mapCreationContainer" style="
+  display:none;
+  position:absolute; top:120px; left:50px; background:#fff;
+  padding:12px; border:1px solid #ccc; border-radius:6px;
+  box-shadow:0 2px 4px rgba(0,0,0,0.2); z-index:999; width:320px;">
+  <div class="form-inline">
+    <div class="form-group mb-2">
+      <label for="newMapName" class="sr-only">New Map Name</label>
+      <input
+        type="text"
+        class="form-control"
+        id="newMapName"
+        placeholder="New Map Name"
+        required
+      >
+    </div>
+    <div class="form-group mb-2 ml-2">
+      <label for="copyFromMapName" class="sr-only">Copy from:</label>
+      <select class="form-control" id="copyFromMapName">
+        <option value="NONE">None (blank)</option>
+      </select>
+    </div>
+  </div>
+</div>
 
-          <hr>
-          <p>Delete Ledger: type the name to confirm:</p>
-          <input type="text" class="form-control" id="deleteLedgerInput" placeholder="Exact Ledger Name">
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-light" data-dismiss="modal">Cancel</button>
-          <button type="button" class="btn btn-warning" id="renameLedgerBtn">Rename</button>
-          <button type="button" class="btn btn-danger" id="confirmDeleteLedgerBtn">Delete Ledger</button>
-        </div>
+<!-- New Ledger Modal -->
+<div class="modal fade" id="newLedgerModal" tabindex="-1" role="dialog"
+     aria-labelledby="newLedgerModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Create New Ledger</h5>
+        <button type="button" class="close" data-dismiss="modal">
+          <span>&times;</span>
+        </button>
+      </div>
+      <div class="modal-body">
+        <label>Ledger Name</label>
+        <input type="text" class="form-control" id="newLedgerNameInput" placeholder="Ledger Name">
+        <small class="form-text text-muted">
+          We copy from the currently selected ledger in this tab.
+        </small>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary" id="confirmNewLedgerBtn">Create</button>
       </div>
     </div>
   </div>
+</div>
 
-  <!-- Notification Container -->
-  <div id="notification-container"></div>
+<!-- Rename Ledger Modal -->
+<div class="modal fade" id="renameLedgerModal" tabindex="-1" role="dialog"
+     aria-labelledby="renameLedgerModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Rename Ledger</h5>
+        <button type="button" class="close" data-dismiss="modal">
+          <span>&times;</span>
+        </button>
+      </div>
+      <div class="modal-body">
+        <label>Old Ledger Name</label>
+        <input type="text" class="form-control mb-2" id="oldLedgerNameInput" readonly>
+        <label>New Ledger Name</label>
+        <input type="text" class="form-control" id="newLedgerNameInput2">
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+        <button class="btn btn-warning" id="renameLedgerConfirmBtn">Rename</button>
+      </div>
+    </div>
+  </div>
+</div>
 
-  <!-- Audio notifications -->
-  <audio id="successSound" src="https://www.soundjay.com/buttons/sounds/button-30.mp3" preload="auto"></audio>
-  <audio id="errorSound" src="https://www.soundjay.com/buttons/sounds/button-21.mp3" preload="auto"></audio>
+<!-- Delete Ledger Modal -->
+<div class="modal fade" id="deleteLedgerModal" tabindex="-1" role="dialog"
+     aria-labelledby="deleteLedgerModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Delete Ledger</h5>
+        <button type="button" class="close" data-dismiss="modal">
+          <span>&times;</span>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p>Type the exact name of the Ledger to delete:</p>
+        <input type="text" class="form-control" id="deleteLedgerNameInput" placeholder="Exact Ledger Name">
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+        <button class="btn btn-danger" id="deleteLedgerConfirmBtn">Delete</button>
+      </div>
+    </div>
+  </div>
+</div>
 
-  <!-- JS Dependencies -->
-  <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
+<!-- Add Tax Code Modal -->
+<div class="modal fade" id="addTaxCodeModal" tabindex="-1" role="dialog"
+     aria-labelledby="addTaxCodeModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Add New Tax Code</h5>
+        <button type="button" class="close" data-dismiss="modal">
+          <span>&times;</span>
+        </button>
+      </div>
+      <div class="modal-body">
+        <label>Tax Code</label>
+        <input type="text" class="form-control mb-2" id="newTaxCodeInput" placeholder="Tax Code">
+        <label>Description</label>
+        <input type="text" class="form-control" id="newTaxDescInput" placeholder="Description (optional)">
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+        <button class="btn btn-info" id="confirmAddTaxCodeBtn">Add Code</button>
+      </div>
+    </div>
+  </div>
+</div>
 
-  <script>
-    /*
-     * Here you will find the final, production-ready JS that implements:
-     *  - New Map creation
-     *  - Mapping deletion
-     *  - Ledger selection
-     *  - Add/Edit tax codes with plus icon, cog icon, and "Select All" emoji
-     *  - Rename or Delete ledger in a modal
-     *  - Full logging and error handling on the client side
-     *
-     * You can adapt the fetch() URLs to match your routes.
-     */
-    let mapNames = [];
-    let creatingMap = false;
-    const paginationState = {};
+<!-- Notification Container -->
+<div id="notification-container"></div>
 
-    document.addEventListener("DOMContentLoaded", () => {
-      fetchMapNames();
-      setupMapCreationUI();
-      setupDeleteMapping();
+<!-- Audio notifications -->
+<audio id="successSound" src="https://www.soundjay.com/buttons/sounds/button-30.mp3" preload="auto"></audio>
+<audio id="errorSound" src="https://www.soundjay.com/buttons/sounds/button-21.mp3" preload="auto"></audio>
+
+<!-- JS -->
+<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+  let mapNames = [];
+  let creatingMap = false;
+  const paginationState = {};
+
+  document.addEventListener("DOMContentLoaded", () => {
+    fetchMapNames();
+    setupMapCreationUI();
+    setupDeleteMapping();
+    setupNewLedgerUI();
+    setupRenameLedgerModal();
+    setupDeleteLedgerModal();
+    setupAddTaxCodeUI();
+  });
+
+  // Notifications
+  function showNotification(msg, type='success'){
+    const c=document.getElementById('notification-container');
+    const n=document.createElement('div');
+    n.classList.add('notification', type);
+    n.innerText=msg;
+    c.appendChild(n);
+    if(type==='success'){
+      document.getElementById('successSound').play();
+    } else {
+      document.getElementById('errorSound').play();
+    }
+    setTimeout(()=>{
+      n.classList.add('fade-out');
+      setTimeout(()=>{
+        if(c.contains(n)){ c.removeChild(n); }
+      },500);
+    },3000);
+  }
+
+  // DB Status
+  function updateDbStatus(connected){
+    const db=document.getElementById('dbStatusIndicator');
+    if(!db)return;
+    if(connected){
+      db.classList.remove('db-status-red');
+      db.classList.add('db-status-green');
+      db.title='DB Connection OK';
+    } else {
+      db.classList.remove('db-status-green');
+      db.classList.add('db-status-red');
+      db.title='DB Connection ERROR';
+    }
+  }
+
+  // Fetch map names
+  function fetchMapNames(){
+    fetch("/get_map_names")
+    .then(r=>{
+      if(!r.ok) throw new Error("Network not ok");
+      updateDbStatus(true);
+      return r.json();
+    })
+    .then(d=>{
+      mapNames=d;
+      populateCopyFromSelect();
+      buildTabs();
+    })
+    .catch(err=>{
+      updateDbStatus(false);
+      showNotification("Error fetching map names: "+ err.message, "error");
+    });
+  }
+
+  function populateCopyFromSelect(){
+    const sel=document.getElementById("copyFromMapName");
+    while(sel.options.length>1){
+      sel.remove(1);
+    }
+    mapNames.forEach(m=>{
+      const op=document.createElement("option");
+      op.value=m;
+      op.textContent=m;
+      sel.appendChild(op);
+    });
+  }
+
+  // Build map tabs
+  function buildTabs(){
+    const tabs=document.getElementById("mapNameTabs");
+    const content=document.getElementById("mapNameTabsContent");
+    tabs.innerHTML=""; content.innerHTML="";
+
+    if(!mapNames||mapNames.length===0){
+      const li=document.createElement("li");
+      li.classList.add("nav-item");
+      li.innerHTML='<a class="nav-link active">No Maps</a>';
+      tabs.appendChild(li);
+      return;
+    }
+    let first=true;
+    mapNames.forEach(m=>{
+      paginationState[m]={currentPage:1, totalPages:1, sortCol:"code_natural", sortDir:"asc"};
+      const sMn=m.replace(/\s+/g,'-');
+      const tabId=`mapname-${sMn}`;
+
+      const li=document.createElement("li");
+      li.classList.add("nav-item");
+
+      const a=document.createElement("a");
+      a.classList.add("nav-link");
+      a.id=`${tabId}-tab`;
+      a.dataset.toggle="tab";
+      a.href=`#${tabId}`;
+      a.role="tab";
+      a.textContent=m;
+      if(first){
+        a.classList.add("active");
+        a.setAttribute("aria-selected","true");
+      } else {
+        a.setAttribute("aria-selected","false");
+      }
+      li.appendChild(a);
+      tabs.appendChild(li);
+
+      const pane=document.createElement("div");
+      pane.classList.add("tab-pane","fade");
+      pane.id=tabId;
+      pane.setAttribute("role","tabpanel");
+      pane.setAttribute("aria-labelledby",`${tabId}-tab`);
+      if(first){
+        pane.classList.add("show","active");
+        first=false;
+      }
+      pane.innerHTML=getMapPaneHtml(m,sMn);
+      content.appendChild(pane);
+
+      // fetch ledgers
+      fetch(`/get_ledgers_for_map?map_name=${encodeURIComponent(m)}`)
+      .then(r=>{
+        if(!r.ok) throw new Error("Not ok");
+        return r.json();
+      })
+      .then(ledgers=>{
+        const dd=document.getElementById(`ledgerDropdown-${sMn}`);
+        dd.innerHTML="";
+        if(!ledgers||ledgers.length===0){
+          const op=document.createElement("option");
+          op.value=""; op.textContent="(No Ledgers)";
+          dd.appendChild(op);
+          loadAccountsAndTaxes(m,sMn,1,"");
+        } else {
+          ledgers.forEach(l=>{
+            const op=document.createElement("option");
+            op.value=l.id;
+            op.textContent=l.name;
+            dd.appendChild(op);
+          });
+          dd.value=ledgers[0].id;
+          loadAccountsAndTaxes(m,sMn,1, ledgers[0].id);
+        }
+        dd.addEventListener("change",()=>{
+          loadAccountsAndTaxes(m,sMn,1, dd.value);
+        });
+      })
+      .catch(err=>{
+        showNotification("Error fetching ledgers: "+ err.message, "error");
+      });
+
+      setupPagination(m,sMn);
+      setupColumnSorting(m,sMn);
+    });
+  }
+
+  function getMapPaneHtml(mapName, sMn){
+    return `
+    <div class="mapper-panels mt-3">
+      <div class="panel-block">
+        <h4>Accounts for Map: ${mapName}</h4>
+        <div class="table-responsive mt-2">
+          <table id="accountTable-${sMn}" class="table table-sm">
+            <thead>
+              <tr>
+                <th>Select</th>
+                <th class="sortable-header" id="acctCodeHeader-${sMn}">Code</th>
+                <th class="sortable-header" id="acctDescHeader-${sMn}">Description</th>
+                <th class="sortable-header" id="acctTaxHeader-${sMn}">Linked Tax</th>
+                <th class="sortable-header" id="acctModifiedHeader-${sMn}">Modified</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          <div class="assigned-counter" id="assignedCount-${sMn}"></div>
+        </div>
+        <div class="d-flex align-items-center mt-2" style="gap:10px;">
+          <button id="prevPage-${sMn}" class="btn btn-sm btn-secondary">Prev</button>
+          <span id="pageIndicator-${sMn}">Page 1 of 1</span>
+          <button id="nextPage-${sMn}" class="btn btn-sm btn-secondary">Next</button>
+        </div>
+      </div>
+      <div class="panel-block">
+        <h4>Ledger</h4>
+        <div class="mb-2">
+          <select id="ledgerDropdown-${sMn}" class="form-control form-control-sm d-inline-block" style="width:auto;"></select>
+          <button class="btn btn-sm btn-primary ml-2" onclick="openNewLedgerModal('${sMn}')">New Ledger</button>
+          <button class="btn btn-sm btn-info ml-1" onclick="openAddTaxCodeModal('${sMn}')">+ Tax Code</button>
+          <button class="btn btn-sm btn-warning ml-1" onclick="openRenameLedgerModal('${sMn}')">Rename</button>
+          <button class="btn btn-sm btn-danger ml-1" onclick="openDeleteLedgerModal('${sMn}')">Delete</button>
+        </div>
+        <div class="table-responsive">
+          <table id="taxTable-${sMn}" class="table table-sm">
+            <thead>
+              <tr>
+                <th>Select</th>
+                <th class="sortable-header" id="taxCodeHeader-${sMn}">Tax Code</th>
+                <th class="sortable-header" id="taxDescHeader-${sMn}">Description</th>
+                <th id="selectAllBtn-${sMn}" style="cursor:pointer;">Select All &#x1F4CC;</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <button class="assignBtn mt-3" id="assignBtn-${sMn}">Assign Tax to Selected Accounts</button>
+      </div>
+    </div>
+    `;
+  }
+
+  // -- New Ledger Modal open
+  function openNewLedgerModal(sMn){
+    document.getElementById("newLedgerNameInput").value="";
+    $('#newLedgerModal').modal('show');
+  }
+  // -- Add Tax Code Modal open
+  function openAddTaxCodeModal(sMn){
+    document.getElementById("newTaxCodeInput").value="";
+    document.getElementById("newTaxDescInput").value="";
+    $('#addTaxCodeModal').modal('show');
+  }
+
+  // =========== LOADING ACCOUNTS / TAXES ===========
+  function loadAccountsAndTaxes(mapName,sMn,pageNum,ledgerId){
+    const st=paginationState[mapName];
+    const col=st.sortCol||"code_natural";
+    const dir=st.sortDir||"asc";
+    const url=`/get_map_data?map_name=${encodeURIComponent(mapName)}`
+      +`&page_account=${pageNum}&per_page_account=40`
+      +`&sort_by=${col}_${dir}&ledger_id=${ledgerId}`;
+    fetch(url)
+    .then(r=>{
+      if(!r.ok) throw new Error("Not ok");
+      updateDbStatus(true);
+      return r.json();
+    })
+    .then(d=>{
+      st.currentPage=d.page_account||1;
+      st.totalPages=d.total_pages_account||1;
+      document.getElementById(`pageIndicator-${sMn}`).textContent=`Page ${st.currentPage} of ${st.totalPages}`;
+      fillAccountTable(mapName,sMn,d.account_records||[]);
+      fillTaxTable(mapName,sMn,d.tax_records||[]);
+      updateAssignedCounter(sMn,d.account_records||[]);
+      bindAssignButton(mapName,sMn, ledgerId);
+    })
+    .catch(err=>{
+      updateDbStatus(false);
+      showNotification("Error loading data: "+err.message,"error");
+    });
+  }
+
+  function fillAccountTable(mapName,sMn,rows){
+    const tb=document.querySelector(`#accountTable-${sMn} tbody`);
+    tb.innerHTML="";
+    if(!rows||rows.length===0){
+      tb.innerHTML='<tr><td colspan="5"><em>No accounts found.</em></td></tr>';
+      return;
+    }
+    rows.forEach(r=>{
+      const tr=document.createElement("tr");
+      tr.dataset.accountId=r.id;
+      tr.dataset.taxId=r.tax_id||"";
+      tr.innerHTML=`
+        <td><input type="checkbox" value="${r.id}" name="acctSel-${sMn}"></td>
+        <td>${r.code||""}</td>
+        <td>${r.account_description||""}</td>
+        <td>${r.tax_code||"(None)"}</td>
+        <td>${r.updated_at? new Date(r.updated_at).toLocaleString():""}</td>
+      `;
+      tb.appendChild(tr);
+    });
+  }
+
+  function fillTaxTable(mapName,sMn,rows){
+    const tb=document.querySelector(`#taxTable-${sMn} tbody`);
+    tb.innerHTML="";
+    if(!rows||rows.length===0){
+      tb.innerHTML='<tr><td colspan="5"><em>No tax codes found.</em></td></tr>';
+      return;
+    }
+    rows.forEach(t=>{
+      const tr=document.createElement("tr");
+      tr.dataset.taxId=t.id;
+      tr.innerHTML=`
+        <td><input type="radio" name="taxSel-${sMn}" value="${t.id}"></td>
+        <td class="taxCodeCell">${t.tax_code||""}</td>
+        <td class="taxDescCell">${t.description||""}</td>
+        <td>
+          <button class="btn btn-sm btn-link toggleSelectBtn" title="Select All Accounts">&#x1F447;</button>
+        </td>
+        <td>
+          <!-- Gear -> Check transition -->
+          <button class="btn btn-sm btn-link gearBtn" title="Edit">&#9881;</button>
+          <button class="btn btn-sm btn-link saveBtn" title="Save" style="display:none;">&#x2705;</button>
+        </td>
+      `;
+      tb.appendChild(tr);
     });
 
-    // Utility: Show notifications
-    function showNotification(message, type = 'success') {
-      const container = document.getElementById('notification-container');
-      const notification = document.createElement('div');
-      notification.classList.add('notification', type);
-      notification.innerText = message;
-      container.appendChild(notification);
+    // "Select All" toggles
+    tb.querySelectorAll(".toggleSelectBtn").forEach(btn=>{
+      btn.addEventListener("click", e=>{
+        const row=e.target.closest("tr");
+        const taxId=row.dataset.taxId;
+        // toggle select all accounts having that taxId
+        const accts=document.querySelectorAll(`#accountTable-${sMn} tbody tr[data-tax-id="${taxId}"] input[type="checkbox"]`);
+        let allChecked=true;
+        accts.forEach(a=>{
+          if(!a.checked) allChecked=false;
+        });
+        // If all are checked, uncheck them. Else check them.
+        accts.forEach(a=>a.checked=!allChecked);
+      });
+    });
 
-      if (type === 'success') {
-        document.getElementById('successSound').play();
-      } else {
-        document.getElementById('errorSound').play();
-      }
+    // Edit -> Save toggles
+    tb.querySelectorAll(".gearBtn").forEach(btn=>{
+      btn.addEventListener("click", e=>{
+        const row=e.target.closest("tr");
+        const saveBtn=row.querySelector(".saveBtn");
+        e.target.style.display="none";
+        saveBtn.style.display="inline-block";
+        const codeCell=row.querySelector(".taxCodeCell");
+        const descCell=row.querySelector(".taxDescCell");
+        codeCell.contentEditable="true";
+        descCell.contentEditable="true";
+        codeCell.focus();
+      });
+    });
+    tb.querySelectorAll(".saveBtn").forEach(btn=>{
+      btn.addEventListener("click", e=>{
+        const row=e.target.closest("tr");
+        const gearBtn=row.querySelector(".gearBtn");
+        const codeCell=row.querySelector(".taxCodeCell");
+        const descCell=row.querySelector(".taxDescCell");
+        const taxId=row.dataset.taxId;
+        const newCode=codeCell.innerText.trim();
+        const newDesc=descCell.innerText.trim();
 
-      setTimeout(() => {
-        notification.classList.add('fade-out');
-        setTimeout(() => {
-          if (container.contains(notification)) {
-            container.removeChild(notification);
+        let mapName="";
+        const at=document.querySelector("#mapNameTabs a.nav-link.active");
+        if(at) mapName=at.textContent;
+
+        fetch("/update_tax",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({
+            map_name:mapName,
+            tax_id: parseInt(taxId),
+            tax_code:newCode,
+            tax_description:newDesc
+          })
+        })
+        .then(r=>{
+          if(!r.ok) throw new Error("Not ok");
+          return r.json();
+        })
+        .then(d=>{
+          if(d.status==="success"){
+            showNotification("Tax updated!","success");
+            btn.style.display="none";
+            gearBtn.style.display="inline-block";
+            codeCell.contentEditable="false";
+            descCell.contentEditable="false";
+          } else {
+            showNotification("Error updating tax:"+ d.message,"error");
           }
-        }, 500);
-      }, 3000);
-    }
-
-    // DB Status
-    function updateDbStatus(connected) {
-      const dbIndicator = document.getElementById('dbStatusIndicator');
-      if (!dbIndicator) return;
-      if (connected) {
-        dbIndicator.classList.remove('db-status-red');
-        dbIndicator.classList.add('db-status-green');
-        dbIndicator.title = 'DB Connection OK';
-      } else {
-        dbIndicator.classList.remove('db-status-green');
-        dbIndicator.classList.add('db-status-red');
-        dbIndicator.title = 'DB Connection ERROR';
-      }
-    }
-
-    // Fetch map names
-    function fetchMapNames() {
-      fetch("/get_map_names")
-        .then(r => {
-          if (!r.ok) throw new Error("Network response not ok");
-          updateDbStatus(true);
-          return r.json();
         })
-        .then(data => {
-          mapNames = data;
-          populateMapNameSelect();
-          buildTabs();
-        })
-        .catch(err => {
-          updateDbStatus(false);
-          showNotification("Error fetching map names: " + err.message, "error");
-        });
-    }
-
-    // Populate the "Copy from" select with all map names
-    function populateMapNameSelect() {
-      const copySelect = document.getElementById("copyFromMapName");
-      while (copySelect.options.length > 1) {
-        copySelect.remove(1);
-      }
-      mapNames.forEach(m => {
-        const opt = document.createElement("option");
-        opt.value = m;
-        opt.textContent = m;
-        copySelect.appendChild(opt);
-      });
-    }
-
-    // Build tabs for each map
-    function buildTabs() {
-      const tabs = document.getElementById("mapNameTabs");
-      const tabsContent = document.getElementById("mapNameTabsContent");
-      tabs.innerHTML = "";
-      tabsContent.innerHTML = "";
-
-      if (!mapNames || mapNames.length === 0) {
-        const li = document.createElement("li");
-        li.classList.add("nav-item");
-        li.innerHTML = `<a class="nav-link active" href="#" role="tab">No Map Names Found</a>`;
-        tabs.appendChild(li);
-        return;
-      }
-
-      let first = true;
-      mapNames.forEach(mn => {
-        paginationState[mn] = {
-          currentPage: 1,
-          totalPages: 1,
-          currentSort: "code_natural"
-        };
-
-        const sMn = mn.replace(/\s+/g, '-');
-        const tabId = `mapname-${sMn}`;
-
-        const li = document.createElement("li");
-        li.classList.add("nav-item");
-        const a = document.createElement("a");
-        a.classList.add("nav-link");
-        a.id = `${tabId}-tab`;
-        a.dataset.toggle = "tab";
-        a.href = `#${tabId}`;
-        a.role = "tab";
-        a.setAttribute("aria-controls", tabId);
-        a.textContent = mn;
-        if (first) {
-          a.classList.add("active");
-          a.setAttribute("aria-selected", "true");
-        } else {
-          a.setAttribute("aria-selected", "false");
-        }
-        li.appendChild(a);
-        tabs.appendChild(li);
-
-        const pane = document.createElement("div");
-        pane.classList.add("tab-pane", "fade");
-        pane.id = tabId;
-        pane.setAttribute("role", "tabpanel");
-        pane.setAttribute("aria-labelledby", `${tabId}-tab`);
-        if (first) {
-          pane.classList.add("show", "active");
-          first = false;
-        }
-
-        // Build the HTML for this tab
-        pane.innerHTML = getMapPaneHtml(mn, sMn);
-        tabsContent.appendChild(pane);
-
-        // After it's in the DOM, load the ledger dropdown
-        fetch(`/get_ledgers_for_map?map_name=${encodeURIComponent(mn)}`)
-          .then(r => {
-            if (!r.ok) throw new Error("Network response not ok");
-            return r.json();
-          })
-          .then(ledgers => {
-            const ledgerDD = document.getElementById(`ledgerDropdown-${sMn}`);
-            ledgerDD.innerHTML = "";
-            if (ledgers.length === 0) {
-              const opt = document.createElement("option");
-              opt.value = "";
-              opt.textContent = "(No Ledgers)";
-              ledgerDD.appendChild(opt);
-              // load no accounts
-              loadAccountsAndTaxes(mn, sMn, 1, "");
-            } else {
-              ledgers.forEach(ldg => {
-                const op = document.createElement("option");
-                op.value = ldg.id;
-                op.textContent = ldg.name;
-                ledgerDD.appendChild(op);
-              });
-              ledgerDD.value = ledgers[0].id;
-              loadAccountsAndTaxes(mn, sMn, 1, ledgers[0].id);
-            }
-
-            ledgerDD.addEventListener("change", () => {
-              const val = ledgerDD.value;
-              loadAccountsAndTaxes(mn, sMn, 1, val);
-            });
-          })
-          .catch(err => {
-            showNotification("Error fetching ledger info: " + err.message, "error");
-          });
-
-        // Set up events
-        setupPagination(mn, sMn);
-        setupColumnSorting(mn, sMn);
-      });
-    }
-
-    function getMapPaneHtml(mapName, sMn) {
-      return `
-      <div class="mapper-panels mt-3">
-        <!-- Left side: Accounts -->
-        <div class="panel-block">
-          <h4>Accounts for Map: ${mapName}</h4>
-          <div class="table-responsive mt-2">
-            <table id="accountTable-${sMn}" class="table table-sm">
-              <thead>
-                <tr>
-                  <th>Select</th>
-                  <th class="sortable-header" id="acctCodeHeader-${sMn}">Code</th>
-                  <th class="sortable-header" id="acctDescHeader-${sMn}">Description</th>
-                  <th class="sortable-header" id="acctTaxHeader-${sMn}">Linked Tax</th>
-                  <th class="sortable-header" id="acctModifiedHeader-${sMn}">Modified</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-            <div class="assigned-counter" id="assignedCount-${sMn}"></div>
-          </div>
-          <div class="pagination-container">
-            <button id="prevPage-${sMn}">Prev</button>
-            <span class="pagination-page-info" id="pageIndicator-${sMn}">Page 1 of 1</span>
-            <button id="nextPage-${sMn}">Next</button>
-          </div>
-        </div>
-
-        <!-- Right side: Ledger + Tax Codes -->
-        <div class="panel-block">
-          <h4>Ledger</h4>
-          <div class="mb-2">
-            <select id="ledgerDropdown-${sMn}" class="form-control form-control-sm d-inline-block" style="width:auto;"></select>
-            <button class="btn btn-sm btn-warning ml-2" onclick="openEditLedgerModal('${sMn}')">Rename/Delete Ledger</button>
-          </div>
-          <div class="table-responsive">
-            <table id="taxTable-${sMn}" class="table table-sm">
-              <thead>
-                <tr>
-                  <th>Select</th>
-                  <th>Tax Code</th>
-                  <th>Description</th>
-                  <th>Select All <span style="font-size:1.2rem;">\u{1F4CC}</span></th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </div>
-          <div class="mt-2">
-            <button class="btn btn-info btn-sm" onclick="addTaxCode('${sMn}')">+ Add Tax Code</button>
-          </div>
-          <button class="assignBtn d-block mt-3" id="assignBtn-${sMn}">Assign Tax to Selected Accounts</button>
-        </div>
-      </div>
-      `;
-    }
-
-    // Load accounts + tax
-    function loadAccountsAndTaxes(mapName, sMn, pageNum, ledgerId) {
-      const st = paginationState[mapName];
-      const sortKey = st.currentSort || "code_natural";
-      const url = `/get_map_data?map_name=${encodeURIComponent(mapName)}`
-        + `&page_account=${pageNum}`
-        + `&per_page_account=40`
-        + `&sort_by=${sortKey}`
-        + `&ledger_id=${ledgerId}`;
-      fetch(url)
-        .then(r => {
-          if(!r.ok) throw new Error("Network not ok");
-          updateDbStatus(true);
-          return r.json();
-        })
-        .then(data => {
-          st.currentPage = data.page_account || 1;
-          st.totalPages = data.total_pages_account || 1;
-          document.getElementById(`pageIndicator-${sMn}`).textContent =
-            `Page ${st.currentPage} of ${st.totalPages}`;
-          fillAccountTable(mapName, sMn, data.account_records);
-          fillTaxTable(mapName, sMn, data.tax_records || []);
-          updateAssignedCounter(sMn, data.account_records);
-          bindAssignButton(mapName, sMn, ledgerId);
-        })
-        .catch(err => {
-          updateDbStatus(false);
-          showNotification("Error loading data: " + err.message, "error");
-        });
-    }
-
-    function fillAccountTable(mapName, sMn, rows) {
-      const tb = document.getElementById(`accountTable-${sMn}`).querySelector("tbody");
-      tb.innerHTML = "";
-      if(!rows || rows.length===0) {
-        tb.innerHTML=`<tr><td colspan="5"><em>No accounts found for this map & ledger.</em></td></tr>`;
-        return;
-      }
-      rows.forEach(acc => {
-        const tr = document.createElement("tr");
-        tr.dataset.accountId = acc.id;
-        tr.dataset.taxId = acc.tax_id || "";
-        tr.innerHTML = `
-          <td><input type="checkbox" value="${acc.id}" name="acctSel-${sMn}"></td>
-          <td>${acc.code||""}</td>
-          <td>${acc.account_description||""}</td>
-          <td>${acc.tax_code||"(None)"}</td>
-          <td>${acc.updated_at ? new Date(acc.updated_at).toLocaleString() : ""}</td>
-        `;
-        tb.appendChild(tr);
-      });
-    }
-
-    function fillTaxTable(mapName, sMn, rows) {
-      const tb = document.getElementById(`taxTable-${sMn}`).querySelector("tbody");
-      tb.innerHTML = "";
-      if(!rows || rows.length===0) {
-        tb.innerHTML = `<tr><td colspan="5"><em>No tax codes found for this ledger.</em></td></tr>`;
-        return;
-      }
-      rows.forEach(tax => {
-        const tr = document.createElement("tr");
-        tr.dataset.taxId = tax.id;
-        tr.innerHTML = `
-          <td><input type="radio" name="taxSel-${sMn}" value="${tax.id}"></td>
-          <td class="taxCodeCell">${tax.tax_code||""}</td>
-          <td class="taxDescCell">${tax.description||""}</td>
-          <td>
-            <button class="btn btn-sm btn-link" title="Select All Accounts">&#x1F447;</button>
-          </td>
-          <td>
-            <button class="btn btn-sm btn-link" title="Edit (Cog)" onclick="editTaxRow(this)">&#9881;</button>
-            <button class="btn btn-sm btn-link" title="Save" style="display:none;" onclick="saveTaxRow(this)">&#x2705;</button>
-          </td>
-        `;
-        tb.appendChild(tr);
-
-        // "Select All" button
-        tr.querySelectorAll("button")[0].addEventListener("click", () => {
-          const taxId = tax.id.toString();
-          const acctRows = document.querySelectorAll(`#accountTable-${sMn} tbody tr`);
-          acctRows.forEach(ar => {
-            if(ar.dataset.taxId === taxId) {
-              const chk = ar.querySelector(`input[name="acctSel-${sMn}"]`);
-              if(chk) chk.checked = true;
-            }
-          });
+        .catch(err=>{
+          showNotification("Save tax row error:"+ err.message,"error");
         });
       });
-    }
+    });
+  }
 
-    // Enter "edit mode" for a tax row
-    function editTaxRow(btn) {
-      const row = btn.closest("tr");
-      const saveBtn = row.querySelectorAll("button")[1];
-      // Show save
-      saveBtn.style.display = "inline-block";
-      // Make the two cells contenteditable
-      const codeCell = row.querySelector(".taxCodeCell");
-      const descCell = row.querySelector(".taxDescCell");
-      codeCell.contentEditable="true";
-      descCell.contentEditable="true";
-      codeCell.focus();
-    }
+  function bindAssignButton(mapName,sMn, ledgerId){
+    const b=document.getElementById(`assignBtn-${sMn}`);
+    b.addEventListener("click",()=>{
+      const checkedAccts=document.querySelectorAll(`input[name="acctSel-${sMn}"]:checked`);
+      if(!checkedAccts||checkedAccts.length===0){
+        showNotification("No accounts selected.","error");
+        return;
+      }
+      const selTax=document.querySelector(`input[name="taxSel-${sMn}"]:checked`);
+      if(!selTax){
+        showNotification("No tax code selected.","error");
+        return;
+      }
+      const acctIds=[...checkedAccts].map(a=>parseInt(a.value));
+      const taxId=parseInt(selTax.value);
 
-    // Save changes to that tax row
-    function saveTaxRow(btn) {
-      const row = btn.closest("tr");
-      const taxId = row.dataset.taxId;
-      const codeCell = row.querySelector(".taxCodeCell");
-      const descCell = row.querySelector(".taxDescCell");
-      const newCode = codeCell.innerText.trim();
-      const newDesc = descCell.innerText.trim();
-      const sMn = row.closest("table").id.replace("taxTable-", "");
-      let mapName = "";
-      // find which tab is active:
-      const tabs = document.getElementById("mapNameTabs").querySelectorAll("a");
-      tabs.forEach(t => {
-        if(t.classList.contains("active")) {
-          mapName = t.textContent;
-        }
-      });
-
-      fetch("/update_tax", {
+      fetch("/assign_tax_bulk",{
         method:"POST",
         headers:{"Content-Type":"application/json"},
         body: JSON.stringify({
           map_name: mapName,
-          tax_id: taxId,
-          tax_code: newCode,
-          tax_description: newDesc
+          account_ids: acctIds,
+          tax_id: taxId
         })
       })
-      .then(r => {
-        if(!r.ok) throw new Error("Network response not ok");
+      .then(r=>{
+        if(!r.ok) throw new Error("Not ok");
         return r.json();
       })
-      .then(d => {
-        if(d.status==="success") {
-          showNotification("Tax updated!", "success");
-          // Hide save button
-          btn.style.display="none";
-          codeCell.contentEditable="false";
-          descCell.contentEditable="false";
-        } else {
-          showNotification("Error updating tax: " + d.message, "error");
-        }
-      })
-      .catch(err => {
-        showNotification("Error updating tax: " + err.message, "error");
-      });
-    }
-
-    // Add new tax code to the ledger
-    function addTaxCode(sMn) {
-      // figure out which map is active
-      let mapName = "";
-      const tabs = document.getElementById("mapNameTabs").querySelectorAll("a");
-      tabs.forEach(t => {
-        if(t.classList.contains("active")) {
-          mapName = t.textContent;
-        }
-      });
-      // ledger
-      const ledgerId = document.getElementById(`ledgerDropdown-${sMn}`).value;
-      if(!ledgerId) {
-        showNotification("No ledger selected!", "error");
-        return;
-      }
-      const newCode = prompt("Enter new Tax Code");
-      if(!newCode) return;
-      const newDesc = prompt("Enter description (optional)") || "";
-
-      fetch("/create_tax_code", {
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({
-          ledger_id: ledgerId,
-          tax_code: newCode.trim(),
-          description: newDesc.trim()
-        })
-      })
-      .then(r => {
-        if(!r.ok) throw new Error("Network error in create_tax_code");
-        return r.json();
-      })
-      .then(d => {
-        if(d.status==="success") {
-          showNotification("Tax code created!", "success");
-          // Reload the table
-          loadAccountsAndTaxes(mapName, sMn, 1, ledgerId);
-        } else {
-          showNotification("Error creating tax code: " + d.message, "error");
-        }
-      })
-      .catch(err => {
-        showNotification("Create tax code error: " + err.message, "error");
-      });
-    }
-
-    // Assign accounts to a selected tax
-    function bindAssignButton(mapName, sMn, ledgerId){
-      const btn = document.getElementById(`assignBtn-${sMn}`);
-      btn.addEventListener("click", () => {
-        const checked = document.querySelectorAll(`input[name="acctSel-${sMn}"]:checked`);
-        if(!checked || checked.length===0) {
-          showNotification("No accounts selected.", "error");
-          return;
-        }
-        const selectedTax = document.querySelector(`input[name="taxSel-${sMn}"]:checked`);
-        if(!selectedTax) {
-          showNotification("Select a tax code first.", "error");
-          return;
-        }
-        const taxVal = selectedTax.value;
-        const acctIds = [...checked].map(c => c.value);
-
-        fetch("/assign_tax_bulk", {
-          method:"POST",
-          headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({
-            map_name: mapName,
-            account_ids: acctIds,
-            tax_id: taxVal
-          })
-        })
-        .then(r => {
-          if(!r.ok) throw new Error("Network response not ok");
-          return r.json();
-        })
-        .then(d => {
-          if(d.status==="success") {
-            showNotification("Tax assigned!", "success");
-            // Update the UI
-            acctIds.forEach(id => {
-              const row = document.querySelector(`#accountTable-${sMn} tbody tr[data-account-id="${id}"]`);
-              if(row) {
-                row.dataset.taxId = taxVal;
-                const codeCell = row.children[3];
-                const taxRow = document.querySelector(`#taxTable-${sMn} tr[data-tax-id="${taxVal}"] .taxCodeCell`);
-                codeCell.textContent = taxRow ? taxRow.textContent.trim() : "(None)";
-              }
-            });
-            checked.forEach(c => c.checked=false);
-            const allRows = document.querySelectorAll(`#accountTable-${sMn} tbody tr`);
-            const allAcctData = [...allRows].map(rr => ({tax_id: rr.dataset.taxId}));
-            updateAssignedCounter(sMn, allAcctData);
-          } else {
-            showNotification("Error assigning tax: " + d.message, "error");
-          }
-        })
-        .catch(err => {
-          showNotification("Assign tax error: " + err.message, "error");
-        });
-      });
-    }
-
-    function updateAssignedCounter(sMn, rows) {
-      const assigned = rows.filter(r => r.tax_id).length;
-      const total = rows.length;
-      document.getElementById(`assignedCount-${sMn}`).textContent =
-        `Assigned: ${assigned} / ${total}`;
-    }
-
-    // Pagination
-    function setupPagination(mapName, sMn){
-      const prevBtn = document.getElementById(`prevPage-${sMn}`);
-      const nextBtn = document.getElementById(`nextPage-${sMn}`);
-      prevBtn.addEventListener("click", () => {
-        const st = paginationState[mapName];
-        if(st.currentPage>1) {
-          st.currentPage--;
-          const ledgerId = document.getElementById(`ledgerDropdown-${sMn}`).value || "";
-          loadAccountsAndTaxes(mapName, sMn, st.currentPage, ledgerId);
-        }
-      });
-      nextBtn.addEventListener("click", () => {
-        const st = paginationState[mapName];
-        if(st.currentPage<st.totalPages) {
-          st.currentPage++;
-          const ledgerId = document.getElementById(`ledgerDropdown-${sMn}`).value || "";
-          loadAccountsAndTaxes(mapName, sMn, st.currentPage, ledgerId);
-        }
-      });
-    }
-
-    function setupColumnSorting(mapName, sMn) {
-      const codeHead = document.getElementById(`acctCodeHeader-${sMn}`);
-      const descHead = document.getElementById(`acctDescHeader-${sMn}`);
-      const taxHead = document.getElementById(`acctTaxHeader-${sMn}`);
-      const modHead = document.getElementById(`acctModifiedHeader-${sMn}`);
-
-      codeHead.addEventListener("click", () => {
-        paginationState[mapName].currentSort="code_natural";
-        paginationState[mapName].currentPage=1;
-        const ledgVal = document.getElementById(`ledgerDropdown-${sMn}`).value||"";
-        loadAccountsAndTaxes(mapName, sMn, 1, ledgVal);
-      });
-      descHead.addEventListener("click", () => {
-        paginationState[mapName].currentSort="description";
-        paginationState[mapName].currentPage=1;
-        const ledgVal = document.getElementById(`ledgerDropdown-${sMn}`).value||"";
-        loadAccountsAndTaxes(mapName, sMn, 1, ledgVal);
-      });
-      taxHead.addEventListener("click", () => {
-        paginationState[mapName].currentSort="linked_tax";
-        paginationState[mapName].currentPage=1;
-        const ledgVal = document.getElementById(`ledgerDropdown-${sMn}`).value||"";
-        loadAccountsAndTaxes(mapName, sMn, 1, ledgVal);
-      });
-      modHead.addEventListener("click", () => {
-        paginationState[mapName].currentSort="updated";
-        paginationState[mapName].currentPage=1;
-        const ledgVal = document.getElementById(`ledgerDropdown-${sMn}`).value||"";
-        loadAccountsAndTaxes(mapName, sMn, 1, ledgVal);
-      });
-    }
-
-    // New Map
-    function setupMapCreationUI(){
-      const toggleBtn = document.getElementById("toggleMapBtn");
-      const cancelBtn = document.getElementById("cancelMapBtn");
-      const createBox = document.getElementById("mapCreationContainer");
-
-      toggleBtn.addEventListener("click", () => {
-        if(!creatingMap) {
-          creatingMap=true;
-          toggleBtn.textContent="Create Map";
-          toggleBtn.classList.remove("btn-success");
-          toggleBtn.classList.add("btn-primary");
-          cancelBtn.style.display="inline-block";
-          createBox.style.display="block";
-        } else {
-          const newMapName = document.getElementById("newMapName").value.trim();
-          const copyFrom = document.getElementById("copyFromMapName").value;
-          if(!newMapName) {
-            showNotification("Please enter a new map name.", "error");
-            return;
-          }
-          fetch("/create_map_code", {
-            method:"POST",
-            headers:{"Content-Type":"application/json"},
-            body: JSON.stringify({
-              new_map_code:newMapName,
-              copy_from: copyFrom==="NONE" ? "" : copyFrom
-            })
-          })
-          .then(r => {
-            if(!r.ok) throw new Error("Network response not ok");
-            updateDbStatus(true);
-            return r.json();
-          })
-          .then(d => {
-            if(d.status==="success") {
-              showNotification(`Map "${newMapName}" created!`, "success");
-              resetMapCreationUI();
-              fetchMapNames();
-            } else {
-              showNotification("Error creating map: "+d.message, "error");
+      .then(d=>{
+        if(d.status==="success"){
+          showNotification("Tax assigned to accounts!","success");
+          acctIds.forEach(aid=>{
+            const row=document.querySelector(`#accountTable-${sMn} tr[data-account-id="${aid}"]`);
+            if(row){
+              row.dataset.taxId=taxId;
+              const codeCell=row.children[3];
+              const taxRow=document.querySelector(`#taxTable-${sMn} tr[data-tax-id="${taxId}"] .taxCodeCell`);
+              codeCell.textContent=(taxRow ? taxRow.innerText.trim() : "(None)");
             }
-          })
-          .catch(err => {
-            updateDbStatus(false);
-            showNotification("Create map request error: "+err.message, "error");
           });
+          checkedAccts.forEach(c=>c.checked=false);
+          const allRows=document.querySelectorAll(`#accountTable-${sMn} tbody tr`);
+          const rowData=[...allRows].map(rr=>({tax_id: rr.dataset.taxId}));
+          updateAssignedCounter(sMn, rowData);
+        } else {
+          showNotification("Error assigning tax:"+ d.message,"error");
         }
+      })
+      .catch(err=>{
+        showNotification("assign_tax error:"+ err.message,"error");
       });
+    });
+  }
 
-      cancelBtn.addEventListener("click", resetMapCreationUI);
+  function updateAssignedCounter(sMn,rows){
+    const assigned=rows.filter(r=>r.tax_id).length;
+    const total=rows.length;
+    document.getElementById(`assignedCount-${sMn}`).textContent=`Assigned: ${assigned} / ${total}`;
+  }
 
-      function resetMapCreationUI() {
-        creatingMap=false;
-        toggleBtn.textContent="New Map";
-        toggleBtn.classList.remove("btn-primary");
-        toggleBtn.classList.add("btn-success");
-        cancelBtn.style.display="none";
-        createBox.style.display="none";
-        document.getElementById("newMapName").value="";
+  // =========== PAGINATION ===========
+  function setupPagination(mapName,sMn){
+    const prevBtn=document.getElementById(`prevPage-${sMn}`);
+    const nextBtn=document.getElementById(`nextPage-${sMn}`);
+    prevBtn.addEventListener("click",()=>{
+      const st=paginationState[mapName];
+      if(st.currentPage>1){
+        st.currentPage--;
+        const dd=document.getElementById(`ledgerDropdown-${sMn}`);
+        loadAccountsAndTaxes(mapName,sMn, st.currentPage, dd.value||"");
       }
-    }
+    });
+    nextBtn.addEventListener("click",()=>{
+      const st=paginationState[mapName];
+      if(st.currentPage<st.totalPages){
+        st.currentPage++;
+        const dd=document.getElementById(`ledgerDropdown-${sMn}`);
+        loadAccountsAndTaxes(mapName,sMn, st.currentPage, dd.value||"");
+      }
+    });
+  }
 
-    // Delete Mapping
-    function setupDeleteMapping(){
-      document.getElementById("deleteMappingBtn").addEventListener("click", ()=>{
-        $('#deleteMappingModal').modal('show');
-      });
-      document.getElementById("confirmDeleteMapping").addEventListener("click", ()=>{
-        const mapName = document.getElementById("deleteMappingName").value.trim();
-        if(!mapName) {
-          showNotification("Enter a map name to delete.", "error");
+  // =========== SORTING ===========
+  function setupColumnSorting(mapName,sMn){
+    const st=paginationState[mapName];
+
+    const acctCode=document.getElementById(`acctCodeHeader-${sMn}`);
+    const acctDesc=document.getElementById(`acctDescHeader-${sMn}`);
+    const acctTax=document.getElementById(`acctTaxHeader-${sMn}`);
+    const acctModified=document.getElementById(`acctModifiedHeader-${sMn}`);
+
+    const taxCode=document.getElementById(`taxCodeHeader-${sMn}`);
+    const taxDesc=document.getElementById(`taxDescHeader-${sMn}`);
+
+    acctCode?.addEventListener("click",()=>{
+      toggleAccountSort(mapName, "code_natural", sMn);
+    });
+    acctDesc?.addEventListener("click",()=>{
+      toggleAccountSort(mapName, "description", sMn);
+    });
+    acctTax?.addEventListener("click",()=>{
+      toggleAccountSort(mapName, "linked_tax", sMn);
+    });
+    acctModified?.addEventListener("click",()=>{
+      toggleAccountSort(mapName, "updated", sMn);
+    });
+
+    taxCode?.addEventListener("click",()=>{
+      // implement local or separate sorting for tax table if desired
+      toggleTaxSort(mapName,"tax_code",sMn);
+    });
+    taxDesc?.addEventListener("click",()=>{
+      toggleTaxSort(mapName,"tax_desc",sMn);
+    });
+  }
+
+  function toggleAccountSort(mapName, colName, sMn){
+    const st=paginationState[mapName];
+    if(st.sortCol===colName){
+      st.sortDir=(st.sortDir==="asc"?"desc":"asc");
+    } else {
+      st.sortCol=colName;
+      st.sortDir="asc";
+    }
+    st.currentPage=1;
+    const dd=document.getElementById(`ledgerDropdown-${sMn}`);
+    loadAccountsAndTaxes(mapName,sMn,1, dd.value||"");
+  }
+
+  function toggleTaxSort(mapName, colName, sMn){
+    // local sorting approach for the tax table if we want
+    // or do a separate fetch if your back-end supports it
+    const table=document.getElementById(`taxTable-${sMn}`);
+    const tb=table.querySelector("tbody");
+    let rows=[...tb.querySelectorAll("tr")];
+    let ascDesc="asc";
+    // track in paginationState if you want toggling
+    let key=`tax_${colName}`;
+    if(!paginationState[mapName][key]) paginationState[mapName][key]="asc";
+    else paginationState[mapName][key]=(paginationState[mapName][key]==="asc"?"desc":"asc");
+    ascDesc=paginationState[mapName][key];
+
+    rows.sort((a,b)=>{
+      let valA="", valB="";
+      if(colName==="tax_code"){
+        valA=a.querySelector(".taxCodeCell").innerText.trim().toLowerCase();
+        valB=b.querySelector(".taxCodeCell").innerText.trim().toLowerCase();
+      } else if(colName==="tax_desc"){
+        valA=a.querySelector(".taxDescCell").innerText.trim().toLowerCase();
+        valB=b.querySelector(".taxDescCell").innerText.trim().toLowerCase();
+      }
+      if(valA<valB)return ascDesc==="asc"? -1 : 1;
+      if(valA>valB)return ascDesc==="asc"? 1 : -1;
+      return 0;
+    });
+    rows.forEach(r=>tb.appendChild(r));
+  }
+
+  // =========== MAP CREATION UI ===========
+  function setupMapCreationUI(){
+    const toggleBtn=document.getElementById("toggleMapBtn");
+    const cancelBtn=document.getElementById("cancelMapBtn");
+    const createBox=document.getElementById("mapCreationContainer");
+    toggleBtn.addEventListener("click",()=>{
+      if(!creatingMap){
+        creatingMap=true;
+        toggleBtn.textContent="Create Map";
+        toggleBtn.classList.remove("btn-success");
+        toggleBtn.classList.add("btn-primary");
+        cancelBtn.style.display="inline-block";
+        createBox.style.display="block";
+        document.getElementById("newMapName").focus();
+      } else {
+        const nm=document.getElementById("newMapName").value.trim();
+        const cp=document.getElementById("copyFromMapName").value;
+        if(!nm){
+          showNotification("Please enter a new map name!","error");
           return;
         }
-        fetch("/delete_mapping", {
+        fetch("/create_map_code",{
           method:"POST",
           headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({map_name: mapName})
+          body:JSON.stringify({
+            new_map_code:nm,
+            copy_from: (cp==="NONE"?"":cp)
+          })
         })
-        .then(r => {
-          if(!r.ok) throw new Error("Network response not ok");
+        .then(r=>{
+          if(!r.ok) throw new Error("Not ok");
           updateDbStatus(true);
           return r.json();
         })
-        .then(d => {
-          if(d.status==="success") {
-            showNotification(`Mapping "${mapName}" deleted.`, "success");
-            $('#deleteMappingModal').modal('hide');
-            document.getElementById("deleteMappingName").value="";
+        .then(d=>{
+          if(d.status==="success"){
+            showNotification(`Map "${nm}" created!`,"success");
+            resetMapCreationUI();
             fetchMapNames();
           } else {
-            showNotification("Error deleting mapping: "+d.message, "error");
+            showNotification("Error creating map:"+d.message,"error");
           }
         })
-        .catch(err => {
+        .catch(err=>{
           updateDbStatus(false);
-          showNotification("Delete mapping request error: "+err.message, "error");
+          showNotification("Create map request error:"+err.message,"error");
         });
-      });
+      }
+    });
+    cancelBtn.addEventListener("click", resetMapCreationUI);
+    function resetMapCreationUI(){
+      creatingMap=false;
+      toggleBtn.textContent="New Map";
+      toggleBtn.classList.remove("btn-primary");
+      toggleBtn.classList.add("btn-success");
+      cancelBtn.style.display="none";
+      createBox.style.display="none";
+      document.getElementById("newMapName").value="";
     }
+  }
 
-  </script>
+  // =========== DELETE MAPPING ===========
+  function setupDeleteMapping(){
+    document.getElementById("deleteMappingBtn").addEventListener("click",()=>{
+      $('#deleteMappingModal').modal('show');
+    });
+    document.getElementById("confirmDeleteMapping").addEventListener("click",()=>{
+      const mapName=document.getElementById("deleteMappingName").value.trim();
+      if(!mapName){
+        showNotification("Enter a map name to delete.","error");
+        return;
+      }
+      fetch("/delete_mapping",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({map_name: mapName})
+      })
+      .then(r=>{
+        if(!r.ok) throw new Error("Not ok");
+        updateDbStatus(true);
+        return r.json();
+      })
+      .then(d=>{
+        if(d.status==="success"){
+          showNotification(`Mapping "${mapName}" deleted!`,"success");
+          $('#deleteMappingModal').modal('hide');
+          document.getElementById("deleteMappingName").value="";
+          fetchMapNames();
+        } else {
+          showNotification("Error deleting mapping:"+ d.message,"error");
+        }
+      })
+      .catch(err=>{
+        updateDbStatus(false);
+        showNotification("Delete mapping request error:"+err.message,"error");
+      });
+    });
+  }
+
+  // =========== NEW LEDGER ===========
+  function setupNewLedgerUI(){
+    document.getElementById("confirmNewLedgerBtn").addEventListener("click",()=>{
+      const ledgerName=document.getElementById("newLedgerNameInput").value.trim();
+      if(!ledgerName){
+        showNotification("Enter a ledger name!","error");
+        return;
+      }
+      let mapName="";
+      const at=document.querySelector("#mapNameTabs a.nav-link.active");
+      if(at) mapName=at.textContent;
+      const sMn= mapName.replace(/\s+/g,'-');
+      const dd=document.getElementById(`ledgerDropdown-${sMn}`);
+      let chosenLedgerId= dd? dd.value : "";
+
+      fetch("/add_ledger",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          map_name:mapName,
+          ledger_name:ledgerName,
+          src_ledger: chosenLedgerId
+        })
+      })
+      .then(r=>{
+        if(!r.ok) throw new Error("Not ok");
+        return r.json();
+      })
+      .then(d=>{
+        if(d.status==="success"){
+          showNotification(`Ledger "${ledgerName}" created!`,"success");
+          $('#newLedgerModal').modal('hide');
+          document.getElementById("newLedgerNameInput").value="";
+          fetchMapNames();
+        } else {
+          showNotification("Error creating ledger:"+ d.message,"error");
+        }
+      })
+      .catch(err=>{
+        showNotification("Create ledger request error:"+ err.message,"error");
+      });
+    });
+  }
+
+  // =========== RENAME LEDGER ===========
+  function openRenameLedgerModal(sMn){
+    const dd=document.getElementById(`ledgerDropdown-${sMn}`);
+    if(!dd||!dd.value){
+      showNotification("No ledger selected to rename.","error");
+      return;
+    }
+    document.getElementById("oldLedgerNameInput").value= dd.options[dd.selectedIndex].text;
+    document.getElementById("newLedgerNameInput2").value="";
+    $('#renameLedgerModal').modal('show');
+  }
+  function setupRenameLedgerModal(){
+    document.getElementById("renameLedgerConfirmBtn").addEventListener("click",()=>{
+      const oldNm=document.getElementById("oldLedgerNameInput").value.trim();
+      const newNm=document.getElementById("newLedgerNameInput2").value.trim();
+      if(!oldNm||!newNm){
+        showNotification("Both old & new ledger names required.","error");
+        return;
+      }
+      fetch("/rename_ledger",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({old_name:oldNm,new_name:newNm})
+      })
+      .then(r=>{
+        if(!r.ok) throw new Error("Not ok");
+        return r.json();
+      })
+      .then(d=>{
+        if(d.status==="success"){
+          showNotification(`Ledger renamed to "${newNm}"!`,"success");
+          $('#renameLedgerModal').modal('hide');
+          fetchMapNames();
+        } else {
+          showNotification("Rename ledger error:"+ d.message,"error");
+        }
+      })
+      .catch(err=>{
+        showNotification("Rename ledger request error:"+ err.message,"error");
+      });
+    });
+  }
+
+  // =========== DELETE LEDGER ===========
+  function openDeleteLedgerModal(sMn){
+    document.getElementById("deleteLedgerNameInput").value="";
+    $('#deleteLedgerModal').modal('show');
+  }
+  function setupDeleteLedgerModal(){
+    document.getElementById("deleteLedgerConfirmBtn").addEventListener("click",()=>{
+      const typedName=document.getElementById("deleteLedgerNameInput").value.trim();
+      if(!typedName){
+        showNotification("Type the ledger name to delete.","error");
+        return;
+      }
+      let mapName="";
+      const at=document.querySelector("#mapNameTabs a.nav-link.active");
+      if(at) mapName=at.textContent;
+
+      fetch("/remove_ledger",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          map_name: mapName,
+          ledger_name: typedName
+        })
+      })
+      .then(r=>{
+        if(!r.ok) throw new Error("Not ok");
+        return r.json();
+      })
+      .then(d=>{
+        if(d.status==="success"){
+          showNotification(`Ledger "${typedName}" was deleted.`,"success");
+          $('#deleteLedgerModal').modal('hide');
+          document.getElementById("deleteLedgerNameInput").value="";
+          fetchMapNames();
+        } else {
+          showNotification("Delete ledger error:"+ d.message,"error");
+        }
+      })
+      .catch(err=>{
+        showNotification("Delete ledger request error:"+ err.message,"error");
+      });
+    });
+  }
+
+  // =========== ADD TAX CODE ===========
+  function setupAddTaxCodeUI(){
+    document.getElementById("confirmAddTaxCodeBtn").addEventListener("click",()=>{
+      const taxCodeVal=document.getElementById("newTaxCodeInput").value.trim();
+      const taxDescVal=document.getElementById("newTaxDescInput").value.trim();
+      if(!taxCodeVal){
+        showNotification("Tax Code is required.","error");
+        return;
+      }
+      let mapName="";
+      const act=document.querySelector("#mapNameTabs a.nav-link.active");
+      if(act) mapName=act.textContent;
+      let sMn= mapName.replace(/\s+/g,'-');
+      const dd=document.getElementById(`ledgerDropdown-${sMn}`);
+      if(!dd||!dd.value){
+        showNotification("No ledger selected!","error");
+        return;
+      }
+      fetch("/create_tax_code",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({
+          ledger_id: dd.value,
+          tax_code: taxCodeVal,
+          description: taxDescVal
+        })
+      })
+      .then(r=>{
+        if(!r.ok) throw new Error("Not ok");
+        return r.json();
+      })
+      .then(d=>{
+        if(d.status==="success"){
+          showNotification(`Tax code "${taxCodeVal}" created!`,"success");
+          $('#addTaxCodeModal').modal('hide');
+          document.getElementById("newTaxCodeInput").value="";
+          document.getElementById("newTaxDescInput").value="";
+          loadAccountsAndTaxes(mapName, sMn, 1, dd.value);
+        } else {
+          showNotification("Add tax code error:"+ d.message,"error");
+        }
+      })
+      .catch(err=>{
+        showNotification("Add tax code request error:"+ err.message,"error");
+      });
+    });
+  }
+
+</script>
 </body>
 </html>

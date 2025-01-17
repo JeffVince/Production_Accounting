@@ -1,5 +1,5 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="flower" type="PythonConfigurationType" factoryName="Python">
+  <configuration default="false" name="production_celery_Server_worker_flower" type="PythonConfigurationType" factoryName="Python" folderName="Celery">
     <module name="Dropbox Listener" />
     <option name="INTERPRETER_OPTIONS" value="" />
     <option name="PARENT_ENVS" value="true" />

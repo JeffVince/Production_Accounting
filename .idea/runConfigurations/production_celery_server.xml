@@ -1,5 +1,5 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="Celery" type="PythonConfigurationType" factoryName="Python">
+  <configuration default="false" name="production_celery_server" type="PythonConfigurationType" factoryName="Python" folderName="Celery">
     <log_file alias="ADMIN" path="$PROJECT_DIR$/server_celery/logs/admin.log" show_all="true" />
     <log_file alias="MONDAY" path="$PROJECT_DIR$/server_celery/logs/monday.log" />
     <log_file alias="DROPBOX" path="$PROJECT_DIR$/server_celery/logs/dropbox.log" />

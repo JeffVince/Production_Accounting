@@ -74,7 +74,8 @@ class XeroServices(metaclass=SingletonMeta):
         Retrieve all contacts from the local DB, retrieve all contacts from Xero,
         compare them, and then perform a single batch update (only for those that need changes).
         """
-        self.logger.info('[populate_xero_contacts] - 🚀 Starting to populate Xero contacts from the local DB in a single batch...')
+        self.logger.info(
+            '[populate_xero_contacts] - 🚀 Starting to populate Xero contacts from the local DB in a single batch...')
         db_contacts = self.database_util.search_contacts()
         self.logger.info(f'[populate_xero_contacts] - Found {len(db_contacts)} contacts in the local DB to process.')
         self.logger.info('[populate_xero_contacts] - Retrieving all contacts from Xero...')
@@ -83,40 +84,95 @@ class XeroServices(metaclass=SingletonMeta):
         except XeroException as xe:
             self.logger.error(f'[populate_xero_contacts] - Failed to retrieve contacts from Xero: {xe}')
             return
-        xero_contacts_dict = {contact['Name'].strip().lower(): contact for contact in all_xero_contacts if isinstance(contact.get('Name'), str) and contact.get('Name').strip()}
+
+        xero_contacts_dict = {
+            contact['Name'].strip().lower(): contact
+            for contact in all_xero_contacts
+            if isinstance(contact.get('Name'), str) and contact.get('Name').strip()
+        }
+
         contacts_to_update = []
         for db_contact in db_contacts:
             errors = self.validate_xero_data(db_contact)
             if errors:
-                self.logger.error(f"[populate_xero_contacts] - Skipping contact '{db_contact.get('name', 'Unnamed')}' due to validation errors: {errors}")
+                self.logger.error(
+                    f"[populate_xero_contacts] - Skipping contact '{db_contact.get('name', 'Unnamed')}' "
+                    f"due to validation errors: {errors}"
+                )
                 continue
+
             contact_name = db_contact['name']
-            self.logger.info(f"[populate_xero_contacts] - 🔎 Checking if there's a matching Xero contact for '{contact_name}'")
+            self.logger.info(
+                f"[populate_xero_contacts] - 🔎 Checking if there's a matching Xero contact for '{contact_name}'"
+            )
             xero_match = xero_contacts_dict.get(contact_name.strip().lower())
+
             if not xero_match:
                 msg = f"No matching Xero contact found for: '{contact_name}' ❌"
                 self.logger.warning('[populate_xero_contacts] - ' + msg)
                 continue
-            contact_id = xero_match['ContactID']
+
+            xero_id = xero_match['ContactID']
+
+            # --- Store the Xero ContactID in the local 'xero_id' column ---
+            self.database_util.update_contact(contact_id= db_contact["id"], xero_id = xero_id)
+
             xero_tax_number = xero_match.get('TaxNumber', '') or ''
             xero_addresses = xero_match.get('Addresses', [])
             xero_email = xero_match.get('EmailAddress') or ''
+
             tax_number = str(db_contact.get('tax_number')) if db_contact.get('tax_number') else ''
             email = db_contact['email']
+
             if tax_number and len(tax_number) == 9 and tax_number.isdigit():
                 formatted_ssn = f'{tax_number[0:3]}-{tax_number[3:5]}-{tax_number[5:]}'
-                self.logger.debug(f"[populate_xero_contacts] - Formatting SSN from '{tax_number}' to '{formatted_ssn}' for '{contact_name}'.")
+                self.logger.debug(
+                    f"[populate_xero_contacts] - Formatting SSN from '{tax_number}' to '{formatted_ssn}' "
+                    f"for '{contact_name}'."
+                )
                 tax_number = formatted_ssn
-            address_data = [{'AddressType': 'STREET', 'AddressLine1': db_contact.get('address_line_1', '') or '', 'AddressLine2': db_contact.get('address_line_2', '') or '', 'City': db_contact.get('city', '') or '', 'PostalCode': db_contact.get('zip', '') or '', 'Region': db_contact.get('region', '') or '', 'Country': db_contact.get('country', '') or ''}, {'AddressType': 'POBOX', 'AddressLine1': db_contact.get('address_line_1', '') or '', 'AddressLine2': db_contact.get('address_line_2', '') or '', 'City': db_contact.get('city', '') or '', 'PostalCode': db_contact.get('zip', '') or '', 'Region': db_contact.get('region', '') or '', 'Country': db_contact.get('country', '') or ''}]
+
+            address_data = [
+                {
+                    'AddressType': 'STREET',
+                    'AddressLine1': db_contact.get('address_line_1', '') or '',
+                    'AddressLine2': db_contact.get('address_line_2', '') or '',
+                    'City': db_contact.get('city', '') or '',
+                    'PostalCode': db_contact.get('zip', '') or '',
+                    'Region': db_contact.get('region', '') or '',
+                    'Country': db_contact.get('country', '') or ''
+                },
+                {
+                    'AddressType': 'POBOX',
+                    'AddressLine1': db_contact.get('address_line_1', '') or '',
+                    'AddressLine2': db_contact.get('address_line_2', '') or '',
+                    'City': db_contact.get('city', '') or '',
+                    'PostalCode': db_contact.get('zip', '') or '',
+                    'Region': db_contact.get('region', '') or '',
+                    'Country': db_contact.get('country', '') or ''
+                }
+            ]
+
             need_update = False
             if xero_tax_number != tax_number:
                 need_update = True
-                self.logger.debug(f"[populate_xero_contacts] - Tax number changed for '{contact_name}' from '{xero_tax_number}' to '{tax_number}'.")
+                self.logger.debug(
+                    f"[populate_xero_contacts] - Tax number changed for '{contact_name}' "
+                    f"from '{xero_tax_number}' to '{tax_number}'."
+                )
+
             if email != xero_email:
                 need_update = True
-                self.logger.debug(f"[populate_xero_contacts] - Email changed for '{contact_name}' from '{xero_email}' to '{email}'.")
+                self.logger.debug(
+                    f"[populate_xero_contacts] - Email changed for '{contact_name}' "
+                    f"from '{xero_email}' to '{email}'."
+                )
+
             if len(xero_addresses) < 2:
-                self.logger.debug(f"[populate_xero_contacts] - Xero contact '{contact_name}' has fewer than 2 addresses stored. Triggering update.")
+                self.logger.debug(
+                    f"[populate_xero_contacts] - Xero contact '{contact_name}' has fewer than 2 addresses stored. "
+                    "Triggering update."
+                )
                 need_update = True
             else:
                 for idx in range(2):
@@ -124,28 +180,50 @@ class XeroServices(metaclass=SingletonMeta):
                     new = address_data[idx]
                     for field in ['AddressLine1', 'AddressLine2', 'City', 'PostalCode', 'Country', 'Region']:
                         if old.get(field, '') != new.get(field, ''):
-                            self.logger.debug(f"[populate_xero_contacts] - Address {idx} field '{field}' changed for '{contact_name}' from '{old.get(field, '')}' to '{new.get(field, '')}'.")
+                            self.logger.debug(
+                                f"[populate_xero_contacts] - Address {idx} field '{field}' changed for '{contact_name}' "
+                                f"from '{old.get(field, '')}' to '{new.get(field, '')}'."
+                            )
                             need_update = True
                             break
+
             if need_update:
-                updated_contact_data = {'ContactID': contact_id, 'Name': db_contact['name'], 'Email': email, 'TaxNumber': tax_number, 'Addresses': address_data}
+                updated_contact_data = {
+                    'ContactID': xero_id,
+                    'Name': db_contact['name'],
+                    'Email': email,
+                    'TaxNumber': tax_number,
+                    'Addresses': address_data
+                }
                 contacts_to_update.append(updated_contact_data)
             else:
                 self.logger.info(f"[populate_xero_contacts] - 🎉  No change needed for '{contact_name}'.")
+
         if contacts_to_update:
-            self.logger.info(f'[populate_xero_contacts] - 💾 Sending a batch update for {len(contacts_to_update)} Xero contacts...')
+            self.logger.info(
+                f'[populate_xero_contacts] - 💾 Sending a batch update for {len(contacts_to_update)} Xero contacts...'
+            )
             try:
                 self.xero_api.update_contacts_with_retry(contacts_to_update)
-                self.logger.info(f'[populate_xero_contacts] - 🎉 Successfully updated {len(contacts_to_update)} Xero contacts in a single batch.')
+                self.logger.info(
+                    f'[populate_xero_contacts] - 🎉 Successfully updated {len(contacts_to_update)} Xero contacts in a single batch.'
+                )
             except XeroException as xe:
-                self.logger.error(f'[populate_xero_contacts] - XeroException while updating contacts in batch: {xe}')
+                self.logger.error(
+                    f'[populate_xero_contacts] - XeroException while updating contacts in batch: {xe}'
+                )
             except Exception as e:
-                self.logger.debug(f'[populate_xero_contacts] - Debugging the exception object: type={type(e)}, repr={repr(e)}')
+                self.logger.debug(
+                    f'[populate_xero_contacts] - Debugging the exception object: '
+                    f'type={type(e)}, repr={repr(e)}'
+                )
                 error_message = f'⚠️ Error in batch update: {e}'
                 self.logger.error('[populate_xero_contacts] - ' + error_message)
         else:
             self.logger.info('[populate_xero_contacts] - No contacts required updating in Xero.')
-        self.logger.info('[populate_xero_contacts] - 🏁 Finished populating Xero contacts from the local DB in a single batch.')
+
+        self.logger.info(
+            '[populate_xero_contacts] - 🏁 Finished populating Xero contacts from the local DB in a single batch.')
 
     def validate_xero_data(self, db_contact):
         """

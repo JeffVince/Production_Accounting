@@ -38,6 +38,7 @@ class Contact(Base):
     city = Column(String(100), nullable=True)
     zip = Column(String(20), nullable=True)
     tax_form_link = Column(String(255), nullable=True)
+    xero_id = Column(String(255))
     vendor_status = Column(Enum('PENDING', 'TO VERIFY', 'APPROVED', 'ISSUE'), nullable=False, server_default='PENDING')
     region = Column(String(45), nullable=True)
     country = Column(String(100), nullable=True)

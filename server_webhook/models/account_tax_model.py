@@ -1,23 +1,22 @@
+# ================================ 3) account_tax_model.py ================================
 import logging
 import re
 from typing import List, Dict, Any, Optional
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 
-from database.database_util import DatabaseOperations
+from database.database_util import DatabaseOperations  # Adjust imports
 from models import AccountCode, TaxAccount, BudgetMap, TaxLedger
 from database.db_util import get_db_session
 
 logger = logging.getLogger(__name__)
 
 def natural_sort_key(s: str) -> List:
-    """
-    Splits the string for natural numeric sorting: '2' < '10', etc.
-    '10000-4' => [10000,'-',4]
-    """
     s = s or ""
-    return [int(part) if part.isdigit() else part.lower()
-            for part in re.split(r'(\d+)', s)]
+    return [
+        int(part) if part.isdigit() else part.lower()
+        for part in re.split(r'(\d+)', s)
+    ]
 
 class AccountTaxModel:
     def __init__(self):
@@ -28,13 +27,15 @@ class AccountTaxModel:
             rows=session.query(BudgetMap).all()
             return sorted([bm.map_name for bm in rows])
 
-    def fetch_map_data(self,
-                       map_name:str,
-                       page_account:int=1,
-                       per_page_account:int=40,
-                       ledger_id:str="",
-                       sort_by:str="code_natural",
-                       direction:str="asc") -> Dict[str,Any]:
+    def fetch_map_data(
+        self,
+        map_name:str,
+        page_account:int=1,
+        per_page_account:int=40,
+        ledger_id:str="",
+        sort_by:str="code_natural",
+        direction:str="asc"
+    ) -> Dict[str,Any]:
         data={
             "account_records":[],
             "tax_records":[],
@@ -47,10 +48,11 @@ class AccountTaxModel:
                 return data
 
             lid=int(ledger_id)
+            # fetch all tax codes for this ledger
             taxRows=session.query(TaxAccount).filter(TaxAccount.tax_ledger_id==lid).all()
             tax_ids=[t.id for t in taxRows]
 
-            query=(
+            acct_query=(
                 session.query(
                     AccountCode.id,
                     AccountCode.code,
@@ -63,53 +65,40 @@ class AccountTaxModel:
                 .filter(AccountCode.budget_map_id==bm.id)
                 .filter(AccountCode.tax_id.in_(tax_ids))
             )
+            rows=acct_query.all()
 
-            allRows = query.all()
-            # handle sorting
+            # Sorting
             if sort_by=="code_natural":
-                # python-level natural sort
-                allRows=sorted(allRows, key=lambda r: natural_sort_key(r.code or ""))
-                if direction=="desc":
-                    allRows.reverse()
+                rows=sorted(rows, key=lambda r: natural_sort_key(r.code or ""))
             elif sort_by=="code":
-                if direction=="desc":
-                    allRows=sorted(allRows, key=lambda r: (r.code or ""), reverse=True)
-                else:
-                    allRows=sorted(allRows, key=lambda r: (r.code or ""))
+                rows=sorted(rows, key=lambda r: (r.code or "").lower())
             elif sort_by=="description":
-                if direction=="desc":
-                    allRows=sorted(allRows, key=lambda r: (r.account_description or "").lower(), reverse=True)
-                else:
-                    allRows=sorted(allRows, key=lambda r: (r.account_description or "").lower())
+                rows=sorted(rows, key=lambda r: (r.account_description or "").lower())
             elif sort_by=="linked_tax":
-                if direction=="desc":
-                    allRows=sorted(allRows, key=lambda r: (r.tax_code or "").lower(), reverse=True)
-                else:
-                    allRows=sorted(allRows, key=lambda r: (r.tax_code or "").lower())
+                rows=sorted(rows, key=lambda r: (r.tax_code or "").lower())
             elif sort_by=="updated":
-                if direction=="desc":
-                    allRows=sorted(allRows, key=lambda r: (r.updated_at or ""), reverse=True)
-                else:
-                    allRows=sorted(allRows, key=lambda r: (r.updated_at or ""))
+                rows=sorted(rows, key=lambda r: (r.updated_at or ""))
 
-            total = len(allRows)
-            total_pages = (total//per_page_account) + (1 if total%per_page_account!=0 else 0)
+            if direction=="desc":
+                rows.reverse()
+
+            total=len(rows)
+            total_pages=(total//per_page_account)+(1 if total%per_page_account!=0 else 0)
             start=(page_account-1)*per_page_account
             end=start+per_page_account
-            selected=allRows[start:end]
+            selected=rows[start:end]
 
-            account_records=[]
-            for row in selected:
-                account_records.append({
-                    "id": row.id,
-                    "code": row.code,
-                    "account_description": row.account_description,
-                    "tax_id": row.tax_id,
-                    "tax_code": row.tax_code,
-                    "updated_at": row.updated_at.isoformat() if row.updated_at else None
+            acct_records=[]
+            for r in selected:
+                acct_records.append({
+                    "id": r.id,
+                    "code": r.code,
+                    "account_description": r.account_description,
+                    "tax_id": r.tax_id,
+                    "tax_code": r.tax_code,
+                    "updated_at": r.updated_at.isoformat() if r.updated_at else None
                 })
-
-            data["account_records"]=account_records
+            data["account_records"]=acct_records
             data["page_account"]=page_account
             data["total_pages_account"]=total_pages
 
@@ -152,24 +141,39 @@ class AccountTaxModel:
                 raise ValueError(f"No accounts found for map_name='{map_name}'")
             for a in accts:
                 session.delete(a)
-            # remove the parent BudgetMap
             session.delete(bm)
             session.commit()
 
-    def add_ledger_custom(self,
-                          current_map:str,
-                          ledger_name:str,
-                          user_id:int=1,
-                          src_ledger:str="",
-                          src_map:str="") -> (int,str):
-        """
-        Creates a ledger with ledger_name. If src_ledger is provided => copy those tax codes.
-        """
+    def fetch_ledgers_for_map(self, map_name:str)->List[Dict[str,Any]]:
+        with get_db_session() as session:
+            bm=session.query(BudgetMap).filter(BudgetMap.map_name==map_name).one_or_none()
+            if not bm:
+                return []
+            q=(
+                session.query(TaxLedger.id, TaxLedger.name, func.count(TaxAccount.id).label("cnt"))
+                .join(TaxAccount, TaxLedger.id==TaxAccount.tax_ledger_id)
+                .join(AccountCode, AccountCode.tax_id==TaxAccount.id)
+                .filter(AccountCode.budget_map_id==bm.id)
+                .group_by(TaxLedger.id, TaxLedger.name)
+                .having(func.count(TaxAccount.id)>0)
+            )
+            rows=q.all()
+            out=[]
+            for r in rows:
+                out.append({"id":r.id,"name":r.name})
+            return out
+
+    def add_ledger_custom(
+        self,
+        current_map:str,
+        ledger_name:str,
+        user_id:int=1,
+        src_ledger:str=""
+    )->(int,str):
         with get_db_session() as session:
             newL=TaxLedger(name=ledger_name, user_id=user_id)
             session.add(newL)
             session.flush()
-
             if src_ledger:
                 try:
                     old_ledger_id=int(src_ledger)
@@ -196,6 +200,48 @@ class AccountTaxModel:
             session.commit()
             return (newL.id, ledger_name)
 
+    def create_accounts_for_new_ledger(self, map_name:str, ledger_id:int, src_ledger:str):
+        with get_db_session() as session:
+            bm=session.query(BudgetMap).filter(BudgetMap.map_name==map_name).one_or_none()
+            if not bm:
+                return
+            # build a map from oldTaxCode => newTaxId
+            newTaxes=session.query(TaxAccount).filter(TaxAccount.tax_ledger_id==ledger_id).all()
+            taxMap={}
+            for nt in newTaxes:
+                taxMap[nt.tax_code]=nt.id
+
+            if src_ledger:
+                try:
+                    old_ledger_id=int(src_ledger)
+                    oldTaxes=session.query(TaxAccount).filter(TaxAccount.tax_ledger_id==old_ledger_id).all()
+                    oldDict={o.tax_code:o.id for o in oldTaxes}
+
+                    # find all accounts in that map which reference any old_ledger tax_id
+                    oldAcctQuery=(
+                        session.query(AccountCode)
+                        .join(TaxAccount, AccountCode.tax_id==TaxAccount.id)
+                        .filter(AccountCode.budget_map_id==bm.id)
+                        .filter(TaxAccount.tax_ledger_id==old_ledger_id)
+                    )
+                    oldAccts=oldAcctQuery.all()
+                    for oa in oldAccts:
+                        oldTaxId=oa.tax_id
+                        oldTaxRow=session.query(TaxAccount).get(oldTaxId)
+                        if not oldTaxRow:
+                            continue
+                        newTaxId= taxMap.get(oldTaxRow.tax_code) or None
+                        newAcct=AccountCode(
+                            code=oa.code,
+                            account_description=oa.account_description,
+                            tax_id=newTaxId,
+                            budget_map_id=bm.id
+                        )
+                        session.add(newAcct)
+                    session.commit()
+                except ValueError:
+                    pass
+
     def rename_ledger(self, old_name:str, new_name:str)->None:
         with get_db_session() as session:
             row=session.query(TaxLedger).filter(TaxLedger.name==old_name).one_or_none()
@@ -205,19 +251,14 @@ class AccountTaxModel:
             session.commit()
 
     def delete_ledger(self, map_name:str, ledger_name:str)->None:
-        """
-        Delete the ledger row + any associated tax codes,
-        clearing references from accounts in that map using them.
-        """
         with get_db_session() as session:
             ld=session.query(TaxLedger).filter(TaxLedger.name==ledger_name).one_or_none()
             if not ld:
                 raise ValueError(f"Ledger '{ledger_name}' not found.")
-            # gather tax codes
-            taxRows=session.query(TaxAccount).filter(TaxAccount.tax_ledger_id==ld.id).all()
+            tRows=session.query(TaxAccount).filter(TaxAccount.tax_ledger_id==ld.id).all()
             bm=session.query(BudgetMap).filter(BudgetMap.map_name==map_name).one_or_none()
             if bm:
-                for tx in taxRows:
+                for tx in tRows:
                     session.query(AccountCode).filter(
                         AccountCode.budget_map_id==bm.id,
                         AccountCode.tax_id==tx.id
@@ -228,10 +269,14 @@ class AccountTaxModel:
 
     def create_tax_record(self, tax_code:str, tax_desc:str, tax_ledger_id:int)->int:
         with get_db_session() as session:
-            tax=TaxAccount(tax_code=tax_code, description=tax_desc, tax_ledger_id=tax_ledger_id)
-            session.add(tax)
+            t=TaxAccount(
+                tax_code=tax_code,
+                description=tax_desc,
+                tax_ledger_id=tax_ledger_id
+            )
+            session.add(t)
             session.commit()
-            return tax.id
+            return t.id
 
     def update_tax_record(self, tax_id:int, tax_code:str, tax_desc:str, tax_ledger_id:Optional[int])->None:
         with get_db_session() as session:
@@ -246,19 +291,17 @@ class AccountTaxModel:
 
     def delete_tax_record(self, map_name:str, tax_id:int)->None:
         with get_db_session() as session:
-            tax=session.query(TaxAccount).get(tax_id)
-            if not tax:
+            t=session.query(TaxAccount).get(tax_id)
+            if not t:
                 raise ValueError(f"Tax ID={tax_id} not found.")
             bm=session.query(BudgetMap).filter(BudgetMap.map_name==map_name).one_or_none()
             if not bm:
                 raise ValueError(f"No BudgetMap found for '{map_name}'")
-
-            # Clear references from accounts in that map
             session.query(AccountCode).filter(
                 AccountCode.budget_map_id==bm.id,
                 AccountCode.tax_id==tax_id
             ).update({AccountCode.tax_id:None}, synchronize_session=False)
-            session.delete(tax)
+            session.delete(t)
             session.commit()
 
     def assign_tax_bulk(self, map_name:str, account_ids:List[int], tax_id:int)->None:
@@ -266,8 +309,8 @@ class AccountTaxModel:
             bm=session.query(BudgetMap).filter(BudgetMap.map_name==map_name).one_or_none()
             if not bm:
                 raise ValueError(f"Map '{map_name}' does not exist.")
-            tax=session.query(TaxAccount).filter(TaxAccount.id==tax_id).one_or_none()
-            if not tax:
+            tx=session.query(TaxAccount).filter(TaxAccount.id==tax_id).one_or_none()
+            if not tx:
                 raise ValueError(f"Tax ID={tax_id} not found.")
             updated=session.query(AccountCode).filter(
                 AccountCode.budget_map_id==bm.id,

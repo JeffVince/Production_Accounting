@@ -1,5 +1,9 @@
 import logging
-from flask import Flask, jsonify, request, redirect, url_for
+
+import requests
+from flask import Flask, jsonify, request, redirect, url_for, Response
+
+from utilities.config import Config
 from files_dropbox.dropbox_service import dropbox_service
 from orchestration.orchestrator import Orchestrator
 from files_monday.monday_webhook_handler import monday_blueprint
@@ -10,6 +14,7 @@ from utilities.logger import setup_logging
 from flask import render_template
 from server_webhook.models.account_tax_model import AccountTaxModel
 from routes.account_tax_routes import account_tax_bp
+
 app = Flask(__name__)
 orchestrator = Orchestrator()
 app.register_blueprint(monday_blueprint, url_prefix='/webhook/monday')
@@ -18,6 +23,7 @@ app.register_blueprint(account_tax_bp)
 logger = logging.getLogger(__name__)
 setup_logging()
 db_view_util = AccountTaxModel()
+config = Config()
 
 @app.route('/account_tax_view', methods=['GET'])
 def account_tax_view():
@@ -137,3 +143,43 @@ def map_codes_view():
     local storage logic, pagination, etc.
     """
     return render_template('map_codes_view.html')
+
+
+#########################################
+#     Dev Proxy Route: /dev/<path>      #
+#########################################
+@app.route('/dev/<path:subpath>', methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
+def dev_proxy(subpath):
+    """
+    Forwards any request under /dev/... to the dev server on port 5003.
+    If the dev server is offline, returns a 200 with a JSON indicating offline status.
+    """
+    dev_url = f"http://localhost:{config.WEBHOOK_MAIN_PORT_DEBUG}/{subpath}"
+
+    try:
+        # Forward the request method, headers, and data to dev server
+        resp = requests.request(
+            method=request.method,
+            url=dev_url,
+            headers={key: value for key, value in request.headers if key != 'Host'},
+            data=request.get_data(),
+            cookies=request.cookies,
+            allow_redirects=False
+        )
+
+        # Build a Flask Response object from the requests response
+        excluded_headers = ['content-encoding', 'transfer-encoding', 'connection']
+        headers = [(name, value) for (name, value) in resp.raw.headers.items()
+                   if name.lower() not in excluded_headers]
+
+        response = Response(resp.content, resp.status_code, headers)
+        return response
+
+    except requests.exceptions.ConnectionError:
+        logger.warning("Dev server is offline or not reachable.")
+        # Return a 200 with JSON body
+        return jsonify({
+            'message': 'Dev server offline',
+            'status': 'offline',
+            'forwarded_path': subpath
+        }), 200

@@ -15,14 +15,18 @@ from werkzeug.serving import make_server
 
 def run_flask_app():
     """Function to run the Flask app."""
-    setup_logging()
-    logger = logging.getLogger('webhook_main')
     logger.info('Starting Flask server for webhooks...')
+
+    # Decide the port: if APP_DEBUG is True, use the debug port; otherwise use the normal port.
+    chosen_port = config.get_running_port()
+
+
     app.config['TEMPLATES_AUTO_RELOAD'] = config.APP_DEBUG
     app.debug = config.APP_DEBUG
-    server = make_server('0.0.0.0', Config.WEBHOOK_MAIN_PORT, app)
+
+    server = make_server('0.0.0.0', chosen_port, app)
     try:
-        logger.info(f'Flask server running on port {Config.WEBHOOK_MAIN_PORT}.')
+        logger.info(f'Flask server running on3 port {chosen_port}.')
         server.serve_forever()
     except KeyboardInterrupt:
         logger.info('Shutting down Flask server...')
