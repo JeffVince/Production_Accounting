@@ -7,7 +7,7 @@ from database.models import PurchaseOrder
 from database.db_util import get_db_session
 import logging
 
-from monday_files.monday_util import SUBITEM_RATE_COLUMN_ID, SUBITEM_QUANTITY_COLUMN_ID
+from files_monday.monday_util import SUBITEM_RATE_COLUMN_ID, SUBITEM_QUANTITY_COLUMN_ID
 
 logger = logging.getLogger(__name__)
 

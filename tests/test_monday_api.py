@@ -1,7 +1,7 @@
 # test_monday_api.py
 import pytest
 from unittest.mock import patch, MagicMock
-from monday_files.monday_api import MondayAPI
+from files_monday.monday_api import MondayAPI
 
 @pytest.fixture
 def monday_api_instance():

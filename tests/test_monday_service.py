@@ -2,7 +2,7 @@
 
 import unittest
 from unittest.mock import patch, MagicMock
-from monday_files.monday_service import MondayService
+from files_monday.monday_service import MondayService
 import requests
 from utilities.config import Config
 
@@ -28,7 +28,7 @@ class TestMondayService(unittest.TestCase):
         self.assertEqual(service.contact_board_id, service.monday_util.CONTACT_BOARD_ID, "Contact Board ID should match MondayUtil configuration.")
         self.assertEqual(service.api_url, service.monday_util.MONDAY_API_URL, "API URL should match MondayUtil configuration.")
 
-    @patch('monday_files.monday_service.requests.post')
+    @patch('files_monday.monday_service.requests.post')
     def test__make_request_success(self, mock_post):
         """
         Test the _make_request method for a successful API call.
@@ -53,7 +53,7 @@ class TestMondayService(unittest.TestCase):
         )
         self.assertEqual(response, {'data': {'result': 'success'}}, "Response should match the mocked data.")
 
-    @patch('monday_files.monday_service.requests.post')
+    @patch('files_monday.monday_service.requests.post')
     def test__make_request_http_error(self, mock_post):
         """
         Test the _make_request method when an HTTPError occurs.
@@ -75,8 +75,8 @@ class TestMondayService(unittest.TestCase):
             headers={"Authorization": self.service.api_token}
         )
 
-    @patch('monday_files.monday_service.MondayUtil')
-    @patch('monday_files.monday_service.MondayDatabaseUtil')
+    @patch('files_monday.monday_service.MondayUtil')
+    @patch('files_monday.monday_service.MondayDatabaseUtil')
     def test_update_po_status(self, mock_db_util, mock_monday_util):
         """
         Test the update_po_status method for a successful status update.
@@ -113,8 +113,8 @@ class TestMondayService(unittest.TestCase):
         }
         mock_make_request.assert_called_with(expected_query, expected_variables)
 
-    @patch('monday_files.monday_service.MondayUtil')
-    @patch('monday_files.monday_service.MondayDatabaseUtil')
+    @patch('files_monday.monday_service.MondayUtil')
+    @patch('files_monday.monday_service.MondayDatabaseUtil')
     def test_match_or_create_contact_existing_contact(self, mock_db_util, mock_monday_util):
         """
         Test match_or_create_contact when contact already exists.
@@ -135,8 +135,8 @@ class TestMondayService(unittest.TestCase):
         mock_monday_util_instance.create_item.assert_not_called()
         mock_db_util_instance.link_contact_to_po.assert_called_once_with('PO123', '456')
 
-    @patch('monday_files.monday_service.MondayUtil')
-    @patch('monday_files.monday_service.MondayDatabaseUtil')
+    @patch('files_monday.monday_service.MondayUtil')
+    @patch('files_monday.monday_service.MondayDatabaseUtil')
     def test_match_or_create_contact_create_new_contact(self, mock_db_util, mock_monday_util):
         """
         Test match_or_create_contact when contact does not exist and needs to be created.
@@ -166,8 +166,8 @@ class TestMondayService(unittest.TestCase):
         )
         mock_db_util_instance.link_contact_to_po.assert_called_once_with('PO123', '456')
 
-    @patch('monday_files.monday_service.MondayUtil')
-    @patch('monday_files.monday_service.MondayDatabaseUtil')
+    @patch('files_monday.monday_service.MondayUtil')
+    @patch('files_monday.monday_service.MondayDatabaseUtil')
     def test_match_or_create_contact_create_failure(self, mock_db_util, mock_monday_util):
         """
         Test match_or_create_contact when creating a new contact fails.
@@ -187,7 +187,7 @@ class TestMondayService(unittest.TestCase):
         mock_monday_util_instance.create_item.assert_called_once()
         mock_db_util_instance.link_contact_to_po.assert_not_called()
 
-    @patch('monday_files.monday_service.MondayUtil')
+    @patch('files_monday.monday_service.MondayUtil')
     def test_get_po_number_from_item(self, mock_monday_util):
         """
         Test get_po_number_from_item when PO number exists.
@@ -203,7 +203,7 @@ class TestMondayService(unittest.TestCase):
         self.assertEqual(po_number, 'PO123', "Should return the retrieved PO number.")
         mock_monday_util_instance.get_po_number_and_data.assert_called_once_with(123)
 
-    @patch('monday_files.monday_service.MondayUtil')
+    @patch('files_monday.monday_service.MondayUtil')
     def test_get_po_number_from_item_not_found(self, mock_monday_util):
         """
         Test get_po_number_from_item when PO number is not found.
@@ -219,7 +219,7 @@ class TestMondayService(unittest.TestCase):
         self.assertIsNone(po_number, "Should return None when PO number is not found.")
         mock_monday_util_instance.get_po_number_and_data.assert_called_once_with(123)
 
-    @patch('monday_files.monday_service.MondayUtil')
+    @patch('files_monday.monday_service.MondayUtil')
     def test_get_po_number_from_item_exception(self, mock_monday_util):
         """
         Test get_po_number_from_item when an exception occurs.
@@ -237,9 +237,9 @@ class TestMondayService(unittest.TestCase):
         self.assertIn('Error retrieving PO number for item ID 123: API Error', log.output[0])
         mock_monday_util_instance.get_po_number_and_data.assert_called_once_with(123)
 
-    @patch('monday_files.monday_service.MondayAPI')
-    @patch('monday_files.monday_service.MondayDatabaseUtil')
-    @patch('monday_files.monday_service.MondayUtil')
+    @patch('files_monday.monday_service.MondayAPI')
+    @patch('files_monday.monday_service.MondayDatabaseUtil')
+    @patch('files_monday.monday_service.MondayUtil')
     def test_sync_main_items_from_monday_board_success(self, mock_monday_util, mock_db_util, mock_monday_api):
         """
         Test syncing main items (POs) from Monday.com to the local database successfully.
@@ -271,7 +271,7 @@ class TestMondayService(unittest.TestCase):
         self.assertIn('Synced PO with pulse_id 1: Created', log.output[0])
         self.assertIn('Synced PO with pulse_id 2: Updated', log.output[1])
 
-    @patch('monday_files.monday_service.MondayAPI')
+    @patch('files_monday.monday_service.MondayAPI')
     def test_sync_main_items_from_monday_board_exception_fetching(self, mock_monday_api):
         """
         Test sync_main_items_from_monday_board when fetching items raises an exception.
@@ -285,9 +285,9 @@ class TestMondayService(unittest.TestCase):
             self.service.sync_main_items_from_monday_board()
             self.assertIn('Unexpected error during main items synchronization: API Error', log.output[0])
 
-    @patch('monday_files.monday_service.MondayAPI')
-    @patch('monday_files.monday_service.MondayDatabaseUtil')
-    @patch('monday_files.monday_service.MondayUtil')
+    @patch('files_monday.monday_service.MondayAPI')
+    @patch('files_monday.monday_service.MondayDatabaseUtil')
+    @patch('files_monday.monday_service.MondayUtil')
     def test_sync_main_items_from_monday_board_exception_syncing(self, mock_monday_util, mock_db_util, mock_monday_api):
         """
         Test sync_main_items_from_monday_board when syncing items raises an exception.
@@ -308,7 +308,7 @@ class TestMondayService(unittest.TestCase):
             self.service.sync_main_items_from_monday_board()
             self.assertIn('Unexpected error during main items synchronization: Prep Error', log.output[0])
 
-    @patch('monday_files.monday_service.MondayAPI')
+    @patch('files_monday.monday_service.MondayAPI')
     def test_sync_main_items_from_monday_board_handle_error_in_create_update(self, mock_monday_api):
         """
         Test sync_main_items_from_monday_board when create_or_update_main_item_in_db returns 'Fail'.
@@ -332,7 +332,7 @@ class TestMondayService(unittest.TestCase):
         # Assert
         self.assertIn('Failed to sync PO with pulse_id 1: Fail', log.output[0])
 
-    @patch('monday_files.monday_service.MondayAPI')
+    @patch('files_monday.monday_service.MondayAPI')
     def test_sync_sub_items_from_monday_board_success(self, mock_monday_api):
         """
         Test syncing sub-items from Monday.com to the local database successfully.
@@ -369,7 +369,7 @@ class TestMondayService(unittest.TestCase):
         self.assertIn('Successfully created sub-item with pulse_id: 1', log.output[0])
         self.assertIn('Successfully updated sub-item with pulse_id: 2', log.output[1])
 
-    @patch('monday_files.monday_service.MondayAPI')
+    @patch('files_monday.monday_service.MondayAPI')
     def test_sync_sub_items_from_monday_board_fetch_exception(self, mock_monday_api):
         """
         Test sync_sub_items_from_monday_board when fetching sub-items raises an exception.
@@ -383,7 +383,7 @@ class TestMondayService(unittest.TestCase):
             self.service.sync_sub_items_from_monday_board()
             self.assertIn('Error fetching sub-items from Monday.com: API Error', log.output[0])
 
-    @patch('monday_files.monday_service.MondayAPI')
+    @patch('files_monday.monday_service.MondayAPI')
     def test_sync_sub_items_from_monday_board_sync_exception(self, mock_monday_api):
         """
         Test sync_sub_items_from_monday_board when syncing sub-items raises an exception.
@@ -404,7 +404,7 @@ class TestMondayService(unittest.TestCase):
             self.service.sync_sub_items_from_monday_board()
             self.assertIn('Unexpected error while syncing sub-items to DB: Prep Error', log.output[0])
 
-    @patch('monday_files.monday_service.MondayAPI')
+    @patch('files_monday.monday_service.MondayAPI')
     def test_sync_sub_items_from_monday_board_orphan(self, mock_monday_api):
         """
         Test sync_sub_items_from_monday_board when a sub-item is orphaned (missing parent).
@@ -441,7 +441,7 @@ class TestMondayService(unittest.TestCase):
             'account_number_id': 1, 'is_receipt': 0
         })
 
-    @patch('monday_files.monday_service.MondayAPI')
+    @patch('files_monday.monday_service.MondayAPI')
     def test_sync_sub_items_from_monday_board_handle_error_in_create_update(self, mock_monday_api):
         """
         Test sync_sub_items_from_monday_board when create_or_update_sub_item_in_db returns an error.
@@ -467,7 +467,7 @@ class TestMondayService(unittest.TestCase):
             self.service.sync_sub_items_from_monday_board()
             self.assertIn('Failed to sync sub-item with pulse_id: 1. Error: DB Error', log.output[0])
 
-    @patch('monday_files.monday_service.MondayAPI')
+    @patch('files_monday.monday_service.MondayAPI')
     def test_sync_sub_items_from_monday_board_empty_subitems(self, mock_monday_api):
         """
         Test syncing sub-items when there are no sub-items to sync.
@@ -489,9 +489,9 @@ class TestMondayService(unittest.TestCase):
         mock_prep_sub.assert_not_called()
         mock_create_update_sub.assert_not_called()
 
-    @patch('monday_files.monday_service.MondayAPI')
-    @patch('monday_files.monday_service.MondayDatabaseUtil')
-    @patch('monday_files.monday_service.MondayUtil')
+    @patch('files_monday.monday_service.MondayAPI')
+    @patch('files_monday.monday_service.MondayDatabaseUtil')
+    @patch('files_monday.monday_service.MondayUtil')
     def test_sync_contacts_from_monday_board_success(self, mock_monday_util, mock_db_util, mock_monday_api):
         """
         Test syncing contacts from Monday.com to the local database successfully.
@@ -523,7 +523,7 @@ class TestMondayService(unittest.TestCase):
         self.assertIn('Synced contact with pulse_id 1: Created', log.output[0])
         self.assertIn('Synced contact with pulse_id 2: Updated', log.output[1])
 
-    @patch('monday_files.monday_service.MondayAPI')
+    @patch('files_monday.monday_service.MondayAPI')
     def test_sync_contacts_from_monday_board_fetch_exception(self, mock_monday_api):
         """
         Test sync_contacts_from_monday_board when fetching contacts raises an exception.
@@ -537,9 +537,9 @@ class TestMondayService(unittest.TestCase):
             self.service.sync_contacts_from_monday_board()
             self.assertIn('Error fetching contacts from Monday.com: API Error', log.output[0])
 
-    @patch('monday_files.monday_service.MondayAPI')
-    @patch('monday_files.monday_service.MondayDatabaseUtil')
-    @patch('monday_files.monday_service.MondayUtil')
+    @patch('files_monday.monday_service.MondayAPI')
+    @patch('files_monday.monday_service.MondayDatabaseUtil')
+    @patch('files_monday.monday_service.MondayUtil')
     def test_sync_contacts_from_monday_board_sync_exception(self, mock_monday_util, mock_db_util, mock_monday_api):
         """
         Test sync_contacts_from_monday_board when syncing contacts raises an exception.
@@ -560,7 +560,7 @@ class TestMondayService(unittest.TestCase):
             self.service.sync_contacts_from_monday_board()
             self.assertIn('Error syncing contacts to DB: Prep Error', log.output[0])
 
-    @patch('monday_files.monday_service.MondayAPI')
+    @patch('files_monday.monday_service.MondayAPI')
     def test_sync_contacts_from_monday_board_handle_error_in_create_update(self, mock_monday_api):
         """
         Test sync_contacts_from_monday_board when create_or_update_contact_item_in_db returns 'Fail'.
@@ -604,9 +604,9 @@ class TestMondayService(unittest.TestCase):
         mock_prep_contact.assert_not_called()
         mock_create_or_update_contact.assert_not_called()
 
-    @patch('monday_files.monday_service.MondayAPI')
-    @patch('monday_files.monday_service.MondayDatabaseUtil')
-    @patch('monday_files.monday_service.MondayUtil')
+    @patch('files_monday.monday_service.MondayAPI')
+    @patch('files_monday.monday_service.MondayDatabaseUtil')
+    @patch('files_monday.monday_service.MondayUtil')
     def test_sync_contacts_from_monday_board_handle_error_in_create_update(self, mock_monday_util, mock_db_util, mock_monday_api):
         """
         Test sync_contacts_from_monday_board when create_or_update_contact_item_in_db raises an exception.
@@ -629,9 +629,9 @@ class TestMondayService(unittest.TestCase):
         # Assert
         self.assertIn('Error syncing contacts to DB: Prep Error', log.output[0])
 
-    @patch('monday_files.monday_service.MondayAPI')
-    @patch('monday_files.monday_service.MondayDatabaseUtil')
-    @patch('monday_files.monday_service.MondayUtil')
+    @patch('files_monday.monday_service.MondayAPI')
+    @patch('files_monday.monday_service.MondayDatabaseUtil')
+    @patch('files_monday.monday_service.MondayUtil')
     def test_sync_contacts_from_monday_board_handle_error_in_create_or_update_failure(self, mock_monday_util, mock_db_util, mock_monday_api):
         """
         Test sync_contacts_from_monday_board when create_or_update_contact_item_in_db returns 'Fail'.

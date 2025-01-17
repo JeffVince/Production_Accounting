@@ -33,7 +33,9 @@ class Project(Base):
     id = Column(MYSQL_INTEGER(unsigned=True), primary_key=True, autoincrement=True)
     project_number = Column(MYSQL_INTEGER, nullable=True)
     name = Column(String(100), nullable=False)
-    map_code = Column(String(45))  # you may remove or keep this if needed for your existing logic
+    budget_map_id = Column(String(45))
+    tax_ledger = Column(String(45))
+    user_id = Column(MYSQL_INTEGER)
     status = Column(Enum('Active', 'Closed'), nullable=False, server_default='Active')
     created_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
     updated_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'))
@@ -45,6 +47,9 @@ class Project(Base):
             "id": self.id,
             "project_number": self.project_number,
             "name": self.name,
+            "budget_map_id": self.budget_map_id,
+            "tax_ledger": self.tax_ledger,
+            "user_id": self.user_id,
             "status": self.status,
             "created_at": self.created_at,
             "updated_at": self.updated_at,

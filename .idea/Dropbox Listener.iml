@@ -7,16 +7,16 @@
       <sourceFolder url="file://$MODULE_DIR$/tests" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/utilities" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/integrations" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/orchestration" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/webhook" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/monday_files" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/dropbox_files" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/po_log_files" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/budget_files" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/invoice_files" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/utilities/AICP Code Map" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/xero_files" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/celery_files" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/files_budget" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/files_dropbox" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/files_invoice" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/files_monday" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/files_po_log" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/files_xero" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/server_celery" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/server_webhook/orchestration" isTestSource="false" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />

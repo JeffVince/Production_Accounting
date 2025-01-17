@@ -1,0 +1,1087 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Account <-> Tax Ledger / Code Mapper</title>
+  <!-- Bootstrap CSS -->
+  <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css"
+  >
+  <style>
+    body {
+      background-color: #f5f5f7;
+      color: #1d1d1f;
+      font-family: -apple-system, BlinkMacSystemFont, "San Francisco",
+                   "Helvetica Neue", Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+    .container-fluid {
+      margin-top: 20px;
+      margin-bottom: 40px;
+    }
+    h1, h4 {
+      font-weight: 600;
+    }
+    .tab-content {
+      border: 1px solid #ccc;
+      border-top: none;
+      padding: 16px;
+      background: #fff;
+      border-radius: 0 0 6px 6px;
+    }
+    .nav-tabs .nav-link {
+      border: 1px solid #dee2e6;
+      border-bottom-color: transparent;
+      border-radius: 0;
+      color: #0071e3;
+      font-weight: 500;
+    }
+    .nav-tabs .nav-link.active {
+      background-color: #ffffff;
+      border-color: #ccc #ccc #fff;
+      color: #000;
+    }
+    .mapper-panels {
+      display: flex;
+      flex-direction: row;
+      gap: 20px;
+    }
+    .panel-block {
+      flex: 1;
+      border-radius: 6px;
+      background-color: #ffffff;
+      padding: 15px;
+      border: 1px solid #e0e0e0;
+      position: relative;
+    }
+    .table-responsive {
+      margin-top: 10px;
+    }
+    table {
+      background-color: #fff;
+      border: 1px solid #ccc;
+      border-collapse: collapse;
+      width: 100%;
+    }
+    table th, table td {
+      border: 1px solid #dee2e6;
+      vertical-align: middle;
+      padding: 8px;
+    }
+    table thead {
+      background-color: #f2f2f2;
+    }
+    .sortable-header {
+      cursor: pointer;
+      text-decoration: underline;
+    }
+    /* Buttons */
+    .assignBtn {
+      margin-top: 12px;
+      padding: 8px 14px;
+      background-color: #0071e3;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: background-color 0.2s;
+    }
+    .assignBtn:hover {
+      background-color: #005bb5;
+    }
+    .btn-action {
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-size: 0.9rem;
+    }
+    .assigned-counter {
+      font-size: 1rem;
+      margin-top: 1rem;
+      font-weight: 500;
+    }
+    /* Icon style: 80% bigger => scale(1.8) or font-size:1.8rem */
+    .icon-btn {
+      border: none;
+      background: none;
+      cursor: pointer;
+      font-size: 1.8rem;
+      margin-left: 6px;
+    }
+    .icon-btn:hover {
+      color: #0071e3;
+    }
+    /* Notification */
+    #notification-container {
+      position: fixed;
+      top: 40px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .notification {
+      background: #fff;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      padding: 10px 20px;
+      margin-bottom: 10px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+      animation: fadein 0.3s ease forwards;
+      font-weight: 500;
+    }
+    .notification.success {
+      border-color: #28a745;
+    }
+    .notification.error {
+      border-color: #dc3545;
+    }
+    .fade-out {
+      animation: fadeout 0.5s ease forwards;
+    }
+    @keyframes fadein {
+      0% {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+      100% {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    @keyframes fadeout {
+      0% {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      100% {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+    }
+    /* DB Status indicator */
+    .db-status {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      margin: 48px;
+      position: fixed;
+      bottom: 0px;
+      right: 0px;
+      font-family: Helvetica,sans-serif;
+      font-weight: lighter;
+      font-style: italic;
+      font-size: 9pt;
+      overflow: visible;
+    }
+    .db-status-green {
+      background-color: #28a745;
+    }
+    .db-status-red {
+      background-color: #dc3545;
+    }
+    .db-status-text {
+      position: relative;
+      left: -100px;
+      width: 200px;
+    }
+    /* Centered Modal for “New Map” => similar style to “Delete Mapping” */
+    .modal-centered .modal-dialog {
+      margin: auto;
+      top: 50%;
+      transform: translateY(25%);
+    }
+    /* The same approach for ledger rename / delete modals */
+  </style>
+</head>
+<body>
+  <div class="container-fluid">
+    <!-- Title row -->
+    <div class="row align-items-center mb-3">
+      <div class="col">
+        <h1 class="my-4">Account <-> Tax Ledger / Code Mapper</h1>
+      </div>
+      <div class="col-auto">
+        <!-- New Map -->
+        <button class="btn btn-success" id="toggleMapBtn" title="New Map">New Map</button>
+        <button class="btn btn-light" id="cancelMapBtn" style="display:none;">Cancel</button>
+        <!-- Delete Mapping -->
+        <button class="btn btn-danger ml-2" id="deleteMappingBtn" title="Delete a Mapping">Delete Mapping</button>
+      </div>
+    </div>
+
+    <!-- Intro / Instructions -->
+    <div class="row">
+      <div class="col-12">
+        <p class="lead">
+          <strong>Accounts</strong> on the left: each row has a <strong>checkbox</strong> to select for assignment.<br>
+          On the right, we have <strong>Ledger Controls</strong>:
+            <ul>
+              <li>Rename (opens a modal),</li>
+              <li>New (opens a modal),</li>
+              <li>Delete (also a modal),</li>
+              <li>plus a <strong>Tax Table</strong> with icons for:
+                <ul>
+                  <li>Pin (select all accounts belonging to that tax ID),</li>
+                  <li>Cog (edit mode => highlight row, X -> check),</li>
+                  <li>X (delete), or check if in edit mode to save changes.</li>
+                </ul>
+              </li>
+            </ul>
+          We also support <strong>ASC/DESC</strong> column sorting, toggled on repeated clicks.
+        </p>
+      </div>
+    </div>
+
+    <!-- Map Tabs -->
+    <div class="row mb-3">
+      <div class="col-12">
+        <ul class="nav nav-tabs" id="mapNameTabs" role="tablist"></ul>
+      </div>
+    </div>
+    <!-- Tab content row -->
+    <div class="tab-content" id="mapNameTabsContent"></div>
+  </div>
+
+  <div id="dbStatusIndicator" class="db-status db-status-green" title="DB Connection OK">
+    <div class="db-status-text">DB Conn. Status</div>
+  </div>
+
+  <!-- Delete Mapping Modal -->
+  <div class="modal fade modal-centered" id="deleteMappingModal" tabindex="-1" role="dialog"
+       aria-labelledby="deleteMappingModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="deleteMappingModalLabel">Delete Mapping</h5>
+          <button type="button" class="close" data-dismiss="modal">
+            <span>&times;</span>
+          </button>
+        </div>
+        <div class="modal-body">
+          <p>Type the exact name of the Mapping you want to delete:</p>
+          <input type="text" class="form-control" id="deleteMappingName" placeholder="Exact Map Name">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-danger" id="confirmDeleteMapping">Delete</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- New Map Modal (centered) -->
+  <div class="modal fade modal-centered" id="newMapModal" tabindex="-1" role="dialog"
+       aria-labelledby="newMapModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Create a New Map</h5>
+          <button type="button" class="close" data-dismiss="modal">
+            <span>&times;</span>
+          </button>
+        </div>
+        <div class="modal-body">
+          <label for="newMapName" class="mt-2">Map Name</label>
+          <input type="text" class="form-control" id="newMapNameModal" placeholder="New Map Name">
+          <label for="copyFromMapName" class="mt-3">Copy from existing map?</label>
+          <select class="form-control" id="copyFromMapNameModal">
+            <option value="NONE">None (blank)</option>
+          </select>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+          <button class="btn btn-primary" id="createMapModalBtn">Create</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- New Ledger Modal -->
+  <div class="modal fade modal-centered" id="newLedgerModal" tabindex="-1" role="dialog"
+       aria-labelledby="newLedgerModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Create a New Ledger</h5>
+          <button type="button" class="close" data-dismiss="modal">
+            <span>&times;</span>
+          </button>
+        </div>
+        <div class="modal-body">
+          <label>Ledger Name</label>
+          <input type="text" class="form-control" id="newLedgerNameInput" placeholder="Ledger Name">
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+          <button class="btn btn-primary" id="createLedgerModalBtn">Create</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Rename Ledger Modal -->
+  <div class="modal fade modal-centered" id="renameLedgerModal" tabindex="-1" role="dialog"
+       aria-labelledby="renameLedgerModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Rename Ledger</h5>
+          <button type="button" class="close" data-dismiss="modal">
+            <span>&times;</span>
+          </button>
+        </div>
+        <div class="modal-body">
+          <label>Old Ledger Name</label>
+          <input type="text" class="form-control mb-2" id="oldLedgerNameInput" readonly>
+          <label>New Ledger Name</label>
+          <input type="text" class="form-control" id="newLedgerNameRenameInput">
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+          <button class="btn btn-warning" id="confirmRenameLedgerBtn">Rename</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Ledger Modal -->
+  <div class="modal fade modal-centered" id="deleteLedgerModal" tabindex="-1" role="dialog"
+       aria-labelledby="deleteLedgerModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Delete Ledger</h5>
+          <button type="button" class="close" data-dismiss="modal">
+            <span>&times;</span>
+          </button>
+        </div>
+        <div class="modal-body">
+          <p>Type the exact name of the Ledger to delete:</p>
+          <input type="text" class="form-control" id="deleteLedgerNameInput" placeholder="Exact Ledger Name">
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+          <button class="btn btn-danger" id="confirmDeleteLedgerBtn">Delete</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notification Container -->
+  <div id="notification-container"></div>
+
+  <!-- Hidden audio elements for notification sounds -->
+  <audio id="successSound" src="https://www.soundjay.com/buttons/sounds/button-30.mp3" preload="auto"></audio>
+  <audio id="errorSound" src="https://www.soundjay.com/buttons/sounds/button-21.mp3" preload="auto"></audio>
+
+  <!-- JS Dependencies -->
+  <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    /*
+      This is a production-ready HTML + JS for your new design:
+      - Centered modals for New Map, New Ledger, Rename Ledger, and Delete Ledger
+      - Sorting with asc/desc toggles
+      - Checkboxes for accounts
+      - “X out of TOTAL” at bottom: "X" = # on current page, "TOTAL" = total accounts
+      - Full error handling
+    */
+
+    let mapNames = [];
+    const paginationState = {};
+    const sortDirections = {}; // track asc/desc for each column (code, description, etc.)
+    document.addEventListener("DOMContentLoaded", () => {
+      fetchMapNames();
+      setupDeleteMapping();
+      setupNewMapModal();
+      setupNewLedgerModal();
+      setupRenameLedgerModal();
+      setupDeleteLedgerModal();
+    });
+
+    function updateDbStatus(connected) {
+      const dbIndicator = document.getElementById('dbStatusIndicator');
+      if (!dbIndicator) return;
+      if (connected) {
+        dbIndicator.classList.remove('db-status-red');
+        dbIndicator.classList.add('db-status-green');
+        dbIndicator.title = 'DB Connection OK';
+      } else {
+        dbIndicator.classList.remove('db-status-green');
+        dbIndicator.classList.add('db-status-red');
+        dbIndicator.title = 'DB Connection ERROR';
+      }
+    }
+
+    function showNotification(msg, type='success'){
+      const container = document.getElementById('notification-container');
+      const note=document.createElement('div');
+      note.classList.add('notification', type);
+      note.innerText=msg;
+      container.appendChild(note);
+      if(type==='success'){
+        document.getElementById('successSound').play();
+      } else {
+        document.getElementById('errorSound').play();
+      }
+      setTimeout(()=>{
+        note.classList.add('fade-out');
+        setTimeout(()=>{
+          if(container.contains(note)){
+            container.removeChild(note);
+          }
+        },500);
+      },3000);
+    }
+
+    function fetchMapNames(){
+      fetch("/get_map_names")
+        .then(r=>{
+          if(!r.ok) throw new Error("Network not ok");
+          updateDbStatus(true);
+          return r.json();
+        })
+        .then(data=>{
+          mapNames=data;
+          buildTabs();
+          populateMapCopySelect();
+        })
+        .catch(err=>{
+          updateDbStatus(false);
+          showNotification("Error fetching map names:"+err.message,"error");
+        });
+    }
+
+    function buildTabs(){
+      const tabs=document.getElementById("mapNameTabs");
+      const content=document.getElementById("mapNameTabsContent");
+      tabs.innerHTML="";
+      content.innerHTML="";
+      if(!mapNames || mapNames.length===0){
+        const li=document.createElement("li");
+        li.classList.add("nav-item");
+        li.innerHTML='<a class="nav-link active" href="#" role="tab">No Map Names Found</a>';
+        tabs.appendChild(li);
+        return;
+      }
+      let first=true;
+      mapNames.forEach(m=>{
+        paginationState[m]={page:1, sort:'code_natural', asc:true, totalPages:1};
+        const sMn=m.replace(/\s+/g,'-');
+        const tid=`mapname-${sMn}-tab`;
+        const li=document.createElement("li");
+        li.classList.add("nav-item");
+        const a=document.createElement("a");
+        a.classList.add("nav-link");
+        a.id=tid;
+        a.dataset.toggle="tab";
+        a.href=`#pane-${sMn}`;
+        a.role="tab";
+        a.textContent=m;
+        if(first){
+          a.classList.add("active");
+          a.setAttribute("aria-selected","true");
+        } else {
+          a.setAttribute("aria-selected","false");
+        }
+        li.appendChild(a);
+        tabs.appendChild(li);
+
+        const pane=document.createElement("div");
+        pane.classList.add("tab-pane","fade");
+        if(first){
+          pane.classList.add("show","active");
+          first=false;
+        }
+        pane.id=`pane-${sMn}`;
+        pane.setAttribute("role","tabpanel");
+        content.appendChild(pane);
+        pane.innerHTML = buildPaneHtml(m,sMn);
+        fetchLedgersForMap(m,sMn);
+      });
+    }
+
+    function buildPaneHtml(mapName, sMn){
+      return `
+      <div class="mapper-panels mt-3">
+        <!-- Left side: Accounts with checkboxes -->
+        <div class="panel-block">
+          <h4>Accounts for Map: ${mapName}</h4>
+          <div class="table-responsive mt-2">
+            <table id="acctTable-${sMn}" class="table table-sm">
+              <thead>
+                <tr>
+                  <th>Sel</th>
+                  <th class="acctSort-${sMn}" data-col="code" style="cursor:pointer;">Code</th>
+                  <th class="acctSort-${sMn}" data-col="description" style="cursor:pointer;">Description</th>
+                  <th class="acctSort-${sMn}" data-col="linked_tax" style="cursor:pointer;">Linked Tax</th>
+                  <th class="acctSort-${sMn}" data-col="updated" style="cursor:pointer;">Modified</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <div class="assigned-counter" id="acctCounter-${sMn}">0 out of 0</div>
+          </div>
+        </div>
+
+        <!-- Right side: Ledger controls + tax codes -->
+        <div class="panel-block">
+          <div class="ledger-btns mb-3">
+            <select id="ledgerSelect-${sMn}" class="form-control form-control-sm" style="width:auto;"></select>
+            <button class="btn btn-sm btn-primary" data-toggle="modal" data-target="#newLedgerModal" data-map="${mapName}">New</button>
+            <button class="btn btn-sm btn-warning" data-toggle="modal" data-target="#renameLedgerModal" data-map="${mapName}">Rename</button>
+            <button class="btn btn-sm btn-danger" data-toggle="modal" data-target="#deleteLedgerModal" data-map="${mapName}">Delete</button>
+          </div>
+          <h4>Tax Codes
+            <button class="icon-btn" onclick="addTaxCode('${sMn}')" title="Add Tax">+</button>
+          </h4>
+          <div class="table-responsive">
+            <table id="taxTable-${sMn}" class="table table-sm">
+              <thead>
+                <tr>
+                  <th>Code</th>
+                  <th>Description</th>
+                  <th>Icons</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <button class="assignBtn mt-3" id="assignBtn-${sMn}">Assign to Selected Accounts</button>
+        </div>
+      </div>
+      `;
+    }
+
+    function fetchLedgersForMap(mapName,sMn){
+      fetch("/get_ledgers_for_map?map_name="+encodeURIComponent(mapName))
+      .then(r=>{
+        if(!r.ok) throw new Error("network not ok");
+        return r.json();
+      })
+      .then(ledgers=>{
+        const sel = document.getElementById(`ledgerSelect-${sMn}`);
+        sel.innerHTML="";
+        if(!ledgers||ledgers.length===0){
+          const op=document.createElement("option");
+          op.value="";
+          op.textContent="(No Ledgers)";
+          sel.appendChild(op);
+        } else {
+          ledgers.forEach(ld=>{
+            const op=document.createElement("option");
+            op.value=ld.id;
+            op.textContent=ld.name;
+            sel.appendChild(op);
+          });
+          sel.value=ledgers[0].id;
+          loadAcctTax(mapName, sMn, 1, ledgers[0].id);
+        }
+        sel.addEventListener("change",()=>{
+          loadAcctTax(mapName,sMn,1,sel.value);
+        });
+        setupSorting(mapName,sMn);
+        document.getElementById(`assignBtn-${sMn}`).addEventListener("click",()=>{
+          // your bulk assignment logic
+          showNotification("Implement bulk assign logic", "error");
+        });
+      })
+      .catch(err=>{
+        showNotification("Error fetching ledgers: "+err.message,"error");
+      });
+    }
+
+    function loadAcctTax(mapName, sMn, pageNum, ledgerId){
+      const st = paginationState[mapName];
+      const sortDir = st.asc ? "asc" : "desc";
+      const url=`/get_map_data?map_name=${encodeURIComponent(mapName)}`
+        + `&page_account=${pageNum}`
+        + `&per_page_account=40`
+        + `&sort_by=${st.sort}_${sortDir}`
+        + `&ledger_id=${ledgerId}`;
+      fetch(url)
+      .then(r=>{
+        if(!r.ok) throw new Error("net not ok");
+        updateDbStatus(true);
+        return r.json();
+      })
+      .then(d=>{
+        fillAccountTable(mapName, sMn, d.account_records||[]);
+        fillTaxTable(mapName, sMn, d.tax_records||[]);
+        updateCounter(sMn, d.account_records);
+        st.page = d.page_account || 1;
+        st.totalPages = d.total_pages_account || 1;
+        document.getElementById(`acctCounter-${sMn}`).textContent=
+          `${d.account_records.length} out of ${d.total_pages_account*40}`; // or a real total if you have it
+      })
+      .catch(err=>{
+        updateDbStatus(false);
+        showNotification("loadAcctTax error:"+err.message,"error");
+      });
+    }
+
+    function fillAccountTable(mapName, sMn, rows){
+      const tb = document.querySelector(`#acctTable-${sMn} tbody`);
+      tb.innerHTML="";
+      if(!rows||rows.length===0){
+        tb.innerHTML='<tr><td colspan="5"><em>No accounts found</em></td></tr>';
+        return;
+      }
+      rows.forEach(r=>{
+        const tr=document.createElement("tr");
+        tr.dataset.accountId=r.id;
+        tr.dataset.taxId=r.tax_id||"";
+        tr.innerHTML=`
+          <td><input type="checkbox" value="${r.id}" /></td>
+          <td>${r.code||""}</td>
+          <td>${r.account_description||""}</td>
+          <td>${r.tax_code||"(None)"}</td>
+          <td>${r.updated_at?new Date(r.updated_at).toLocaleString():""}</td>
+        `;
+        tb.appendChild(tr);
+      });
+    }
+
+    function fillTaxTable(mapName, sMn, rows){
+      const tb=document.querySelector(`#taxTable-${sMn} tbody`);
+      tb.innerHTML="";
+      if(!rows||rows.length===0){
+        tb.innerHTML='<tr><td colspan="3"><em>No tax codes</em></td></tr>';
+        return;
+      }
+      rows.forEach(t=>{
+        const tr=document.createElement("tr");
+        tr.dataset.taxId=t.id;
+        tr.innerHTML=`
+          <td class="taxCodeCell">${t.tax_code||""}</td>
+          <td class="taxDescCell">${t.description||""}</td>
+          <td>
+            <button class="icon-btn" title="Pin" onclick="pinTax('${sMn}', '${t.id}')">&#x1F4CC;</button>
+            <button class="icon-btn" title="Edit" onclick="editTax(this)">&#9881;</button>
+            <button class="icon-btn" title="Delete" onclick="delTax('${sMn}', '${t.id}')">&#10006;</button>
+          </td>
+        `;
+        tb.appendChild(tr);
+      });
+    }
+
+    function pinTax(sMn, taxId){
+      showNotification(`Pin (select all) for taxId=${taxId}`, "success");
+    }
+
+    function editTax(btn){
+      const row=btn.closest("tr");
+      row.classList.add("table-warning");
+      const delBtn=row.querySelectorAll(".icon-btn")[2];
+      delBtn.innerHTML="&#10004;";
+      delBtn.title="Save";
+      delBtn.onclick=()=>saveTaxRow(row);
+      row.querySelector(".taxCodeCell").contentEditable="true";
+      row.querySelector(".taxDescCell").contentEditable="true";
+    }
+
+    function saveTaxRow(row){
+      row.classList.remove("table-warning");
+      const codeCell=row.querySelector(".taxCodeCell");
+      const descCell=row.querySelector(".taxDescCell");
+      const newCode=codeCell.innerText.trim();
+      const newDesc=descCell.innerText.trim();
+      codeCell.contentEditable="false";
+      descCell.contentEditable="false";
+      const taxId=row.dataset.taxId;
+      const delBtn=row.querySelectorAll(".icon-btn")[2];
+      delBtn.innerHTML="&#10006;";
+      delBtn.title="Delete";
+      delBtn.onclick=()=>delTax("",taxId); // adapt
+
+      // find map
+      let mapName="";
+      const a=document.querySelector("#mapNameTabs a.nav-link.active");
+      if(a) mapName=a.textContent;
+      fetch("/update_tax", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({
+          map_name: mapName,
+          tax_id: taxId,
+          tax_code:newCode,
+          tax_description:newDesc
+        })
+      })
+      .then(r=>{
+        if(!r.ok) throw new Error("network not ok");
+        return r.json();
+      })
+      .then(d=>{
+        if(d.status==="success"){
+          showNotification("Tax updated!","success");
+        } else {
+          showNotification("Error updating tax:"+d.message,"error");
+        }
+      })
+      .catch(err=>{
+        showNotification("saveTaxRow error:"+err.message,"error");
+      });
+    }
+
+    function delTax(sMn, taxId){
+      if(!confirm("Delete taxId="+taxId+"?"))return;
+      let mapName="";
+      const a=document.querySelector("#mapNameTabs a.nav-link.active");
+      if(a) mapName=a.textContent;
+      fetch("/delete_tax",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({map_name:mapName, tax_id:taxId})
+      })
+      .then(r=>{
+        if(!r.ok) throw new Error("net not ok");
+        return r.json();
+      })
+      .then(d=>{
+        if(d.status==="success"){
+          showNotification("Tax row removed","success");
+          const row=document.querySelector(`#taxTable-${sMn} tr[data-tax-id="${taxId}"]`);
+          if(row) row.remove();
+        } else {
+          showNotification("Error deleting tax:"+d.message,"error");
+        }
+      })
+      .catch(err=>{
+        showNotification("delTax error:"+err.message,"error");
+      });
+    }
+
+    function addTaxCode(sMn){
+      let mapName="";
+      const a=document.querySelector("#mapNameTabs a.nav-link.active");
+      if(a) mapName=a.textContent;
+      const ledVal=document.getElementById(`ledgerSelect-${sMn}`).value;
+      if(!ledVal){
+        showNotification("No ledger selected!","error");
+        return;
+      }
+      const newCode=prompt("Tax Code?");
+      if(!newCode)return;
+      const newDesc=prompt("Description?")||"";
+      fetch("/create_tax_code",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          ledger_id:ledVal,
+          tax_code:newCode.trim(),
+          description:newDesc.trim()
+        })
+      })
+      .then(r=>{
+        if(!r.ok)throw new Error("net not ok");
+        return r.json();
+      })
+      .then(d=>{
+        if(d.status==="success"){
+          showNotification("Tax created","success");
+          loadAcctTax(mapName,sMn,1,ledVal);
+        } else {
+          showNotification("Error creating tax:"+d.message,"error");
+        }
+      })
+      .catch(err=>{
+        showNotification("addTaxCode error:"+err.message,"error");
+      });
+    }
+
+    function updateCounter(sMn, records){
+      // X out of total => X=records.length, total=???
+      // If you have total from the server, use it
+      document.getElementById(`acctCounter-${sMn}`).textContent=
+        `${records.length} out of ???`;
+      // or if your server returns total, do e.g. "X out of data.total_accounts"
+    }
+
+    // For sorting logic (ASC / DESC toggles):
+    function setupSorting(mapName, sMn){
+      document.querySelectorAll(`.acctSort-${sMn}`).forEach(th=>{
+        th.addEventListener("click",()=>{
+          const col=th.dataset.col; // code, description, linked_tax, updated
+          // track asc/desc
+          const st=paginationState[mapName];
+          if(st.sort===col){
+            // toggle asc
+            st.asc=!st.asc;
+          } else {
+            st.sort=col;
+            st.asc=true; // default to asc
+          }
+          const ledVal=document.getElementById(`ledgerSelect-${sMn}`).value||"";
+          loadAcctTax(mapName,sMn,1,ledVal);
+        });
+      });
+    }
+
+    function loadAcctTax(mapName,sMn,pageNum,ledVal){
+      const st=paginationState[mapName];
+      const direction=st.asc?"asc":"desc";
+      const url=`/get_map_data?map_name=${encodeURIComponent(mapName)}`
+        +`&page_account=${pageNum}&per_page_account=40`
+        +`&sort_by=${st.sort}_${direction}&ledger_id=${ledVal}`;
+      fetch(url)
+      .then(r=>{
+        if(!r.ok)throw new Error("net not ok");
+        updateDbStatus(true);
+        return r.json();
+      })
+      .then(d=>{
+        fillAccountTable(mapName,sMn,d.account_records);
+        fillTaxTable(mapName,sMn,d.tax_records);
+        updateCounter(sMn, d.account_records);
+        st.page=d.page_account||1;
+        st.totalPages=d.total_pages_account||1;
+      })
+      .catch(err=>{
+        updateDbStatus(false);
+        showNotification("loadAcctTax error:"+err.message,"error");
+      });
+    }
+
+    // Setup “Delete Mapping”
+    function setupDeleteMapping(){
+      document.getElementById("deleteMappingBtn").addEventListener("click",()=>{
+        $('#deleteMappingModal').modal('show');
+      });
+      document.getElementById("confirmDeleteMapping").addEventListener("click",()=>{
+        const mapName=document.getElementById("deleteMappingName").value.trim();
+        if(!mapName){
+          showNotification("Enter a map name to delete","error");
+          return;
+        }
+        fetch("/delete_mapping",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({map_name:mapName})
+        })
+        .then(r=>{
+          if(!r.ok)throw new Error("net not ok");
+          updateDbStatus(true);
+          return r.json();
+        })
+        .then(d=>{
+          if(d.status==="success"){
+            showNotification(`Mapping '${mapName}' was deleted.`,"success");
+            $('#deleteMappingModal').modal('hide');
+            document.getElementById("deleteMappingName").value="";
+            fetchMapNames();
+          } else {
+            showNotification("Error deleting map:"+d.message,"error");
+          }
+        })
+        .catch(err=>{
+          updateDbStatus(false);
+          showNotification("deleteMapping request error:"+err.message,"error");
+        });
+      });
+    }
+
+    // Setup “New Map” modal
+    function setupNewMapModal(){
+      // We open the modal via bootstrap? So let's just bind the createMapModalBtn
+      document.getElementById("toggleMapBtn").addEventListener("click",()=>{
+        $('#newMapModal').modal('show');
+      });
+      document.getElementById("createMapModalBtn").addEventListener("click",()=>{
+        const nm=document.getElementById("newMapNameModal").value.trim();
+        const copy=document.getElementById("copyFromMapNameModal").value;
+        if(!nm){
+          showNotification("Map name required","error");
+          return;
+        }
+        fetch("/create_map_code",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({
+            new_map_code:nm,
+            copy_from: copy==="NONE"?"":copy
+          })
+        })
+        .then(r=>{
+          if(!r.ok)throw new Error("net not ok");
+          updateDbStatus(true);
+          return r.json();
+        })
+        .then(d=>{
+          if(d.status==="success"){
+            showNotification(`Map '${nm}' created!`,"success");
+            $('#newMapModal').modal('hide');
+            document.getElementById("newMapNameModal").value="";
+            fetchMapNames();
+          } else {
+            showNotification("Error creating map:"+d.message,"error");
+          }
+        })
+        .catch(err=>{
+          updateDbStatus(false);
+          showNotification("create map code error:"+err.message,"error");
+        });
+      });
+    }
+    function populateMapCopySelect(){
+      const sel=document.getElementById("copyFromMapNameModal");
+      while(sel.options.length>1){
+        sel.remove(1);
+      }
+      mapNames.forEach(m=>{
+        const op=document.createElement("option");
+        op.value=m;
+        op.textContent=m;
+        sel.appendChild(op);
+      });
+    }
+
+    // Setup “New Ledger” modal
+    function setupNewLedgerModal(){
+      // see data-map on the button if needed
+      $('#newLedgerModal').on('show.bs.modal', evt=>{
+        // optionally read the “data-map” attribute
+        const btn=evt.relatedTarget;
+        // const mapName=btn.getAttribute("data-map")||"";
+      });
+      document.getElementById("createLedgerModalBtn").addEventListener("click",()=>{
+        const ledgerName=document.getElementById("newLedgerNameInput").value.trim();
+        if(!ledgerName){
+          showNotification("Ledger name is required","error");
+          return;
+        }
+        // get the active map
+        let mapName="";
+        const a=document.querySelector("#mapNameTabs a.nav-link.active");
+        if(a) mapName=a.textContent;
+        fetch("/add_ledger",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({
+            map_name:mapName,
+            ledger_name:ledgerName
+          })
+        })
+        .then(r=>{
+          if(!r.ok)throw new Error("net not ok");
+          updateDbStatus(true);
+          return r.json();
+        })
+        .then(d=>{
+          if(d.status==="success"){
+            showNotification("Ledger created!","success");
+            $('#newLedgerModal').modal('hide');
+            document.getElementById("newLedgerNameInput").value="";
+            // reload ledgers
+            fetchMapNames(); // or a more direct approach
+          } else {
+            showNotification("Error creating ledger:"+d.message,"error");
+          }
+        })
+        .catch(err=>{
+          updateDbStatus(false);
+          showNotification("create ledger error:"+err.message,"error");
+        });
+      });
+    }
+
+    // Setup “Rename Ledger” modal
+    function setupRenameLedgerModal(){
+      $('#renameLedgerModal').on('show.bs.modal', evt=>{
+        // we can read data from the button if needed
+        const btn=evt.relatedTarget;
+        // const mapName=btn.getAttribute("data-map");
+        // let ledgerName=?? => you'd presumably get the selected ledger
+        // For demonstration, we do nothing
+        document.getElementById("oldLedgerNameInput").value="(selected ledger name)";
+      });
+      document.getElementById("confirmRenameLedgerBtn").addEventListener("click",()=>{
+        const oldName=document.getElementById("oldLedgerNameInput").value.trim();
+        const newName=document.getElementById("newLedgerNameRenameInput").value.trim();
+        if(!oldName||!newName){
+          showNotification("Both old & new ledger names needed","error");
+          return;
+        }
+        fetch("/rename_ledger",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({
+            old_name:oldName,
+            new_name:newName
+          })
+        })
+        .then(r=>{
+          if(!r.ok)throw new Error("net not ok");
+          updateDbStatus(true);
+          return r.json();
+        })
+        .then(d=>{
+          if(d.status==="success"){
+            showNotification(`Ledger renamed to '${newName}'!`,"success");
+            $('#renameLedgerModal').modal('hide');
+            document.getElementById("newLedgerNameRenameInput").value="";
+            fetchMapNames();
+          } else {
+            showNotification("Error renaming ledger:"+d.message,"error");
+          }
+        })
+        .catch(err=>{
+          updateDbStatus(false);
+          showNotification("rename ledger error:"+err.message,"error");
+        });
+      });
+    }
+
+    // Setup “Delete Ledger” modal
+    function setupDeleteLedgerModal(){
+      $('#deleteLedgerModal').on('show.bs.modal', evt=>{
+        // read data if needed
+      });
+      document.getElementById("confirmDeleteLedgerBtn").addEventListener("click",()=>{
+        const typedName=document.getElementById("deleteLedgerNameInput").value.trim();
+        if(!typedName){
+          showNotification("Type exact ledger name","error");
+          return;
+        }
+        // find active map
+        let mapName="";
+        const a=document.querySelector("#mapNameTabs a.nav-link.active");
+        if(a) mapName=a.textContent;
+        fetch("/remove_ledger",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({
+            map_name:mapName,
+            ledger_name:typedName
+          })
+        })
+        .then(r=>{
+          if(!r.ok)throw new Error("net not ok");
+          updateDbStatus(true);
+          return r.json();
+        })
+        .then(d=>{
+          if(d.status==="success"){
+            showNotification(`Ledger '${typedName}' was deleted`,"success");
+            $('#deleteLedgerModal').modal('hide');
+            document.getElementById("deleteLedgerNameInput").value="";
+            fetchMapNames();
+          } else {
+            showNotification("Error deleting ledger:"+d.message,"error");
+          }
+        })
+        .catch(err=>{
+          updateDbStatus(false);
+          showNotification("delete ledger error:"+err.message,"error");
+        });
+      });
+    }
+  </script>
+</body>
+</html>

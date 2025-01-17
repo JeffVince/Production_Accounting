@@ -3,24 +3,26 @@ import ast
 import json
 from collections import defaultdict
 
-# Define the target folders and root files
-TARGET_FOLDERS = {
-    #"Account Code Map",
+# Define the target folders recursively and root files
+TARGET_FOLDERS =  {
     "database",
-    "dropbox_files",
-    #"invoice_files",
-    "monday_files",
+    "files_dropbox",
+    "files_monday",
+    "files_xero",
+    "files_invoice"
     "orchestration",
-    "po_log_files",
-    "celery_files",
-    "budet_files"
-    #"utilities"
+    "files_po_log",
+    "server_celery",
+    "server_webhook",
+    "server_agent",
+    "server_trigger"
+    "files_budget"
 }
 
 ROOT_FILES = {
     "main.py",
-    "webhook_main.py",
-    "celery_server.py"
+    "celery_server.py",
+    "database_trigger.py"
 }
 
 class FunctionCallVisitor(ast.NodeVisitor):

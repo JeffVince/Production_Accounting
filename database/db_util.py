@@ -8,7 +8,7 @@ from database.base import Base
 import logging
 
 # Initialize logging (ensures that the logger is set up before use)
-logger = logging.getLogger("app_logger")
+logger = logging.getLogger("database_logger")
 
 session_factory = None
 

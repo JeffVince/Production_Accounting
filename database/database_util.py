@@ -33,10 +33,14 @@ from models import (
     Receipt,
     SpendMoney,
     TaxAccount,
-    XeroBill
+    XeroBill,
+    User,          # Newly added
+    TaxLedger,     # Newly added
+    BudgetMap      # Newly added
 )
 from database.db_util import get_db_session
 # endregion
+
 
 # region 🏢 Class Definition
 class DatabaseOperations:
@@ -56,7 +60,7 @@ class DatabaseOperations:
 
     # region 🏗 Constructor
     def __init__(self):
-        self.logger = logging.getLogger("db_logger")
+        self.logger = logging.getLogger("database_logger")
         self.logger.debug("🌟 Hello from DatabaseOperations constructor! Ready to keep the DB in check!")
     # endregion
 
@@ -70,7 +74,7 @@ class DatabaseOperations:
             return None
         # 🚀 Convert SQLAlchemy object to a dict of {column_name: value}
         record_values = {c.name: getattr(record, c.name) for c in record.__table__.columns}
-        self.logger.debug(f"🤓 Pulling record: {record_values['id']} from table {record.__table__}")
+        self.logger.debug(f"🤓 Pulling record: {record_values.get('id', 'N/A')} from table {record.__table__}")
         return record_values
     # endregion
 
@@ -101,7 +105,8 @@ class DatabaseOperations:
         if column_names and values:
             self.logger.debug(f"🕵️ Searching {model.__name__} with filters: {list(zip(column_names, values))}")
             self.logger.info(
-                f"🚦 Checking if there are any matches in {model.__name__} for columns & values: {list(zip(column_names, values))}"
+                f"🚦 Checking if there are any matches in {model.__name__} "
+                f"for columns & values: {list(zip(column_names, values))}"
             )
 
             if len(column_names) != len(values):
@@ -301,7 +306,7 @@ class DatabaseOperations:
 
     # region 🧩 AccountCodes
     def search_account_codes(self, column_names, values):
-        self.logger.debug("🔎 Searching for Account Code  entries...")
+        self.logger.debug("🔎 Searching for Account Code entries...")
         return self._search_records(AccountCode, column_names, values)
 
     def create_account_code(self, **kwargs):
@@ -310,7 +315,7 @@ class DatabaseOperations:
         """
         self.logger.debug(f"🌈 Creating an AccountCode with data={kwargs}")
         unique_lookup = {}
-        if 'account_code' in kwargs:
+        if 'code' in kwargs:
             unique_lookup['code'] = kwargs['code']
         return self._create_record(AccountCode, unique_lookup=unique_lookup, **kwargs)
     # endregion
@@ -405,7 +410,6 @@ class DatabaseOperations:
 
         return self.update_purchase_order(first_po["id"], **kwargs)
     # endregion
-
     # endregion
 
     # region 🔎 DetailItem
@@ -415,9 +419,12 @@ class DatabaseOperations:
 
     def create_detail_item(self, **kwargs):
         self.logger.debug(f"🧱 Creating a detail item with {kwargs}")
-        # If (po_id, detail_number, line_number) is unique, define unique_lookup
+        # If (project_number, po_number, detail_number, line_number) is unique, define unique_lookup
         unique_lookup = {}
-        if 'po_number' in kwargs and 'project_number' in kwargs and 'detail_number' in kwargs and 'line_number' in kwargs:
+        if ('po_number' in kwargs
+                and 'project_number' in kwargs
+                and 'detail_number' in kwargs
+                and 'line_number' in kwargs):
             unique_lookup = {
                 'project_number': kwargs['project_number'],
                 'po_number': kwargs['po_number'],
@@ -441,8 +448,8 @@ class DatabaseOperations:
         """
         Returns DetailItem(s) based on any subset of the four optional keys.
           - If none provided, returns ALL DetailItems.
-          - If only project_number, returns all items for that project (across all POs).
-          - If project_number + po_number, returns all items for that PO, etc.
+          - If only project_number, returns all items for that project.
+          - If project_number + po_number, returns items for that PO, etc.
         """
         if not project_number and not po_number and not detail_number and not line_number:
             return self.search_detail_items([], [])
@@ -474,19 +481,15 @@ class DatabaseOperations:
         **kwargs
     ):
         """
-        Shortcut to create a DetailItem with explicit project_number, po_number, detail_number, line_number.
-        We also need po_id from purchase_order. We'll try to find it by (project_number, po_number).
+        Shortcut to create a DetailItem with explicit keys.
         """
-
-        # 2) Combine data
         kwargs.update({
             "project_number": project_number,
             "po_number": po_number,
             "detail_number": detail_number,
             "line_number": line_number
         })
-
-        # 3) Possibly define concurrency fallback
+        # Possibly define concurrency fallback:
         unique_lookup = {
             "project_number": project_number,
             "po_number": po_number,
@@ -503,9 +506,6 @@ class DatabaseOperations:
         line_number: int,
         **kwargs
     ):
-        """
-        Shortcut to update the first matching DetailItem found by (project_number, po_number, detail_number, line_number).
-        """
         matches = self.search_detail_item_by_keys(project_number, po_number, detail_number, line_number)
         if not matches:
             return None
@@ -518,7 +518,6 @@ class DatabaseOperations:
         detail_item_id = match["id"]
         return self.update_detail_item(detail_item_id, **kwargs)
     # endregion
-
     # endregion
 
     # region 💼 Contact
@@ -714,7 +713,7 @@ class DatabaseOperations:
         invoice_number: Optional[int] = None
     ) -> Union[None, Dict[str, Any], List[Dict[str, Any]]]:
         """
-        Return Invoices(s) based on any subset of project_number, po_number, invoice_number.
+        Return Invoice(s) based on any subset of project_number, po_number, invoice_number.
         If none are provided, returns ALL.
         """
         if not project_number and not po_number and not invoice_number:
@@ -821,8 +820,7 @@ class DatabaseOperations:
         if not records:
             return records
 
-        # If your schema uses something like 'status' = "DELETED", filter it out unless deleted=True
-        # (Adjust below if your schema uses 'state' or another column.)
+        # If your schema uses a 'state' of "DELETED", filter it out unless deleted=True
         if not deleted:
             if isinstance(records, dict):
                 # For a single record
@@ -932,7 +930,7 @@ class DatabaseOperations:
 
     def create_xero_bill(self, **kwargs):
         """
-        If 'xero_reference_number' is unique, pass that as unique_lookup:
+        If 'xero_reference_number' is unique, we pass that as unique_lookup.
         """
         self.logger.debug(f"🏷 create_xero_bill with {kwargs}")
         unique_lookup = {}
@@ -983,7 +981,7 @@ class DatabaseOperations:
             "po_number": po_number,
             "detail_number": detail_number
         })
-        # If you consider (project_number, po_number, detail_number) effectively unique:
+        # If (project_number, po_number, detail_number) is effectively unique:
         unique_lookup = {
             "project_number": project_number,
             "po_number": po_number,
@@ -1005,10 +1003,61 @@ class DatabaseOperations:
             bills = bills[0]
         return self.update_xero_bill(bills["id"], **kwargs)
     # endregion
-    #endregion
+    # endregion
+
+    # region 👤 User
+    def search_users(self, column_names=None, values=None):
+        self.logger.debug(f"👤 search_users: columns={column_names}, values={values}")
+        return self._search_records(User, column_names, values)
+
+    def create_user(self, **kwargs):
+        self.logger.debug(f"👤 create_user with {kwargs}")
+        # If 'username' is unique, define unique_lookup here if you like
+        unique_lookup = {}
+        # Example (uncomment if needed):
+        # if 'username' in kwargs:
+        #     unique_lookup['username'] = kwargs['username']
+        return self._create_record(User, unique_lookup=unique_lookup, **kwargs)
+
+    def update_user(self, user_id, **kwargs):
+        self.logger.debug(f"👤 update_user -> User(id={user_id}), data={kwargs}")
+        return self._update_record(User, user_id, **kwargs)
+    # endregion
+
+    # region 📒 TaxLedger
+    def search_tax_ledgers(self, column_names=None, values=None):
+        self.logger.debug(f"📒 search_tax_ledgers: columns={column_names}, values={values}")
+        return self._search_records(TaxLedger, column_names, values)
+
+    def create_tax_ledger(self, **kwargs):
+        self.logger.debug(f"📒 create_tax_ledger with {kwargs}")
+        # If 'name' is unique or anything else, define unique_lookup
+        unique_lookup = {}
+        return self._create_record(TaxLedger, unique_lookup=unique_lookup, **kwargs)
+
+    def update_tax_ledger(self, ledger_id, **kwargs):
+        self.logger.debug(f"📒 update_tax_ledger -> TaxLedger(id={ledger_id}), data={kwargs}")
+        return self._update_record(TaxLedger, ledger_id, **kwargs)
+    # endregion
+
+    # region 📊 BudgetMap
+    def search_budget_maps(self, column_names=None, values=None):
+        self.logger.debug(f"📊 search_budget_maps: columns={column_names}, values={values}")
+        return self._search_records(BudgetMap, column_names, values)
+
+    def create_budget_map(self, **kwargs):
+        self.logger.debug(f"📊 create_budget_map with {kwargs}")
+        # If 'map_name' is unique or anything else, define unique_lookup
+        unique_lookup = {}
+        return self._create_record(BudgetMap, unique_lookup=unique_lookup, **kwargs)
+
+    def update_budget_map(self, map_id, **kwargs):
+        self.logger.debug(f"📊 update_budget_map -> BudgetMap(id={map_id}), data={kwargs}")
+        return self._update_record(BudgetMap, map_id, **kwargs)
+    # endregion
 
     #region HAS CHANGED FUNCTIONS
-  # --------------------------------------------------------
+    # --------------------------------------------------------
     # 1) Revised Private Helper: _has_changes_for_record
     # --------------------------------------------------------
     def _has_changes_for_record(
@@ -1090,8 +1139,7 @@ class DatabaseOperations:
         """
         Check if a PurchaseOrder has changed. Provide either:
           - record_id, OR
-          - (project_number, po_number) as unique fields.
-        Additional fields to compare are passed via kwargs (e.g. description='xyz', state='Draft', etc.).
+          - (project_number, po_number).
         """
         unique_filters = {}
         if project_number is not None:
@@ -1190,7 +1238,7 @@ class DatabaseOperations:
     ) -> bool:
         """
         Example: If your BankTransaction is uniquely identified by some external ID,
-        pass it in, else use the record_id.
+        pass it in, else use the record_id. Adjust as needed.
         """
         unique_filters = {}
         if transaction_id_xero is not None:
@@ -1335,7 +1383,59 @@ class DatabaseOperations:
             **kwargs
         )
 
+    # -- User
+    def user_has_changes(
+        self,
+        record_id: Optional[int] = None,
+        username: Optional[str] = None,
+        **kwargs
+    ) -> bool:
+        unique_filters = {}
+        if username is not None:
+            unique_filters["username"] = username
+
+        return self._has_changes_for_record(
+            User,
+            record_id=record_id,
+            unique_filters=unique_filters if not record_id else None,
+            **kwargs
+        )
+
+    # -- TaxLedger
+    def tax_ledger_has_changes(
+        self,
+        record_id: Optional[int] = None,
+        name: Optional[str] = None,
+        **kwargs
+    ) -> bool:
+        unique_filters = {}
+        if name is not None:
+            unique_filters["name"] = name
+
+        return self._has_changes_for_record(
+            TaxLedger,
+            record_id=record_id,
+            unique_filters=unique_filters if not record_id else None,
+            **kwargs
+        )
+
+    # -- BudgetMap
+    def budget_map_has_changes(
+        self,
+        record_id: Optional[int] = None,
+        map_name: Optional[str] = None,
+        **kwargs
+    ) -> bool:
+        unique_filters = {}
+        if map_name is not None:
+            unique_filters["map_name"] = map_name
+
+        return self._has_changes_for_record(
+            BudgetMap,
+            record_id=record_id,
+            unique_filters=unique_filters if not record_id else None,
+            **kwargs
+        )
     #endregion
 
 # endregion
-

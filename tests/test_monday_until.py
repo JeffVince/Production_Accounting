@@ -1,6 +1,6 @@
 import unittest
 from unittest.mock import patch, MagicMock
-from monday_files.monday_util import monday_util
+from files_monday.monday_util import monday_util
 import requests
 
 
