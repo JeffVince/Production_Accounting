@@ -26,7 +26,6 @@
                 "decorators": [],
                 "calls": [
                     "_update_model_class",
-                    "_table_name_to_class_name",
                     "_build_sqlalchemy_class",
                     "_remove_model_class"
                 ],

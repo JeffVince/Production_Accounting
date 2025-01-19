@@ -13,7 +13,7 @@ class CeleryTaskService(metaclass=SingletonMeta):
     """
 
     def __init__(self):
-        self.logger = logging.getLogger('database_logger')
+        self.logger = logging.getLogger('admin_logger')
 
     def bill_line_item_trigger_on_create(self, bill_line_item_id: int):
         return handle_xero_bill_line_item_create(bill_line_item_id)
@@ -119,4 +119,4 @@ class CeleryTaskService(metaclass=SingletonMeta):
 
     def account_code_trigger_on_delete(self, account_code_id: int):
         return handle_account_code_delete(account_code_id)
-database_trigger_service = CeleryTaskService()
+celery_task_service = CeleryTaskService()

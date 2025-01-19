@@ -1,5 +1,5 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="showbiz_log_printer" type="PythonConfigurationType" factoryName="Python" folderName="Showbiz App" nameIsGenerated="true">
+  <configuration default="false" name="showbiz_log_printer" type="PythonConfigurationType" factoryName="Python" folderName="Auto Budget App" nameIsGenerated="true">
     <module name="Dropbox Listener" />
     <option name="INTERPRETER_OPTIONS" value="" />
     <option name="PARENT_ENVS" value="true" />
@@ -7,12 +7,12 @@
       <env name="PYTHONUNBUFFERED" value="1" />
     </envs>
     <option name="SDK_HOME" value="" />
-    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/po_log_files" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/files_budget" />
     <option name="IS_MODULE_SDK" value="true" />
     <option name="ADD_CONTENT_ROOTS" value="true" />
     <option name="ADD_SOURCE_ROOTS" value="true" />
     <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
-    <option name="SCRIPT_NAME" value="$PROJECT_DIR$/budget_files/showbiz_log_printer.py" />
+    <option name="SCRIPT_NAME" value="$PROJECT_DIR$/files_budget/showbiz_log_printer.py" />
     <option name="PARAMETERS" value="" />
     <option name="SHOW_COMMAND_LINE" value="false" />
     <option name="EMULATE_TERMINAL" value="false" />

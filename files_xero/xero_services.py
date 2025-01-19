@@ -1,29 +1,215 @@
 import logging
-import time
-from xero.exceptions import XeroNotFound, XeroRateLimitExceeded, XeroException
-from database_util import DatabaseOperations
+from datetime import datetime
+from typing import Optional
+
+from xero.exceptions import XeroException
+
+from database.database_util import DatabaseOperations
+from files_xero.xero_api import xero_api  # Adjust import path as needed
 from singleton import SingletonMeta
-from files_xero.xero_api import xero_api
 
 class XeroServices(metaclass=SingletonMeta):
     """
-    XeroServices
-    ============
-    Provides higher-level operations for working with the XeroAPI and storing
-    data in the database via DatabaseOperations.
+    Orchestrator: does the 'heavy lifting' DB <-> Xero:
+      - create / update / delete Xero bills
+      - fetch purchase orders / contacts from DB
+      - build Xero payload
+      - handle local DB updates (like storing xero_id)
     """
 
     def __init__(self):
-        """
-        Initialize the XeroServices with references to DatabaseOperations
-        and XeroAPI instances.
-        """
-        self.database_util = DatabaseOperations()
-        self.xero_api = xero_api
         self.logger = logging.getLogger('xero_logger')
-        self.logger.debug('[__init__] - Initialized XeroServices.')
-        self._initialized = True
+        self.logger.setLevel(logging.DEBUG)
+        self.db_ops = DatabaseOperations()
+        self.xero_api = xero_api  # Singleton from xero_api
 
+    def _format_date(self, dt: datetime) -> str:
+        """Utility to format Python datetime to 'YYYY-MM-DD' for Xero."""
+        return dt.strftime('%Y-%m-%d')
+
+    # --------------------------------------------------------------------------
+    #             CREATE Xero Bill in Xero if Xero ID is missing
+    # --------------------------------------------------------------------------
+    def create_xero_bill_in_xero(self, bill_id: int):
+        """
+        1) Look up the local XeroBill record in DB.
+        2) If missing xero_id => attempt to create in Xero.
+        3) Build payload with contact from PurchaseOrder, plus date/dueDate if present.
+        4) Update local DB with new xero_id & link.
+        """
+        self.logger.info(f'[create_xero_bill] [BillID={bill_id}] 🚀 - Called.')
+        xero_bill = self.db_ops.search_xero_bills(['id'], [bill_id])
+        if not xero_bill:
+            self.logger.warning(f'[create_xero_bill] [BillID={bill_id}] ⚠️ - No local XeroBill found.')
+            return
+        if isinstance(xero_bill, list):
+            xero_bill = xero_bill[0]
+
+        if xero_bill.get('xero_id'):
+            self.logger.info(
+                f'[create_xero_bill] [BillID={bill_id}] - Already has xero_id={xero_bill["xero_id"]}. Skipping creation.'
+            )
+            return
+
+        reference = xero_bill.get('xero_reference_number')
+        if not reference:
+            self.logger.warning(
+                f'[create_xero_bill] [BillID={bill_id}] ⚠️ - No xero_reference_number set. Skipping.'
+            )
+            return
+
+        # Grab the associated PO => contact
+        po_number = xero_bill.get('po_number')
+        project_number = xero_bill.get('project_number')
+        purchase_orders = self.db_ops.search_purchase_orders(['project_number','po_number'], [project_number, po_number])
+        if not purchase_orders:
+            self.logger.warning(f'[create_xero_bill] [BillID={bill_id}] - No PurchaseOrder for (proj={project_number}, po={po_number}).')
+            return
+
+        if isinstance(purchase_orders, list):
+            purchase_order = purchase_orders[0]
+        else:
+            purchase_order = purchase_orders
+
+        contact_id = purchase_order.get('contact_id')
+        if not contact_id:
+            self.logger.warning(f'[create_xero_bill] [BillID={bill_id}] ⚠️ - PurchaseOrder has no contact_id.')
+            return
+
+        contact_record = self.db_ops.search_contacts(['id'], [contact_id])
+        if not contact_record:
+            self.logger.warning(f'[create_xero_bill] [BillID={bill_id}] ⚠️ - No Contact found with id={contact_id}.')
+            return
+        if isinstance(contact_record, list):
+            contact_record = contact_record[0]
+
+        xero_contact_id = contact_record.get('xero_id')
+        if not xero_contact_id:
+            self.logger.warning(f'[create_xero_bill] [BillID={bill_id}] ⚠️ - Contact has no xero_id.')
+            return
+
+        # Build invoice creation payload
+        creation_payload = {
+            'Type': 'ACCPAY',
+            'InvoiceNumber': reference,
+            'Contact': {'ContactID': xero_contact_id}
+        }
+        if xero_bill.get('transaction_date'):
+            creation_payload['Date'] = self._format_date(xero_bill['transaction_date'])
+        if xero_bill.get('due_date'):
+            creation_payload['DueDate'] = self._format_date(xero_bill['due_date'])
+
+        self.logger.info(
+            f'[create_xero_bill] [BillID={bill_id}] 📄 - Sending invoice creation payload to Xero...'
+        )
+        result = self.xero_api.create_invoice(creation_payload)
+        if not result:
+            self.logger.error(
+                f'[create_xero_bill] [BillID={bill_id}] ❌ - Invoice creation in Xero failed.'
+            )
+            return
+
+        try:
+            new_inv = result[0]
+            new_xero_id = new_inv.get('InvoiceID')
+            link = f'https://go.xero.com/AccountsPayable/View.aspx?invoiceId={new_xero_id}'
+            self.db_ops.update_xero_bill(bill_id, xero_id=new_xero_id, xero_link=link)
+            self.logger.info(
+                f'[create_xero_bill] [BillID={bill_id}] ✅ - Created new Xero invoice with ID={new_xero_id}.'
+            )
+        except Exception as e:
+            self.logger.error(
+                f'[create_xero_bill] [BillID={bill_id}] ❌ - Error parsing invoice response: {e}'
+            )
+
+    # --------------------------------------------------------------------------
+    #             UPDATE Xero Bill
+    # --------------------------------------------------------------------------
+    def update_xero_bill(self, bill_id: int):
+        """
+        1) Check local XeroBill for xero_id; if none, call create_xero_bill.
+        2) If final => maybe skip or pull data. Otherwise, upsert changes, etc.
+        (You can adapt based on your own logic.)
+        """
+        self.logger.info(f'[update_xero_bill] [BillID={bill_id}] 🔄 - Called.')
+        xero_bill = self.db_ops.search_xero_bills(['id'], [bill_id])
+        if not xero_bill:
+            self.logger.warning(
+                f'[update_xero_bill] [BillID={bill_id}] ⚠️ - No XeroBill found.'
+            )
+            return
+        if isinstance(xero_bill, list):
+            xero_bill = xero_bill[0]
+
+        # If no xero_id, let's create it first
+        if not xero_bill.get('xero_id'):
+            self.logger.info(
+                f'[update_xero_bill] [BillID={bill_id}] - No xero_id => calling create_xero_bill.'
+            )
+            self.create_xero_bill_in_xero(bill_id)
+            return
+
+        # If we do want to actually "update" the invoice in Xero, we can do so by:
+        changes = {}
+        # e.g. changes['DueDate'] = '2025-05-01'
+        # or changes['Status'] = 'AUTHORISED'
+
+        if not changes:
+            self.logger.info(f'[update_xero_bill] [BillID={bill_id}] No changes to push. Done.')
+            return
+
+        self.logger.info(
+            f'[update_xero_bill] [BillID={bill_id}] 📤 Pushing changes to Xero: {changes}'
+        )
+        updated = self.xero_api.update_invoice(xero_bill['xero_id'], changes)
+        if updated:
+            self.logger.info(f'[update_xero_bill] [BillID={bill_id}] ✅ - Updated invoice in Xero.')
+        else:
+            self.logger.warning(f'[update_xero_bill] [BillID={bill_id}] ⚠️ - Failed to update in Xero.')
+
+    # --------------------------------------------------------------------------
+    #             DELETE Xero Bill
+    # --------------------------------------------------------------------------
+    def delete_xero_bill(self, bill_id: int):
+        """
+        1) If XeroBill was deleted in DB, we set the Xero invoice status=DELETED if possible.
+        2) Only possible if the invoice is in DRAFT or SUBMITTED status in Xero.
+        """
+        self.logger.info(f'[delete_xero_bill] [BillID={bill_id}] ❌ - Called.')
+        # We can still fetch the local record (it might be "soft" deleted or just removed).
+        xero_bill = self.db_ops.search_xero_bills(['id'], [bill_id])
+        if xero_bill:
+            if isinstance(xero_bill, list):
+                xero_bill = xero_bill[0]
+            xero_id = xero_bill.get('xero_id')
+        else:
+            # If it’s truly gone, we might have to store the xero_id earlier or skip
+            self.logger.warning(
+                f'[delete_xero_bill] [BillID={bill_id}] - No local record. No xero_id known.'
+            )
+            return
+
+        if not xero_id:
+            self.logger.warning(
+                f'[delete_xero_bill] [BillID={bill_id}] - Bill has no xero_id. Cannot delete in Xero.'
+            )
+            return
+
+        self.logger.info(
+            f'[delete_xero_bill] [BillID={bill_id}] ❌ - Setting invoice {xero_id} to DELETED in Xero.'
+        )
+        delete_resp = self.xero_api.delete_invoice(xero_id)
+        if delete_resp:
+            self.logger.info(
+                f'[delete_xero_bill] [BillID={bill_id}] ✅ - Invoice set to DELETED in Xero.'
+            )
+        else:
+            self.logger.warning(
+                f'[delete_xero_bill] [BillID={bill_id}] ⚠️ - Could not set to DELETED.'
+            )
+
+
+    # OLDER
     def load_spend_money_transactions(self, project_id: int=None, po_number: int=None, detail_number: int=None):
         """
         Loads Xero SPEND transactions (bankTransactions) into the 'spend_money' table.
@@ -285,7 +471,7 @@ class XeroServices(metaclass=SingletonMeta):
                 continue
             existing_bill = self.database_util.search_xero_bills(column_names=['xero_reference_number'], values=[invoice_number])
             if not existing_bill:
-                created_bill = self.database_util.create_xero_bill(xero_reference_number=invoice_number, xero_id=invoice_id, state=status, project_number=project_num, po_number=po_num, detail_number=detail_num, xero_link=f'https://go.xero.com/AccountsPayable/View.aspx?invoiceId={invoice_id}')
+                created_bill = self.database_util.create_xero_bill_in_xero(xero_reference_number=invoice_number, xero_id=invoice_id, state=status, project_number=project_num, po_number=po_num, detail_number=detail_num, xero_link=f'https://go.xero.com/AccountsPayable/View.aspx?invoiceId={invoice_id}')
                 if not created_bill:
                     self.logger.error(f'[load_bills] - Failed to create xero_bill for {invoice_number}. Skipping line items.')
                     continue
@@ -328,4 +514,10 @@ class XeroServices(metaclass=SingletonMeta):
                     else:
                         self.logger.error(f'[load_bills] - Failed to create BillLineItem for parent_xero_id={xero_line_number}.')
         self.logger.info(f"[load_bills] - Finished loading ACCPAY invoices matching '{project_number}', with line items mapped to local BillLineItems.")
+
 xero_services = XeroServices()
+
+
+
+
+

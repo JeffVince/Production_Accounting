@@ -14,10 +14,20 @@ Additional concurrency changes:
 from contextlib import contextmanager
 from typing import Optional, Dict, Any, List, Union
 import logging
+
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from models import Contact, Project, PurchaseOrder, DetailItem, BankTransaction, BillLineItem, Invoice, AccountCode, Receipt, SpendMoney, TaxAccount, XeroBill, User, TaxLedger, BudgetMap
-from database.db_util import get_db_session
+
+# Import your SQLAlchemy models
+from models import (
+    Contact, Project, PurchaseOrder, DetailItem, BankTransaction,
+    BillLineItem, Invoice, AccountCode, Receipt, SpendMoney, TaxAccount,
+    XeroBill, User, TaxLedger, BudgetMap
+)
+
+# Import the new make_local_session context manager
+# (instead of get_db_session).
+from database.db_util import make_local_session
 
 class DatabaseOperations:
     """
@@ -46,10 +56,18 @@ class DatabaseOperations:
         if not record:
             return None
         record_values = {c.name: getattr(record, c.name) for c in record.__table__.columns}
-        self.logger.debug(f"[_serialize_record] - 🤓 Pulling record: {record_values.get('id', 'N/A')} from table {record.__table__}")
+        self.logger.debug(
+            f"[_serialize_record] - 🤓 Pulling record: {record_values.get('id', 'N/A')} "
+            f"from table {record.__table__}"
+        )
         return record_values
 
-    def _search_records(self, model, column_names: Optional[List[str]]=None, values: Optional[List[Any]]=None) -> Union[None, Dict[str, Any], List[Dict[str, Any]]]:
+    def _search_records(
+        self,
+        model,
+        column_names: Optional[List[str]] = None,
+        values: Optional[List[Any]] = None
+    ) -> Union[None, Dict[str, Any], List[Dict[str, Any]]]:
         """
         🔎 Search for records of a given model based on multiple column filters.
         If no column_names or values are provided, retrieves all records from the table.
@@ -60,28 +78,36 @@ class DatabaseOperations:
             - A list if multiple found
             - [] if mismatch in columns/values or on error
 
-        This is an *atomic* operation: we open a fresh session, do the query,
-        commit/rollback, and close the session each time.
+        This version now uses make_local_session() to ensure each search has its own
+        dedicated session.
         """
         column_names = column_names or []
         values = values or []
+
         if column_names and values:
             self.logger.debug(f'[_search_records] - 🕵️ Searching {model.__name__} with filters: {list(zip(column_names, values))}')
             self.logger.info(f'[_search_records] - 🚦 Checking if there are any matches in {model.__name__} for columns & values: {list(zip(column_names, values))}')
             if len(column_names) != len(values):
-                self.logger.warning('[_search_records] - ⚠️ Oops, mismatch: The number of column names and values do not match. Returning empty list.')
+                self.logger.warning(
+                    '[_search_records] - ⚠️ Oops, mismatch: The number of column names '
+                    'and values do not match. Returning empty list.'
+                )
                 return []
         else:
             self.logger.debug(f'[_search_records] - 🕵️ No filters provided. Retrieving all records from {model.__name__}.')
             self.logger.info(f'[_search_records] - 🚦 Fetching the entire {model.__name__} table without any filters.')
-        with get_db_session() as session:
+
+        with make_local_session() as session:
             try:
                 query = session.query(model)
                 if column_names and values:
                     for (col_name, val) in zip(column_names, values):
                         column_attr = getattr(model, col_name, None)
                         if column_attr is None:
-                            self.logger.warning(f"[_search_records] - 😬 '{col_name}' is not a valid column in {model.__name__}. Returning empty list.")
+                            self.logger.warning(
+                                f"[_search_records] - 😬 '{col_name}' is not a valid column "
+                                f"in {model.__name__}. Returning empty list."
+                            )
                             return []
                         query = query.filter(column_attr == val)
                 records = query.all()
@@ -99,7 +125,12 @@ class DatabaseOperations:
                 self.logger.error(f'[_search_records] - 💥 Error searching {model.__name__}: {e}', exc_info=True)
                 return []
 
-    def _create_record(self, model, unique_lookup: dict=None, **kwargs) -> Optional[Dict[str, Any]]:
+    def _create_record(
+        self,
+        model,
+        unique_lookup: dict = None,
+        **kwargs
+    ) -> Optional[Dict[str, Any]]:
         """
         🆕 Create a new record in the database, returning its serialized form or None on error.
         Includes session.flush() before session.commit() to ensure ID is generated & data is visible.
@@ -108,43 +139,64 @@ class DatabaseOperations:
           - If an IntegrityError occurs (e.g. duplicate key), we do a fallback re-query
             if 'unique_lookup' is provided.
           - If found, return the existing record. Otherwise, raise or return None.
+
+        Now uses make_local_session() for a fresh session each time.
         """
-        self.logger.debug(f'[_create_record] - 🧑\u200d💻 Creating new {model.__name__} using data: {kwargs}')
+        self.logger.debug(f'[_create_record] - 🧑‍💻 Creating new {model.__name__} using data: {kwargs}')
         self.logger.info(f'[_create_record] - 🌱 About to insert a fresh record into {model.__name__} with {kwargs}')
-        with get_db_session() as session:
+
+        with make_local_session() as session:
             try:
                 record = model(**kwargs)
                 session.add(record)
-                session.flush()
+                session.flush()  # get ID
                 self.logger.debug(f'[_create_record] - 🪄 Flushed new {model.__name__}. ID now: {record.id}')
                 session.commit()
                 self.logger.info('[_create_record] - 🎉 Creation successful! Record is now in the DB.')
                 return self._serialize_record(record)
+
             except IntegrityError:
                 self.logger.debug(f'[_create_record] - ❗ IntegrityError creating {model.__name__}')
                 session.rollback()
+
                 if unique_lookup:
                     self.logger.warning("[_create_record] - Attempting concurrency fallback re-query using 'unique_lookup'...")
                     found = self._search_records(model, list(unique_lookup.keys()), list(unique_lookup.values()))
                     if found:
                         if isinstance(found, list):
-                            self.logger.info(f'[_create_record] - Found {len(found)} record(s) matching unique_lookup; returning the first.')
+                            self.logger.info(
+                                f'[_create_record] - Found {len(found)} record(s) matching unique_lookup; '
+                                'returning the first.'
+                            )
                             return found[0]
                         else:
                             self.logger.info('[_create_record] - Found exactly one existing record after concurrency fallback.')
                             return found
                     else:
-                        self.logger.error(f'[_create_record] - No record found after concurrency fallback for {model.__name__} with {unique_lookup}')
+                        self.logger.error(
+                            f'[_create_record] - No record found after concurrency fallback '
+                            f'for {model.__name__} with {unique_lookup}'
+                        )
                         return None
                 else:
-                    self.logger.error("[_create_record] - No 'unique_lookup' provided, cannot re-query for concurrency fallback. Returning None.")
+                    self.logger.error(
+                        "[_create_record] - No 'unique_lookup' provided, cannot re-query for "
+                        "concurrency fallback. Returning None."
+                    )
                 return None
+
             except Exception as e:
                 session.rollback()
                 self.logger.error(f'[_create_record] - 💥 Trouble creating {model.__name__}: {e}', exc_info=True)
                 return None
 
-    def _update_record(self, model, record_id: int, unique_lookup: dict=None, **kwargs) -> Optional[Dict[str, Any]]:
+    def _update_record(
+        self,
+        model,
+        record_id: int,
+        unique_lookup: dict = None,
+        **kwargs
+    ) -> Optional[Dict[str, Any]]:
         """
         🔄 Update an existing record by its primary key (ID).
         Returns the serialized updated record, or None if not found or on error.
@@ -154,62 +206,71 @@ class DatabaseOperations:
           - If an IntegrityError occurs (duplicate key on some column), we can attempt
             a fallback re-query if 'unique_lookup' is provided.
 
-        :param model: The SQLAlchemy model
-        :param record_id: The primary key ID for the record to update
-        :param unique_lookup: optional concurrency fallback
-        :param kwargs: fields to update
-        :return: updated record (serialized) or None
+        Now uses make_local_session() for a fresh session each time.
         """
         self.logger.debug(f'[_update_record] - 🔧 Attempting to update {model.__name__}(id={record_id}). Fields: {kwargs}')
         self.logger.info(f'[_update_record] - 🤝 Checking if {model.__name__}(id={record_id}) exists, then updating with {kwargs}.')
-        with get_db_session() as session:
+
+        with make_local_session() as session:
             try:
                 record = session.query(model).get(record_id)
                 if not record:
                     self.logger.info(f'[_update_record] - 🙅 No {model.__name__} with id={record_id} found.')
                     return None
+
                 for (key, value) in kwargs.items():
                     if hasattr(record, key):
                         setattr(record, key, value)
                     else:
-                        self.logger.warning(f"[_update_record] - ⚠️ The attribute '{key}' doesn't exist on {model.__name__}. Skipping.")
+                        self.logger.warning(
+                            f"[_update_record] - ⚠️ The attribute '{key}' doesn't exist on {model.__name__}. Skipping."
+                        )
+
                 session.flush()
                 self.logger.debug(f'[_update_record] - 🪄 Flushed updated {model.__name__}(id={record_id}).')
                 session.commit()
                 self.logger.info('[_update_record] - ✅ Done updating! The record is all set.')
                 return self._serialize_record(record)
+
             except IntegrityError:
                 self.logger.warning(f'[_update_record] - ❗ IntegrityError updating {model.__name__}(id={record_id})')
                 session.rollback()
+
                 if unique_lookup:
                     self.logger.warning("[_update_record] - Attempting concurrency fallback re-query with 'unique_lookup' after update...")
                     found = self._search_records(model, list(unique_lookup.keys()), list(unique_lookup.values()))
                     if found:
                         if isinstance(found, list):
-                            self.logger.info(f'[_update_record] - Found {len(found)} record(s) matching unique_lookup; returning the first.')
+                            self.logger.info(
+                                f'[_update_record] - Found {len(found)} record(s) matching unique_lookup; '
+                                'returning the first.'
+                            )
                             return found[0]
                         else:
                             self.logger.info('[_update_record] - Found exactly one existing record after concurrency fallback.')
                             return found
                     else:
-                        self.logger.error(f'[_update_record] - No record found after concurrency fallback for {model.__name__} with {unique_lookup}')
+                        self.logger.error(
+                            f'[_update_record] - No record found after concurrency fallback for '
+                            f'{model.__name__} with {unique_lookup}'
+                        )
                         return None
                 else:
                     self.logger.error("[_update_record] - No 'unique_lookup' provided for fallback; returning None.")
                 return None
+
             except Exception as e:
                 session.rollback()
                 self.logger.error(f'[_update_record] - 💥 Had an issue updating {model.__name__}: {e}', exc_info=True)
                 return None
+
+
 
     def search_account_codes(self, column_names, values):
         self.logger.debug('[search_account_codes] - 🔎 Searching for Account Code entries...')
         return self._search_records(AccountCode, column_names, values)
 
     def create_account_code(self, **kwargs):
-        """
-        If 'account_code' is unique, pass unique_lookup={'account_code': kwargs.get('account_code')}
-        """
         self.logger.debug(f'[create_account_code] - 🌈 Creating an AccountCode with data={kwargs}')
         unique_lookup = {}
         if 'code' in kwargs:
@@ -221,10 +282,6 @@ class DatabaseOperations:
         return self._search_records(PurchaseOrder, column_names, values)
 
     def create_purchase_order(self, **kwargs):
-        """
-        If you have a unique constraint like (project_id, po_number), define:
-          unique_lookup = {'project_id': ..., 'po_number': ...}
-        """
         self.logger.debug(f'[create_purchase_order] - 📝 create_purchase_order with {kwargs}')
         unique_lookup = {}
         if 'project_id' in kwargs and 'po_number' in kwargs:
@@ -232,20 +289,14 @@ class DatabaseOperations:
         return self._create_record(PurchaseOrder, unique_lookup=unique_lookup, **kwargs)
 
     def update_purchase_order(self, po_id, **kwargs):
-        """
-        If there's a unique constraint (project_id, po_number) that can be updated, pass a unique_lookup.
-        Otherwise normal update.
-        """
         self.logger.debug(f'[update_purchase_order] - 📝 update_purchase_order -> PurchaseOrder(id={po_id}), data={kwargs}')
         return self._update_record(PurchaseOrder, po_id, **kwargs)
 
-    def search_purchase_order_by_keys(self, project_number: Optional[int]=None, po_number: Optional[int]=None) -> Union[None, Dict[str, Any], List[Dict[str, Any]]]:
-        """
-        Return PurchaseOrder(s) based on optional project_number & po_number.
-          - If neither is provided, returns ALL PurchaseOrders.
-          - If only project_number is given, returns all POs for that project_number.
-          - If project_number + po_number are given, returns just that subset.
-        """
+    def search_purchase_order_by_keys(
+        self,
+        project_number: Optional[int] = None,
+        po_number: Optional[int] = None
+    ) -> Union[None, Dict[str, Any], List[Dict[str, Any]]]:
         if not project_number and (not po_number):
             return self.search_purchase_orders([], [])
         col_filters = []
@@ -259,25 +310,24 @@ class DatabaseOperations:
         return self.search_purchase_orders(col_filters, val_filters)
 
     def create_purchase_order_by_keys(self, project_number: int, po_number: int, **kwargs):
-        """
-        Shortcut to create a PurchaseOrder by directly specifying project_number & po_number.
-        We still need the project_id though, so consider how you want to handle that.
-        """
         project_record = self.search_projects(['project_number'], [project_number])
         if not project_record:
-            self.logger.warning(f'[create_purchase_order_by_keys] - Cannot create PurchaseOrder because Project with project_number={project_number} not found.')
+            self.logger.warning(
+                f'[create_purchase_order_by_keys] - Cannot create PurchaseOrder '
+                f'because Project with project_number={project_number} not found.'
+            )
             return None
         if isinstance(project_record, list):
             project_record = project_record[0]
         project_id = project_record['id']
-        kwargs.update({'project_id': project_id, 'project_number': project_number, 'po_number': po_number})
+        kwargs.update({
+            'project_id': project_id,
+            'project_number': project_number,
+            'po_number': po_number
+        })
         return self.create_purchase_order(**kwargs)
 
     def update_purchase_order_by_keys(self, project_number: int, po_number: int, **kwargs):
-        """
-        Shortcut to update a PurchaseOrder, given project_number + po_number.
-        If multiple POs match, we only update the first one.
-        """
         pos = self.search_purchase_order_by_keys(project_number, po_number)
         if not pos:
             return None
@@ -294,22 +344,32 @@ class DatabaseOperations:
     def create_detail_item(self, **kwargs):
         self.logger.debug(f'[create_detail_item] - 🧱 Creating a detail item with {kwargs}')
         unique_lookup = {}
-        if 'po_number' in kwargs and 'project_number' in kwargs and ('detail_number' in kwargs) and ('line_number' in kwargs):
-            unique_lookup = {'project_number': kwargs['project_number'], 'po_number': kwargs['po_number'], 'detail_number': kwargs['detail_number'], 'line_number': kwargs['line_number']}
+        if (
+            'po_number' in kwargs and
+            'project_number' in kwargs and
+            ('detail_number' in kwargs) and
+            ('line_number' in kwargs)
+        ):
+            unique_lookup = {
+                'project_number': kwargs['project_number'],
+                'po_number': kwargs['po_number'],
+                'detail_number': kwargs['detail_number'],
+                'line_number': kwargs['line_number']
+            }
         return self._create_record(DetailItem, unique_lookup=unique_lookup, **kwargs)
 
     def update_detail_item(self, detail_item_id, **kwargs):
         self.logger.debug(f'[update_detail_item] - 🔧 update_detail_item -> DetailItem(id={detail_item_id}), data={kwargs}')
         return self._update_record(DetailItem, detail_item_id, **kwargs)
 
-    def search_detail_item_by_keys(self, project_number: Optional[int]=None, po_number: Optional[int]=None, detail_number: Optional[int]=None, line_number: Optional[int]=None) -> Union[None, Dict[str, Any], List[Dict[str, Any]]]:
-        """
-        Returns DetailItem(s) based on any subset of the four optional keys.
-          - If none provided, returns ALL DetailItems.
-          - If only project_number, returns all items for that project.
-          - If project_number + po_number, returns items for that PO, etc.
-        """
-        if not project_number and (not po_number) and (not detail_number) and (not line_number):
+    def search_detail_item_by_keys(
+        self,
+        project_number: Optional[int] = None,
+        po_number: Optional[int] = None,
+        detail_number: Optional[int] = None,
+        line_number: Optional[int] = None
+    ) -> Union[None, Dict[str, Any], List[Dict[str, Any]]]:
+        if not project_number and not po_number and not detail_number and not line_number:
             return self.search_detail_items([], [])
         col_filters = []
         val_filters = []
@@ -328,11 +388,18 @@ class DatabaseOperations:
         return self.search_detail_items(col_filters, val_filters)
 
     def create_detail_item_by_keys(self, project_number: int, po_number: int, detail_number: int, line_number: int, **kwargs):
-        """
-        Shortcut to create a DetailItem with explicit keys.
-        """
-        kwargs.update({'project_number': project_number, 'po_number': po_number, 'detail_number': detail_number, 'line_number': line_number})
-        unique_lookup = {'project_number': project_number, 'po_number': po_number, 'detail_number': detail_number, 'line_number': line_number}
+        kwargs.update({
+            'project_number': project_number,
+            'po_number': po_number,
+            'detail_number': detail_number,
+            'line_number': line_number
+        })
+        unique_lookup = {
+            'project_number': project_number,
+            'po_number': po_number,
+            'detail_number': detail_number,
+            'line_number': line_number
+        }
         return self._create_record(DetailItem, unique_lookup=unique_lookup, **kwargs)
 
     def update_detail_item_by_keys(self, project_number: int, po_number: int, detail_number: int, line_number: int, **kwargs):
@@ -343,8 +410,7 @@ class DatabaseOperations:
             match = matches[0]
         else:
             match = matches
-        detail_item_id = match['id']
-        return self.update_detail_item(detail_item_id, **kwargs)
+        return self.update_detail_item(match['id'], **kwargs)
 
     def search_contacts(self, column_names=None, values=None):
         self.logger.debug(f'[search_contacts] - 💼 Searching Contacts with column_names={column_names}, values={values}')
@@ -358,7 +424,7 @@ class DatabaseOperations:
         return self._create_record(Contact, unique_lookup=unique_lookup, **kwargs)
 
     def update_contact(self, contact_id, **kwargs):
-        self.logger.debug(f'[update_contact] - 💁\u200d♀️ update_contact -> Contact(id={contact_id}), data={kwargs}')
+        self.logger.debug(f'[update_contact] - 💁‍♀️ update_contact -> Contact(id={contact_id}), data={kwargs}')
         return self._update_record(Contact, contact_id, **kwargs)
 
     def find_contact_close_match(self, contact_name: str, all_db_contacts: List[Dict[str, Any]], cutoff=0.7):
@@ -370,6 +436,7 @@ class DatabaseOperations:
         if not all_db_contacts:
             self.logger.debug('[find_contact_close_match] - No existing contacts provided to match against.')
             return None
+
         name_map = {c['name']: c for c in all_db_contacts if c.get('name')}
         best_matches = get_close_matches(contact_name, name_map.keys(), n=5, cutoff=cutoff)
         if best_matches:
@@ -418,17 +485,24 @@ class DatabaseOperations:
         self.logger.debug(f'[create_bill_line_item] - 📜 create_bill_line_item with {kwargs}')
         unique_lookup = {}
         if 'parent_id' in kwargs and 'detail_number' in kwargs and ('line_number' in kwargs):
-            unique_lookup = {'parent_id': kwargs['parent_id'], 'detail_number': kwargs['detail_number'], 'line_number': kwargs['line_number']}
+            unique_lookup = {
+                'parent_id': kwargs['parent_id'],
+                'detail_number': kwargs['detail_number'],
+                'line_number': kwargs['line_number']
+            }
         return self._create_record(BillLineItem, unique_lookup=unique_lookup, **kwargs)
 
     def update_bill_line_item(self, bill_line_item_id, **kwargs):
         self.logger.debug(f'[update_bill_line_item] - 📜 update_bill_line_item -> BillLineItem(id={bill_line_item_id}), data={kwargs}')
         return self._update_record(BillLineItem, bill_line_item_id, **kwargs)
 
-    def search_bill_line_item_by_keys(self, project_number: Optional[int]=None, po_number: Optional[int]=None, detail_number: Optional[int]=None, line_number: Optional[int]=None) -> Union[None, Dict[str, Any], List[Dict[str, Any]]]:
-        """
-        Returns BillLineItem(s) for any subset of project_number, po_number, detail_number, line_number.
-        """
+    def search_bill_line_item_by_keys(
+        self,
+        project_number: Optional[int] = None,
+        po_number: Optional[int] = None,
+        detail_number: Optional[int] = None,
+        line_number: Optional[int] = None
+    ) -> Union[None, Dict[str, Any], List[Dict[str, Any]]]:
         if not project_number and (not po_number) and (not detail_number) and (not line_number):
             return self.search_bill_line_items([], [])
         col_filters = []
@@ -447,9 +521,27 @@ class DatabaseOperations:
             val_filters.append(line_number)
         return self.search_bill_line_items(col_filters, val_filters)
 
-    def create_bill_line_item_by_keys(self, parent_id: int, project_number: int, po_number: int, detail_number: int, line_number: int, **kwargs):
-        kwargs.update({'parent_id': parent_id, 'project_number': project_number, 'po_number': po_number, 'detail_number': detail_number, 'line_number': line_number})
-        unique_lookup = {'parent_id': parent_id, 'detail_number': detail_number, 'line_number': line_number}
+    def create_bill_line_item_by_keys(
+        self,
+        parent_id: int,
+        project_number: int,
+        po_number: int,
+        detail_number: int,
+        line_number: int,
+        **kwargs
+    ):
+        kwargs.update({
+            'parent_id': parent_id,
+            'project_number': project_number,
+            'po_number': po_number,
+            'detail_number': detail_number,
+            'line_number': line_number
+        })
+        unique_lookup = {
+            'parent_id': parent_id,
+            'detail_number': detail_number,
+            'line_number': line_number
+        }
         return self._create_record(BillLineItem, unique_lookup=unique_lookup, **kwargs)
 
     def update_bill_line_item_by_keys(self, project_number: int, po_number: int, detail_number: int, line_number: int, **kwargs):
@@ -477,11 +569,12 @@ class DatabaseOperations:
         self.logger.debug(f'[update_invoice] - 🧾 update_invoice -> Invoice(id={invoice_id}), data={kwargs}')
         return self._update_record(Invoice, invoice_id, **kwargs)
 
-    def search_invoice_by_keys(self, project_number: Optional[int]=None, po_number: Optional[int]=None, invoice_number: Optional[int]=None) -> Union[None, Dict[str, Any], List[Dict[str, Any]]]:
-        """
-        Return Invoice(s) based on any subset of project_number, po_number, invoice_number.
-        If none are provided, returns ALL.
-        """
+    def search_invoice_by_keys(
+        self,
+        project_number: Optional[int] = None,
+        po_number: Optional[int] = None,
+        invoice_number: Optional[int] = None
+    ) -> Union[None, Dict[str, Any], List[Dict[str, Any]]]:
         if not project_number and (not po_number) and (not invoice_number):
             return self.search_invoices([], [])
         col_filters = []
@@ -509,7 +602,13 @@ class DatabaseOperations:
         self.logger.debug(f'[update_receipt_by_id] - 🧾 update_receipt_by_id -> Receipt(id={receipt_id}), data={kwargs}')
         return self._update_record(Receipt, receipt_id, **kwargs)
 
-    def search_receipt_by_keys(self, project_number: Optional[int]=None, po_number: Optional[int]=None, detail_number: Optional[int]=None, line_number: Optional[int]=None):
+    def search_receipt_by_keys(
+        self,
+        project_number: Optional[int] = None,
+        po_number: Optional[int] = None,
+        detail_number: Optional[int] = None,
+        line_number: Optional[int] = None
+    ):
         if not project_number and (not po_number) and (not detail_number) and (not line_number):
             return self.search_receipts([], [])
         col_filters = []
@@ -529,7 +628,12 @@ class DatabaseOperations:
         return self.search_receipts(col_filters, val_filters)
 
     def create_receipt_by_keys(self, project_number: int, po_number: int, detail_number: int, line_number: int, **kwargs):
-        kwargs.update({'project_number': project_number, 'po_number': po_number, 'detail_number': detail_number, 'line_number': line_number})
+        kwargs.update({
+            'project_number': project_number,
+            'po_number': po_number,
+            'detail_number': detail_number,
+            'line_number': line_number
+        })
         return self.create_receipt(**kwargs)
 
     def update_receipt_by_keys(self, project_number: int, po_number: int, detail_number: int, line_number: int, **kwargs):
@@ -561,7 +665,14 @@ class DatabaseOperations:
         self.logger.debug(f'[update_spend_money] - 💸 update_spend_money -> SpendMoney(id={spend_money_id}), data={kwargs}')
         return self._update_record(SpendMoney, spend_money_id, **kwargs)
 
-    def search_spend_money_by_keys(self, project_number: Optional[int]=None, po_number: Optional[int]=None, detail_number: Optional[int]=None, line_number: Optional[int]=None, deleted: bool=False):
+    def search_spend_money_by_keys(
+        self,
+        project_number: Optional[int] = None,
+        po_number: Optional[int] = None,
+        detail_number: Optional[int] = None,
+        line_number: Optional[int] = None,
+        deleted: bool = False
+    ):
         if not project_number and (not po_number) and (not detail_number) and (not line_number):
             return self.search_spend_money([], [], deleted=deleted)
         col_filters = []
@@ -580,9 +691,26 @@ class DatabaseOperations:
             val_filters.append(line_number)
         return self.search_spend_money(col_filters, val_filters, deleted=deleted)
 
-    def create_spend_money_by_keys(self, project_number: int, po_number: int, detail_number: int, line_number: int, **kwargs):
-        kwargs.update({'project_number': project_number, 'po_number': po_number, 'detail_number': detail_number, 'line_number': line_number})
-        unique_lookup = {'project_number': project_number, 'po_number': po_number, 'detail_number': detail_number, 'line_number': line_number}
+    def create_spend_money_by_keys(
+        self,
+        project_number: int,
+        po_number: int,
+        detail_number: int,
+        line_number: int,
+        **kwargs
+    ):
+        kwargs.update({
+            'project_number': project_number,
+            'po_number': po_number,
+            'detail_number': detail_number,
+            'line_number': line_number
+        })
+        unique_lookup = {
+            'project_number': project_number,
+            'po_number': po_number,
+            'detail_number': detail_number,
+            'line_number': line_number
+        }
         return self._create_record(SpendMoney, unique_lookup=unique_lookup, **kwargs)
 
     def update_spend_money_by_keys(self, project_number: int, po_number: int, detail_number: int, line_number: int, **kwargs):
@@ -623,10 +751,12 @@ class DatabaseOperations:
         self.logger.debug(f'[update_xero_bill] - 🏷 update_xero_bill -> XeroBill(id={parent_id}), data={kwargs}')
         return self._update_record(XeroBill, parent_id, **kwargs)
 
-    def search_xero_bill_by_keys(self, project_number: Optional[int]=None, po_number: Optional[int]=None, detail_number: Optional[int]=None) -> Union[None, Dict[str, Any], List[Dict[str, Any]]]:
-        """
-        Returns XeroBill(s) based on any subset of project_number, po_number, detail_number.
-        """
+    def search_xero_bill_by_keys(
+        self,
+        project_number: Optional[int] = None,
+        po_number: Optional[int] = None,
+        detail_number: Optional[int] = None
+    ) -> Union[None, Dict[str, Any], List[Dict[str, Any]]]:
         if not project_number and (not po_number) and (not detail_number):
             return self.search_xero_bills([], [])
         col_filters = []
@@ -643,8 +773,16 @@ class DatabaseOperations:
         return self.search_xero_bills(col_filters, val_filters)
 
     def create_xero_bill_by_keys(self, project_number: int, po_number: int, detail_number: int, **kwargs):
-        kwargs.update({'project_number': project_number, 'po_number': po_number, 'detail_number': detail_number})
-        unique_lookup = {'project_number': project_number, 'po_number': po_number, 'detail_number': detail_number}
+        kwargs.update({
+            'project_number': project_number,
+            'po_number': po_number,
+            'detail_number': detail_number
+        })
+        unique_lookup = {
+            'project_number': project_number,
+            'po_number': po_number,
+            'detail_number': detail_number
+        }
         return self._create_record(XeroBill, unique_lookup=unique_lookup, **kwargs)
 
     def update_xero_bill_by_keys(self, project_number: int, po_number: int, detail_number: int, **kwargs):
@@ -694,7 +832,16 @@ class DatabaseOperations:
         self.logger.debug(f'[update_budget_map] - 📊 update_budget_map -> BudgetMap(id={map_id}), data={kwargs}')
         return self._update_record(BudgetMap, map_id, **kwargs)
 
-    def _has_changes_for_record(self, model, record_id: Optional[int]=None, unique_filters: Dict[str, Any]=None, **kwargs) -> bool:
+    ########################################################################
+    # Helper method to check if a record has changes, used by "has_changes" logic.
+    ########################################################################
+    def _has_changes_for_record(
+        self,
+        model,
+        record_id: Optional[int] = None,
+        unique_filters: Dict[str, Any] = None,
+        **kwargs
+    ) -> bool:
         """
         Checks whether a record of a given model has changed.
         1) If record_id is provided, we fetch by ID.
@@ -705,12 +852,17 @@ class DatabaseOperations:
         Special logic:
           - For 'state', do a case-insensitive comparison. Adjust as needed.
         """
-        if not record_id and (not unique_filters):
-            self.logger.warning(f'[_has_changes_for_record] - Cannot check changes for {model.__name__}, neither record_id nor unique_filters given.')
+        if not record_id and not unique_filters:
+            self.logger.warning(
+                f'[_has_changes_for_record] - Cannot check changes for {model.__name__}, '
+                'neither record_id nor unique_filters given.'
+            )
             return False
+
         record_dict = None
+
         if record_id:
-            with get_db_session() as session:
+            with make_local_session() as session:
                 record = session.query(model).get(record_id)
                 if record:
                     record_dict = self._serialize_record(record)
@@ -722,9 +874,11 @@ class DatabaseOperations:
                 record_dict = found
             elif isinstance(found, list) and len(found) == 1:
                 record_dict = found[0]
+
         if not record_dict:
             self.logger.debug(f'[_has_changes_for_record] - No single {model.__name__} record found to compare. Returning False.')
             return False
+
         for (field, new_val) in kwargs.items():
             old_val = record_dict.get(field)
             if field == 'state':
@@ -734,25 +888,38 @@ class DatabaseOperations:
                 return True
         return False
 
-    def purchase_order_has_changes(self, record_id: Optional[int]=None, project_number: Optional[int]=None, po_number: Optional[int]=None, **kwargs) -> bool:
-        """
-        Check if a PurchaseOrder has changed. Provide either:
-          - record_id, OR
-          - (project_number, po_number).
-        """
+    ########################################################################
+    # "Has changes" convenience methods for each entity type
+    ########################################################################
+
+    def purchase_order_has_changes(
+        self,
+        record_id: Optional[int] = None,
+        project_number: Optional[int] = None,
+        po_number: Optional[int] = None,
+        **kwargs
+    ) -> bool:
         unique_filters = {}
         if project_number is not None:
             unique_filters['project_number'] = project_number
         if po_number is not None:
             unique_filters['po_number'] = po_number
-        return self._has_changes_for_record(PurchaseOrder, record_id=record_id, unique_filters=unique_filters if not record_id else None, **kwargs)
+        return self._has_changes_for_record(
+            PurchaseOrder,
+            record_id=record_id,
+            unique_filters=unique_filters if not record_id else None,
+            **kwargs
+        )
 
-    def detail_item_has_changes(self, record_id: Optional[int]=None, project_number: Optional[int]=None, po_number: Optional[int]=None, detail_number: Optional[int]=None, line_number: Optional[int]=None, **kwargs) -> bool:
-        """
-        Check if a DetailItem has changed. Provide either:
-          - record_id, OR
-          - (project_number, po_number, detail_number, line_number).
-        """
+    def detail_item_has_changes(
+        self,
+        record_id: Optional[int] = None,
+        project_number: Optional[int] = None,
+        po_number: Optional[int] = None,
+        detail_number: Optional[int] = None,
+        line_number: Optional[int] = None,
+        **kwargs
+    ) -> bool:
         unique_filters = {}
         if project_number is not None:
             unique_filters['project_number'] = project_number
@@ -762,37 +929,72 @@ class DatabaseOperations:
             unique_filters['detail_number'] = detail_number
         if line_number is not None:
             unique_filters['line_number'] = line_number
-        return self._has_changes_for_record(DetailItem, record_id=record_id, unique_filters=unique_filters if not record_id else None, **kwargs)
+        return self._has_changes_for_record(
+            DetailItem,
+            record_id=record_id,
+            unique_filters=unique_filters if not record_id else None,
+            **kwargs
+        )
 
-    def contact_has_changes(self, record_id: Optional[int]=None, name: Optional[str]=None, email: Optional[str]=None, **kwargs) -> bool:
-        """
-        If Contact is uniquely identified by 'name', or by 'email', or by record_id.
-        Adjust as needed for your schema.
-        """
+    def contact_has_changes(
+        self,
+        record_id: Optional[int] = None,
+        name: Optional[str] = None,
+        email: Optional[str] = None,
+        **kwargs
+    ) -> bool:
         unique_filters = {}
         if name is not None:
             unique_filters['name'] = name
         if email is not None:
             unique_filters['email'] = email
-        return self._has_changes_for_record(Contact, record_id=record_id, unique_filters=unique_filters if not record_id else None, **kwargs)
+        return self._has_changes_for_record(
+            Contact,
+            record_id=record_id,
+            unique_filters=unique_filters if not record_id else None,
+            **kwargs
+        )
 
-    def project_has_changes(self, record_id: Optional[int]=None, project_number: Optional[int]=None, **kwargs) -> bool:
+    def project_has_changes(
+        self,
+        record_id: Optional[int] = None,
+        project_number: Optional[int] = None,
+        **kwargs
+    ) -> bool:
         unique_filters = {}
         if project_number is not None:
             unique_filters['project_number'] = project_number
-        return self._has_changes_for_record(Project, record_id=record_id, unique_filters=unique_filters if not record_id else None, **kwargs)
+        return self._has_changes_for_record(
+            Project,
+            record_id=record_id,
+            unique_filters=unique_filters if not record_id else None,
+            **kwargs
+        )
 
-    def bank_transaction_has_changes(self, record_id: Optional[int]=None, transaction_id_xero: Optional[str]=None, **kwargs) -> bool:
-        """
-        Example: If your BankTransaction is uniquely identified by some external ID,
-        pass it in, else use the record_id. Adjust as needed.
-        """
+    def bank_transaction_has_changes(
+        self,
+        record_id: Optional[int] = None,
+        transaction_id_xero: Optional[str] = None,
+        **kwargs
+    ) -> bool:
         unique_filters = {}
         if transaction_id_xero is not None:
             unique_filters['transaction_id_xero'] = transaction_id_xero
-        return self._has_changes_for_record(BankTransaction, record_id=record_id, unique_filters=unique_filters if not record_id else None, **kwargs)
+        return self._has_changes_for_record(
+            BankTransaction,
+            record_id=record_id,
+            unique_filters=unique_filters if not record_id else None,
+            **kwargs
+        )
 
-    def bill_line_item_has_changes(self, record_id: Optional[int]=None, parent_id: Optional[int]=None, detail_number: Optional[int]=None, line_number: Optional[int]=None, **kwargs) -> bool:
+    def bill_line_item_has_changes(
+        self,
+        record_id: Optional[int] = None,
+        parent_id: Optional[int] = None,
+        detail_number: Optional[int] = None,
+        line_number: Optional[int] = None,
+        **kwargs
+    ) -> bool:
         unique_filters = {}
         if parent_id is not None:
             unique_filters['parent_id'] = parent_id
@@ -800,15 +1002,38 @@ class DatabaseOperations:
             unique_filters['detail_number'] = detail_number
         if line_number is not None:
             unique_filters['line_number'] = line_number
-        return self._has_changes_for_record(BillLineItem, record_id=record_id, unique_filters=unique_filters if not record_id else None, **kwargs)
+        return self._has_changes_for_record(
+            BillLineItem,
+            record_id=record_id,
+            unique_filters=unique_filters if not record_id else None,
+            **kwargs
+        )
 
-    def invoice_has_changes(self, record_id: Optional[int]=None, invoice_number: Optional[str]=None, **kwargs) -> bool:
+    def invoice_has_changes(
+        self,
+        record_id: Optional[int] = None,
+        invoice_number: Optional[str] = None,
+        **kwargs
+    ) -> bool:
         unique_filters = {}
         if invoice_number is not None:
             unique_filters['invoice_number'] = invoice_number
-        return self._has_changes_for_record(Invoice, record_id=record_id, unique_filters=unique_filters if not record_id else None, **kwargs)
+        return self._has_changes_for_record(
+            Invoice,
+            record_id=record_id,
+            unique_filters=unique_filters if not record_id else None,
+            **kwargs
+        )
 
-    def receipt_has_changes(self, record_id: Optional[int]=None, project_number: Optional[int]=None, po_number: Optional[int]=None, detail_number: Optional[int]=None, line_number: Optional[int]=None, **kwargs) -> bool:
+    def receipt_has_changes(
+        self,
+        record_id: Optional[int] = None,
+        project_number: Optional[int] = None,
+        po_number: Optional[int] = None,
+        detail_number: Optional[int] = None,
+        line_number: Optional[int] = None,
+        **kwargs
+    ) -> bool:
         unique_filters = {}
         if project_number is not None:
             unique_filters['project_number'] = project_number
@@ -818,9 +1043,22 @@ class DatabaseOperations:
             unique_filters['detail_number'] = detail_number
         if line_number is not None:
             unique_filters['line_number'] = line_number
-        return self._has_changes_for_record(Receipt, record_id=record_id, unique_filters=unique_filters if not record_id else None, **kwargs)
+        return self._has_changes_for_record(
+            Receipt,
+            record_id=record_id,
+            unique_filters=unique_filters if not record_id else None,
+            **kwargs
+        )
 
-    def spend_money_has_changes(self, record_id: Optional[int]=None, project_number: Optional[int]=None, po_number: Optional[int]=None, detail_number: Optional[int]=None, line_number: Optional[int]=None, **kwargs) -> bool:
+    def spend_money_has_changes(
+        self,
+        record_id: Optional[int] = None,
+        project_number: Optional[int] = None,
+        po_number: Optional[int] = None,
+        detail_number: Optional[int] = None,
+        line_number: Optional[int] = None,
+        **kwargs
+    ) -> bool:
         unique_filters = {}
         if project_number is not None:
             unique_filters['project_number'] = project_number
@@ -830,34 +1068,89 @@ class DatabaseOperations:
             unique_filters['detail_number'] = detail_number
         if line_number is not None:
             unique_filters['line_number'] = line_number
-        return self._has_changes_for_record(SpendMoney, record_id=record_id, unique_filters=unique_filters if not record_id else None, **kwargs)
+        return self._has_changes_for_record(
+            SpendMoney,
+            record_id=record_id,
+            unique_filters=unique_filters if not record_id else None,
+            **kwargs
+        )
 
-    def tax_account_has_changes(self, record_id: Optional[int]=None, tax_code: Optional[str]=None, **kwargs) -> bool:
+    def tax_account_has_changes(
+        self,
+        record_id: Optional[int] = None,
+        tax_code: Optional[str] = None,
+        **kwargs
+    ) -> bool:
         unique_filters = {}
         if tax_code is not None:
             unique_filters['tax_code'] = tax_code
-        return self._has_changes_for_record(TaxAccount, record_id=record_id, unique_filters=unique_filters if not record_id else None, **kwargs)
+        return self._has_changes_for_record(
+            TaxAccount,
+            record_id=record_id,
+            unique_filters=unique_filters if not record_id else None,
+            **kwargs
+        )
 
-    def xero_bill_has_changes(self, record_id: Optional[int]=None, xero_reference_number: Optional[str]=None, **kwargs) -> bool:
+    def xero_bill_has_changes(
+        self,
+        record_id: Optional[int] = None,
+        xero_reference_number: Optional[str] = None,
+        **kwargs
+    ) -> bool:
         unique_filters = {}
         if xero_reference_number is not None:
             unique_filters['xero_reference_number'] = xero_reference_number
-        return self._has_changes_for_record(XeroBill, record_id=record_id, unique_filters=unique_filters if not record_id else None, **kwargs)
+        return self._has_changes_for_record(
+            XeroBill,
+            record_id=record_id,
+            unique_filters=unique_filters if not record_id else None,
+            **kwargs
+        )
 
-    def user_has_changes(self, record_id: Optional[int]=None, username: Optional[str]=None, **kwargs) -> bool:
+    def user_has_changes(
+        self,
+        record_id: Optional[int] = None,
+        username: Optional[str] = None,
+        **kwargs
+    ) -> bool:
         unique_filters = {}
         if username is not None:
             unique_filters['username'] = username
-        return self._has_changes_for_record(User, record_id=record_id, unique_filters=unique_filters if not record_id else None, **kwargs)
+        return self._has_changes_for_record(
+            User,
+            record_id=record_id,
+            unique_filters=unique_filters if not record_id else None,
+            **kwargs
+        )
 
-    def tax_ledger_has_changes(self, record_id: Optional[int]=None, name: Optional[str]=None, **kwargs) -> bool:
+    def tax_ledger_has_changes(
+        self,
+        record_id: Optional[int] = None,
+        name: Optional[str] = None,
+        **kwargs
+    ) -> bool:
         unique_filters = {}
         if name is not None:
             unique_filters['name'] = name
-        return self._has_changes_for_record(TaxLedger, record_id=record_id, unique_filters=unique_filters if not record_id else None, **kwargs)
+        return self._has_changes_for_record(
+            TaxLedger,
+            record_id=record_id,
+            unique_filters=unique_filters if not record_id else None,
+            **kwargs
+        )
 
-    def budget_map_has_changes(self, record_id: Optional[int]=None, map_name: Optional[str]=None, **kwargs) -> bool:
+    def budget_map_has_changes(
+        self,
+        record_id: Optional[int] = None,
+        map_name: Optional[str] = None,
+        **kwargs
+    ) -> bool:
         unique_filters = {}
         if map_name is not None:
             unique_filters['map_name'] = map_name
-        return self._has_changes_for_record(BudgetMap, record_id=record_id, unique_filters=unique_filters if not record_id else None, **kwargs)
+        return self._has_changes_for_record(
+            BudgetMap,
+            record_id=record_id,
+            unique_filters=unique_filters if not record_id else None,
+            **kwargs
+        )

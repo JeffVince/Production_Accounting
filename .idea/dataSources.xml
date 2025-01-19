@@ -1,19 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="DataSourceManagerImpl" format="xml" multifile-model="true">
-    <data-source source="LOCAL" name="virtual_pm" uuid="960c78f1-821a-4060-ae7f-0495dab2d6f3">
+    <data-source source="LOCAL" name="virtual_pm@localhost" uuid="ea2f7e23-0008-40bb-b3d0-f6388a00650f">
       <driver-ref>mysql.8</driver-ref>
       <synchronize>true</synchronize>
       <jdbc-driver>com.mysql.cj.jdbc.Driver</jdbc-driver>
-      <jdbc-url>jdbc:mysql://localhost:3306</jdbc-url>
-      <working-dir>$ProjectFileDir$</working-dir>
-    </data-source>
-    <data-source source="LOCAL" name="RDS" uuid="0fbf81de-e3c7-4214-8e86-3621f907427b">
-      <driver-ref>mysql.8</driver-ref>
-      <synchronize>true</synchronize>
-      <remarks>Amazon DB</remarks>
-      <jdbc-driver>com.mysql.cj.jdbc.Driver</jdbc-driver>
-      <jdbc-url>jdbc:mysql://virtualpm.cx8csckg86eo.us-east-2.rds.amazonaws.com:3306</jdbc-url>
+      <jdbc-url>jdbc:mysql://localhost:3306/virtual_pm</jdbc-url>
       <working-dir>$ProjectFileDir$</working-dir>
     </data-source>
   </component>

@@ -7,7 +7,7 @@ logger = logging.getLogger('admin_logger')
 logger.info('Starting the application...')
 import time
 import threading
-from orchestration.orchestrator import Orchestrator
+from orchestrator import Orchestrator
 from database.db_util import initialize_database
 from utilities.config import Config
 from webhook_main import app

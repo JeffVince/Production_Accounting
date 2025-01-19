@@ -5,7 +5,7 @@ from flask import Flask, jsonify, request, redirect, url_for, Response
 
 from utilities.config import Config
 from files_dropbox.dropbox_service import dropbox_service
-from orchestration.orchestrator import Orchestrator
+from orchestrator import Orchestrator
 from files_monday.monday_webhook_handler import monday_blueprint
 from files_monday.monday_api import monday_api
 from files_dropbox.dropbox_webhook_handler import dropbox_blueprint
