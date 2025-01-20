@@ -15,8 +15,7 @@ class DropboxClient(metaclass=SingletonMeta):
 
     def __init__(self):
         if not hasattr(self, '_initialized'):
-            self._initialized = True
-            self.logger = logging.getLogger('dropbox_logger')
+            self.logger = logging.getLogger('dropbox')
             self.OAUTH_TOKEN_URL = 'https://api.dropboxapi.com/oauth2/token'
             self.DROPBOX_REFRESH_TOKEN = os.getenv('DROPBOX_REFRESH_TOKEN')
             self.DROPBOX_APP_KEY = os.getenv('DROPBOX_APP_KEY')
@@ -58,6 +57,7 @@ class DropboxClient(metaclass=SingletonMeta):
         except Exception as e:
             self.logger.error(f'[__init__] - An error occurred while creating Dropbox client: {e}', exc_info=True)
             raise e
+        self._initialized = True
 
     def get_new_access_token(self):
         """

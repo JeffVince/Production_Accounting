@@ -1,137 +1,174 @@
+# server_webhook/webhook_main.py
 import logging
+logger = logging.getLogger("admin_logger")
 
 import requests
-from flask import Flask, jsonify, request, redirect, url_for, Response
 
-from server_webhook.routes.control_panel_routes import control_panel_bp
-from utilities.config import Config
-from files_monday.monday_webhook_handler import monday_blueprint
-from files_monday.monday_api import monday_api
-from files_dropbox.dropbox_webhook_handler import dropbox_blueprint
-from files_budget.po_log_database_util import po_log_database_util
-from server_webhook.logging_setup import setup_logging
-from flask import render_template
-from server_webhook.models.account_tax_model import AccountTaxModel
-from routes.account_tax_routes import account_tax_bp
+try:
+    from flask import Blueprint, jsonify, request, Response, render_template
 
-app = Flask(__name__)
-app.register_blueprint(monday_blueprint, url_prefix='/webhook/monday')
-app.register_blueprint(dropbox_blueprint, url_prefix='/webhook/dropbox')
-app.register_blueprint(control_panel_bp)
-app.register_blueprint(account_tax_bp)
-setup_logging(flask_app=app)
+    from utilities.config import Config
+
+    #from files_monday.monday_webhook_handler import monday_blueprint
+
+    #from files_monday.monday_api import monday_api
+
+    from files_dropbox.dropbox_webhook_handler import dropbox_blueprint
+    logger.debug("Importing into Webhook Main")
+
+
+    from files_budget.po_log_database_util import po_log_database_util
+    from server_webhook.logging_setup import setup_logging, setup_web_logger
+    from server_webhook.models.account_tax_model import AccountTaxModel
+    from routes.account_tax_routes import account_tax_bp
+    from server_webhook.routes.control_panel_routes import control_panel_bp
+except Exception as e:
+    logger.error(f"Error importing into webhook main: {e}")
+
+logger.debug("Succesfully imported into Webhook Main")
+
+
+# Create a Blueprint instead of a full Flask app
+webhook_main_bp = Blueprint('webhook_main_bp', __name__)
+
+logger.debug("🐣 [ webhook_main_bp ] - Blueprint created, preparing to register sub-blueprints...")
+
+# Register other sub-blueprints:
+#webhook_main_bp.register_blueprint(monday_blueprint, url_prefix='/webhook/monday')
+#logger.debug("🧩 [ webhook_main_bp ] - monday_blueprint registered at '/webhook/monday'")
+
+webhook_main_bp.register_blueprint(dropbox_blueprint, url_prefix='/webhook/dropbox')
+logger.debug("🧩 [ webhook_main_bp ] - dropbox_blueprint registered at '/webhook/dropbox'")
+
+webhook_main_bp.register_blueprint(control_panel_bp)
+logger.debug("🧩 [ webhook_main_bp ] - control_panel_bp registered with default prefix '/'")
+
+webhook_main_bp.register_blueprint(account_tax_bp)
+logger.debug("🧩 [ webhook_main_bp ] - account_tax_bp registered with default prefix '/'")
+
+# Load config
+logger.debug("🔧 [ webhook_main_bp ] - Loading configuration from Config()...")
 config = Config()
+logger.debug("🔧 [ webhook_main_bp ] - Configuration loaded successfully. Details below:")
+logger.info(f"📝 [ webhook_main_bp ] - USE_TEMP={config.USE_TEMP}, SKIP_MAIN={config.SKIP_MAIN}, "
+            f"USE_LOCAL={config.USE_LOCAL}, APP_DEBUG={config.APP_DEBUG}, "
+            f"WEBHOOK_MAIN_PORT={config.WEBHOOK_MAIN_PORT}, "
+            f"WEBHOOK_MAIN_PORT_DEBUG={config.WEBHOOK_MAIN_PORT_DEBUG}, "
+            f"DATABASE_URL={config.DATABASE_URL}")
+
+# Initialize the AccountTaxModel
+logger.debug("🔧 [ webhook_main_bp ] - Initializing AccountTaxModel...")
 db_view_util = AccountTaxModel()
+logger.debug("🔧 [ webhook_main_bp ] - AccountTaxModel initialized successfully.")
+logger.info("✅ [ webhook_main_bp ] - Server webhook main blueprint is ready and loaded!")
 
-logger = logging.getLogger("web_logger")
+# --------------------------------------------------------------------------
+#                           Route Handlers
+# --------------------------------------------------------------------------
 
-@app.route('/account_tax_view', methods=['GET'])
+@webhook_main_bp.route('/account_tax_view', methods=['GET'])
 def account_tax_view():
     """
     Shows an Excel-like table to edit accountCodes + TaxAccounts together.
     Accepts optional ?sort=account_code or ?sort=tax_code
     """
+    logger.debug("🏷 [ /account_tax_view ] - Handling GET request.")
     sort = request.args.get('sort')
+    logger.debug(f"📥 [ /account_tax_view ] - Received sort parameter: {sort}")
     records = db_view_util.get_all_account_with_tax(sort_by=sort)
+    logger.debug("📃 [ /account_tax_view ] - Retrieved records from db_view_util.")
+    logger.info(f"✅ [ /account_tax_view ] - Rendering map_codes_view.html with {len(records)} record(s).")
     return render_template('map_codes_view.html', records=records, sort=sort)
 
-@app.route('/bulk_update_account_tax', methods=['POST'])
+@webhook_main_bp.route('/bulk_update_account_tax', methods=['POST'])
 def bulk_update_account_tax():
     """
     Accepts JSON data from the front-end with a list of updated rows.
     Calls the new method in AccountTaxModel to commit changes to DB.
     """
+    logger.debug("📨 [ /bulk_update_account_tax ] - Handling POST request for bulk update.")
     data = request.get_json()
+    logger.debug(f"📥 [ /bulk_update_account_tax ] - Data received: {data}")
     if not data or not isinstance(data, list):
-        return (jsonify({'status': 'error', 'message': 'Invalid input data'}), 400)
+        logger.warning("⚠️ [ /bulk_update_account_tax ] - Invalid input data.")
+        return jsonify({'status': 'error', 'message': 'Invalid input data'}), 400
     try:
+        logger.debug(f"🔨 [ /bulk_update_account_tax ] - Attempting to bulk update {len(data)} rows...")
         db_view_util.bulk_update_account_tax(data)
-        return (jsonify({'status': 'success'}), 200)
+        logger.info("✅ [ /bulk_update_account_tax ] - Bulk update successful.")
+        return jsonify({'status': 'success'}), 200
     except Exception as e:
-        logger.error(f'Error during bulk update: {e}', exc_info=True)
-        return (jsonify({'status': 'error', 'message': str(e)}), 500)
+        logger.error(f"💥 [ /bulk_update_account_tax ] - Error during bulk update: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
-@app.route('/health', methods=['GET'])
+@webhook_main_bp.route('/health', methods=['GET'])
 def index():
-    return (jsonify({'message': 'Webhook listener is running.'}), 200)
+    logger.debug("🔎 [ /health ] - Health check requested.")
+    logger.info("💚 [ /health ] - Returning status: Webhook listener is running.")
+    return jsonify({'message': 'Webhook listener is running.'}), 200
 
-@app.route('/po/<string:po_id>', methods=['GET'])
-def get_po_data(po_id):
-    try:
-        (project_id, po_number) = po_id.split('_')
-        logger.info(f"Project ID: {project_id}, PO Number: {po_number}")
-    except ValueError:
-        return ({'error': "Invalid PO ID format. Expected format: '2416_04'"}, 400)
-    result = monday_api.fetch_item_by_po_and_project(project_id, po_number)
-    try:
-        json_result = jsonify(result)
-    except Exception as e:
-        logger.error(e)
-        raise
-    return json_result
 
-@app.route('/po_html/<string:project_ID>', methods=['GET'])
+@webhook_main_bp.route('/po_html/<string:project_ID>', methods=['GET'])
 def po_html(project_ID):
-    logger.info(project_ID)
+    logger.debug(f"🔎 [ /po_html/{project_ID} ] - Handling GET request.")
+    logger.info(f"📝 [ /po_html ] - Project ID requested: {project_ID}")
     result = po_log_database_util.fetch_po_by_id(project_ID)
     json_result = result.get_json()
+    logger.debug("✅ [ /po_html ] - Result converted to JSON successfully. Rendering template.")
     return render_template('po_template.html', data=json_result)
 
-@app.route('/control_panel', methods=['GET'])
+@webhook_main_bp.route('/control_panel', methods=['GET'])
 def control_panel():
     """
     Renders the Control Panel HTML page.
     """
+    logger.debug("🏗 [ /control_panel ] - Handling GET to render Control Panel page.")
+    logger.info("✅ [ /control_panel ] - Rendering control_panel.html.")
     return render_template('control_panel.html')
 
-
-
-
-
-
-@app.route('/map_codes_view', methods=['GET'])
+@webhook_main_bp.route('/map_codes_view', methods=['GET'])
 def map_codes_view():
     """
-    New approach: Renders a template with tabs for each map_code,
+    Renders a template with tabs for each map_code,
     each containing the two-panel (Account left / Tax right) layout,
     local storage logic, pagination, etc.
     """
+    logger.debug("🏗 [ /map_codes_view ] - Handling GET request.")
+    logger.info("✅ [ /map_codes_view ] - Rendering map_codes_view.html.")
     return render_template('map_codes_view.html')
 
-
-#########################################
-#     Dev Proxy Route: /dev/<path>      #
-#########################################
-@app.route('/dev/<path:subpath>', methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
+@webhook_main_bp.route('/dev/<path:subpath>', methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
 def dev_proxy(subpath):
     """
     Forwards any request under /dev/... to the dev server on port 5003.
     If the dev server is offline, returns a 200 with a JSON indicating offline status.
     """
+    logger.debug(f"🔎 [ /dev/{subpath} ] - Handling {request.method} request.")
+    logger.info(f"➡️ [ /dev ] - Attempting to proxy request to /dev/{subpath}")
     dev_url = f"http://localhost:{config.WEBHOOK_MAIN_PORT_DEBUG}/{subpath}"
+    logger.debug(f"🔧 [ /dev ] - Constructed dev server URL: {dev_url}")
 
     try:
-        # Forward the request method, headers, and data to dev server
+        logger.debug("🌐 [ /dev ] - Forwarding request to dev server now...")
         resp = requests.request(
             method=request.method,
             url=dev_url,
-            headers={key: value for key, value in request.headers if key != 'Host'},
+            headers={key: value for key, value in request.headers if key.lower() != 'host'},
             data=request.get_data(),
             cookies=request.cookies,
             allow_redirects=False
         )
-
-        # Build a Flask Response object from the requests response
+        logger.debug(f"✅ [ /dev ] - Received response with status code {resp.status_code} from dev server.")
         excluded_headers = ['content-encoding', 'transfer-encoding', 'connection']
-        headers = [(name, value) for (name, value) in resp.raw.headers.items()
-                   if name.lower() not in excluded_headers]
-
+        headers = [
+            (name, value) for (name, value) in resp.raw.headers.items()
+            if name.lower() not in excluded_headers
+        ]
         response = Response(resp.content, resp.status_code, headers)
+        logger.debug("✅ [ /dev ] - Response object built. Returning to client now.")
         return response
-
     except requests.exceptions.ConnectionError:
-        logger.warning("Dev server is offline or not reachable.")
-        # Return a 200 with JSON body
+        logger.warning("⚠️ [ /dev ] - Dev server is offline or not reachable.")
         return jsonify({
             'message': 'Dev server offline',
             'status': 'offline',

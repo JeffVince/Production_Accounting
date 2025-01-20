@@ -1,13 +1,13 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="production_celery_server" type="PythonConfigurationType" factoryName="Python" folderName="Celery Server">
     <log_file alias="ADMIN" path="$PROJECT_DIR$/server_celery/logs/admin.log" show_all="true" />
-    <log_file alias="MONDAY" path="$PROJECT_DIR$/server_celery/logs/monday.log" />
+    <log_file alias="MONDAY" path="$PROJECT_DIR$/server_celery/logs/monday.log" skipped="false" />
     <log_file alias="DROPBOX" path="$PROJECT_DIR$/server_celery/logs/dropbox.log" />
     <log_file alias="XERO" path="$PROJECT_DIR$/server_celery/logs/xero.log" />
     <log_file alias="BUDGET" path="$PROJECT_DIR$/server_celery/logs/budget.log" />
     <log_file alias="DATABASE" path="$PROJECT_DIR$/server_celery/logs/database.log" />
-    <log_file alias="PO LOG" path="$PROJECT_DIR$/server_celery/logs/po_log.log" />
-    <log_file alias="INVOICE" path="$PROJECT_DIR$/server_celery/logs/invoice.log" />
+    <log_file alias="PO LOG" path="$PROJECT_DIR$/server_celery/logs/po_log.log" skipped="false" />
+    <log_file alias="INVOICE" path="$PROJECT_DIR$/server_celery/logs/invoice.log" skipped="false" />
     <module name="Dropbox Listener" />
     <option name="INTERPRETER_OPTIONS" value="" />
     <option name="PARENT_ENVS" value="true" />

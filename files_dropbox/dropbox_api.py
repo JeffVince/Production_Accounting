@@ -15,7 +15,7 @@ class DropboxAPI(metaclass=SingletonMeta):
 
     def __init__(self):
         if not hasattr(self, '_initialized'):
-            self.logger = logging.getLogger('dropbox_logger')
+            self.logger = logging.getLogger('dropbox')
             self.dbx_client = dropbox_client
             self.dbx = self.dbx_client.dbx
             self.TAX_FORM_REGEX = '(?i)\\b(w9)|(w8-ben)|(w8-bene)|(w8-ben-e)\\b'

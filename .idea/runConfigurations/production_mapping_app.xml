@@ -4,10 +4,11 @@
     <log_file alias="DROPBOX" path="$PROJECT_DIR$/server_webhook/logs/dropbox.log" show_all="true" />
     <log_file alias="DB" path="$PROJECT_DIR$/server_webhook/logs/database.log" />
     <log_file alias="XERO" path="$PROJECT_DIR$/server_webhook/logs/xero.log" />
-    <log_file alias="MONDAY" path="$PROJECT_DIR$/server_webhook/logs/monday.log" />
+    <log_file alias="MONDAY" path="$PROJECT_DIR$/server_webhook/logs/monday.log" skipped="false" />
     <log_file alias="INVOICE" path="$PROJECT_DIR$/server_webhook/logs/invoice.log" />
     <log_file alias="PO LOG" path="$PROJECT_DIR$/server_webhook/logs/po_log.log" />
     <log_file alias="BUDGET" path="$PROJECT_DIR$/server_webhook/logs/budget.log" />
+    <log_file alias="WEB" path="$PROJECT_DIR$/server_webhook/logs/web.log" />
     <module name="Dropbox Listener" />
     <option name="INTERPRETER_OPTIONS" value="" />
     <option name="PARENT_ENVS" value="true" />

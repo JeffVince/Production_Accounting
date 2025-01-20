@@ -1,21 +1,39 @@
 import logging
+
+logger = logging.getLogger('dropbox')
+from pathlib import Path
+
 from dropbox import files
 from flask import Blueprint, request, jsonify
 from files_dropbox.dropbox_client import dropbox_client
 from files_dropbox.dropbox_service import DropboxService
-from files_dropbox.dropbox_util import dropbox_util
 from utilities.singleton import SingletonMeta
+
 dropbox_blueprint = Blueprint('files_dropbox', __name__)
+
+
+@dropbox_blueprint.route('/', methods=['GET', 'POST'])
+def dropbox_webhook(self):
+    if request.method == 'GET':
+        challenge = request.args.get('challenge')
+        if challenge:
+            return (challenge, 200)
+        return (jsonify({'message': 'No challenge provided.'}), 400)
+    elif request.method == 'POST':
+        event = request.get_json()
+        return dropbox_webhook_handler.handle_dropbox_event(event)
 
 class DropboxWebhookHandler(metaclass=SingletonMeta):
 
     def __init__(self):
         if not hasattr(self, '_initialized'):
-            self.logger = logging.getLogger('dropbox_logger')
+            self.logger = logging
+            logger.info('[__init__] - Dropbox Webhook Handler init started')
             self.dropbox_service = DropboxService()
-            self.logger.info('[__init__] - Dropbox Webhook Handler  initialized')
+
             self.dropbox_client = dropbox_client
-            self.dropbox_util = dropbox_util
+
+            self.logger.info('[__init__] - Dropbox Webhook Handler initialized')
             self._initialized = True
 
     def handle_dropbox_event(self, event):
@@ -67,7 +85,7 @@ class DropboxWebhookHandler(metaclass=SingletonMeta):
                     continue
             self.logger.info(f"[process_event_data] - Changes ({len(categorized_changes['files_added'])}):")
             for item in categorized_changes['files_added']:
-                self.logger.info(f"[process_event_data] - File Added: {self.dropbox_util.get_last_path_component_generic(item['path'])}")
+                self.logger.info(f"[process_event_data] - File Added: {Path(item['path']).parts[-1]}")
             for item in categorized_changes['files_added']:
                 self.dropbox_service.determine_file_type(item.get('path'))
         finally:
@@ -77,15 +95,6 @@ class DropboxWebhookHandler(metaclass=SingletonMeta):
                     self.logger.debug('[process_event_data] - Cursor successfully updated in the finally block.')
             except Exception as e:
                 self.logger.error(f'[process_event_data] - Failed to save cursor in the finally block: {e}', exc_info=True)
-dropbox_webhook_handler = DropboxWebhookHandler()
 
-@dropbox_blueprint.route('/', methods=['GET', 'POST'])
-def dropbox_webhook():
-    if request.method == 'GET':
-        challenge = request.args.get('challenge')
-        if challenge:
-            return (challenge, 200)
-        return (jsonify({'message': 'No challenge provided.'}), 400)
-    elif request.method == 'POST':
-        event = request.get_json()
-        return dropbox_webhook_handler.handle_dropbox_event(event)
+
+dropbox_webhook_handler = DropboxWebhookHandler()

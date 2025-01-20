@@ -10,7 +10,7 @@ from utilities.singleton import SingletonMeta
 class DropboxDatabaseUtil:
 
     def __init__(self):
-        self.logger = logging.getLogger('dropbox_logger')
+        self.logger = logging.getLogger('dropbox')
         self.dropbox_util = dropbox_util
         self.logger.info('[__init__] - 📦 Dropbox Database Util initialized 🌟')
 

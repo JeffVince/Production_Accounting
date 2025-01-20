@@ -7,15 +7,16 @@ import io
 import logging
 from openai import OpenAI
 from utilities.singleton import SingletonMeta
-logger = logging.getLogger('dropbox_logger')
+logger = logging.getLogger('dropbox')
 
-class OCRService(metaclass=SingletonMeta):
+
+class OCRService():
 
     def __init__(self):
         if not hasattr(self, '_initialized'):
-            self.logger = logging.getLogger('dropbox_logger')
+            self.logger = logger
             self.client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-            self.logger.info('[__init__] - OCR Service initialized')
+            self.logger.info('OCR Service initialized')
             self._initialized = True
 
     def extract_text_from_file(self, file_data: bytes) -> str:

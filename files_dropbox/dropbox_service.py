@@ -14,6 +14,9 @@ import os
 import re
 import traceback
 import logging
+
+logger = logging.getLogger('dropbox')
+
 from concurrent.futures import ThreadPoolExecutor, wait, ALL_COMPLETED
 from datetime import datetime
 from typing import Optional
@@ -45,7 +48,7 @@ class DropboxService():
     SHOWBIZ_REGEX = '.mbb'
     PROJECT_NUMBER = ''
 
-    USE_TEMP_FILE = False
+    USE_TEMP_FILE = True
     DEBUG_STARTING_PO_NUMBER = 0
     SKIP_DATABASE = False
     ADD_PO_TO_MONDAY = True
@@ -60,9 +63,10 @@ class DropboxService():
         APIs, and the new DatabaseOperations object for DB interactions.
         """
         if not hasattr(self, '_initialized'):
-            self.logger = logging.getLogger('dropbox_logger')
+            self.logger = logger
             self.monday_service = monday_service
             self.dropbox_client = dropbox_client
+
             self.po_log_processor = POLogProcessor()
             self.dropbox_util = dropbox_util
             self.monday_api = monday_api
@@ -72,7 +76,7 @@ class DropboxService():
             self.po_log_database_util = po_log_database_util
             self.database_util = DatabaseOperations()
             self.ocr_service = OCRService()
-            self.logger.info('[__init__] - 📦 Dropbox event manager initialized. Ready to manage PO logs and file handling!')
+            self.logger.info('📦 Dropbox event manager initialized. Ready to manage PO logs and file handling!')
             self._initialized = True
 
     def determine_file_type(self, path: str):
@@ -196,7 +200,7 @@ class DropboxService():
         Includes adding Contacts, PurchaseOrders, and DetailItems.
         """
         self.logger.info(f'[po_log_orchestrator] - 📝 Received a PO Log file from dropbox: {path}')
-        temp_file_path = f'./temp_files/{os.path.basename(path)}'
+        temp_file_path = f'../temp_files/{os.path.basename(path)}'
         project_number = self.extract_project_number(temp_file_path)
         self.PROJECT_NUMBER = project_number
 

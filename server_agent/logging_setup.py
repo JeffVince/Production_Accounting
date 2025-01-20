@@ -27,13 +27,13 @@ def setup_logging():
     budget_logger.addHandler(file_handler_budget)
     budget_logger.addHandler(console_handler)
     budget_logger.propagate = False
-    dropbox_logger = logging.getLogger('dropbox_logger')
-    dropbox_logger.setLevel(logging.DEBUG)
+    dropbox = logging.getLogger('dropbox')
+    dropbox.setLevel(logging.DEBUG)
     file_handler_dropbox = logging.FileHandler(basepath + 'dropbox.log')
     file_handler_dropbox.setFormatter(formatter)
-    dropbox_logger.addHandler(file_handler_dropbox)
-    dropbox_logger.addHandler(console_handler)
-    dropbox_logger.propagate = False
+    dropbox.addHandler(file_handler_dropbox)
+    dropbox.addHandler(console_handler)
+    dropbox.propagate = False
     invoice_logger = logging.getLogger('invoice_logger')
     invoice_logger.setLevel(logging.DEBUG)
     file_handler_invoice = logging.FileHandler(basepath + 'invoice.log')

@@ -2,12 +2,11 @@ import glob
 import logging
 import os
 
-from files_dropbox.dropbox_client import dropbox_client
-from files_dropbox.dropbox_service import DropboxService
 from utilities.config import Config
 from database.database_util import DatabaseOperations
 from files_budget.po_log_database_util import po_log_database_util
 from files_budget.po_log_processor import POLogProcessor
+from files_dropbox.dropbox_service import DropboxService
 from utilities.singleton import SingletonMeta
 
 
@@ -18,17 +17,22 @@ class PurchaseOrderLogService(metaclass=SingletonMeta):
         Initializes the DropboxService singleton, setting up logging, external
         APIs, and the new DatabaseOperations object for DB interactions.
         """
-        if not hasattr(self, '_initialized'):
-            self.logger = logging.getLogger('po_log_logger')
-            self.po_log_processor = POLogProcessor()
-            self.dropbox_service = DropboxService()
-            self.config = Config()
-            self.po_log_database_util = po_log_database_util
-            self.dropbox_client = dropbox_client
+        self.logger = logging.getLogger('po_log_logger')
+        self.logger.info('[__init__] - 📦 PO LOG Service initializing - Importing dependencies')
 
-            self.database_util = DatabaseOperations()
-            self.logger.info('[__init__] - 📦 PO LOG Service initialized. Ready to manage PO logs!')
-            self._initialized = True
+        try:
+            if not hasattr(self, '_initialized'):
+                self.po_log_processor = POLogProcessor()
+                self.config = Config()
+                self.dropbox_service = DropboxService()
+                self.po_log_database_util = po_log_database_util
+                self.database_util = DatabaseOperations()
+                self.logger.info('[__init__] - 📦 PO LOG Service initialized. Ready to manage PO logs!')
+                self._initialized = True
+            else:
+                self.logger.info('[__init__] - 📦 PO LOG Service already initialized. Ready to manage PO logs, again!')
+        except Exception as e:
+            self.logger.exception(f"Error inside PurchaseOrderLogService.__init__: {e}")
 
     def po_log_new_trigger(self):
         """
