@@ -6,7 +6,7 @@ from PIL import Image
 import io
 import logging
 from openai import OpenAI
-from singleton import SingletonMeta
+from utilities.singleton import SingletonMeta
 logger = logging.getLogger('dropbox_logger')
 
 class OCRService(metaclass=SingletonMeta):

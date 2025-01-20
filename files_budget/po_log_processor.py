@@ -4,7 +4,6 @@ import os
 import re
 from collections import defaultdict
 from datetime import datetime, timedelta
-from logger import setup_logging
 from utilities.singleton import SingletonMeta
 
 class POLogProcessor(metaclass=SingletonMeta):
@@ -13,7 +12,7 @@ class POLogProcessor(metaclass=SingletonMeta):
     def __init__(self):
         if not hasattr(self, '_initialized'):
             self.logger = logging.getLogger('po_log_logger')
-            self.logger.info('[__init__] - 🎬🍿 PO Log Processor initialized (Custom Version) 🌟')
+            self.logger.info('[__init__] - 🎬🍿 PO Log Processor initialized 🌟')
             self._initialized = True
 
     def _extract_project_number(self, file_path: str) -> str:

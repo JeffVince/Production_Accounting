@@ -9,7 +9,7 @@ from database.database_util import DatabaseOperations  # Adjust imports
 from models import AccountCode, TaxAccount, BudgetMap, TaxLedger
 from database.db_util import get_db_session
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("admin_logger")
 
 def natural_sort_key(s: str) -> List:
     s = s or ""
@@ -319,3 +319,6 @@ class AccountTaxModel:
             session.commit()
             if updated==0:
                 raise ValueError("No accounts were updated. Check account IDs or map name.")
+
+    def get_all_account_with_tax(self, sort_by):
+        pass

@@ -12,8 +12,8 @@ from xero.exceptions import (
     XeroRateLimitExceeded
 )
 
-from models import AccountCode, DetailItem
-from singleton import SingletonMeta
+from database.models import AccountCode, DetailItem
+from utilities.singleton import SingletonMeta
 
 class XeroAPI(metaclass=SingletonMeta):
     """
@@ -148,21 +148,21 @@ class XeroAPI(metaclass=SingletonMeta):
             self.logger.error(f'[create_invoice] 💥 Unexpected error: {e}')
             return None
 
-    def update_invoice(self, invoice_id: str, changes: dict):
+    def update_invoice(self, xero_id: str, changes: dict):
         """
         Updates an existing Xero invoice (ACCPAY).
         Provide changes, e.g. {'Status': 'AUTHORISED'}.
         """
         self._refresh_token_if_needed()
-        self.logger.info(f'[update_invoice] - Updating invoice {invoice_id} with {changes}')
+        self.logger.info(f'[update_invoice] - Updating invoice {xero_id} with {changes}')
         try:
             # Fetch current invoice
             existing = self._retry_on_unauthorized(
                 self.xero.invoices.filter,
-                InvoiceID=invoice_id
+                InvoiceID=xero_id
             )
             if not existing:
-                self.logger.warning(f'[update_invoice] - No invoice found for {invoice_id}')
+                self.logger.warning(f'[update_invoice] - No invoice found for {xero_id}')
                 return None
 
             invoice_obj = existing[0]
@@ -246,35 +246,55 @@ class XeroAPI(metaclass=SingletonMeta):
 
     def get_bills_by_reference(self, reference_str: str):
         """
-        Fetch ACCPAY invoices in Xero by EXACT reference match. Excludes DELETED.
+        Fetch ACCPAY invoices in Xero by EXACT **Reference** match. Excludes DELETED.
+        If your local "reference" is actually stored in Xero's "InvoiceNumber",
+        then switch the filter below to 'InvoiceNumber=="{reference_str}"'.
         """
         self._refresh_token_if_needed()
+        function_name = 'get_bills_by_reference'
         self.logger.info(
-            f'[get_bills_by_reference] - Searching for ACCPAY invoices with Reference="{reference_str}"'
+            f'[{function_name}] - Searching for ACCPAY invoices using Reference="{reference_str}"'
         )
         try:
+            # If your reference is actually in the "Reference" field in Xero:
             raw_filter = (
                 'Type=="ACCPAY" AND Reference!=null '
                 f'AND Reference=="{reference_str}"'
             )
+
+            # If instead you store your "reference_str" in InvoiceNumber, comment out the above
+            # and uncomment the lines below:
+            #
+            # raw_filter = (
+            #     'Type=="ACCPAY" AND InvoiceNumber!=null '
+            #     f'AND InvoiceNumber=="{reference_str}"'
+            # )
+
+            self.logger.debug(f'[{function_name}] Using raw filter => {raw_filter}')
             invoices = self._retry_on_unauthorized(
                 self.xero.invoices.filter, raw=raw_filter
             )
+
             if not invoices:
                 self.logger.info(
-                    f'[get_bills_by_reference] - No invoices found with Reference={reference_str}'
+                    f'[{function_name}] - No results for reference="{reference_str}". Returning [].'
                 )
                 return []
+
             results = [inv for inv in invoices if inv.get('Status') != 'DELETED']
+            self.logger.debug(
+                f'[{function_name}] - Filtered out DELETED. Found {len(results)} invoice(s).'
+            )
             return results
+
         except XeroException as e:
             self.logger.error(
-                f'[get_bills_by_reference] ❌ XeroException: {e}'
+                f'[{function_name}] ❌ XeroException: {e}'
             )
             return []
         except Exception as e:
             self.logger.error(
-                f'[get_bills_by_reference] 💥 Unexpected: {e}'
+                f'[{function_name}] 💥 Unexpected: {e}'
             )
             return []
 
@@ -322,6 +342,7 @@ class XeroAPI(metaclass=SingletonMeta):
             set_key(env_path, 'XERO_ACCESS_TOKEN', new_token['access_token'])
             set_key(env_path, 'XERO_REFRESH_TOKEN', new_token['refresh_token'])
 
+            from xero import Xero
             self.xero = Xero(self.credentials)
 
         except XeroException as e:
@@ -623,7 +644,7 @@ class XeroAPI(metaclass=SingletonMeta):
                 'ContactID': contact_xero_id_from_db
             },
             'LineItems': xero_line_items,
-            'Reference': reference,
+            'InvoiceNumber': reference,
             'Status': xero_status
         }
 
@@ -832,50 +853,6 @@ class XeroAPI(metaclass=SingletonMeta):
             return None
 
         return full_invoice
-
-    # endregion
-
-    # region 🆕 GET BILLS BY REFERENCE
-    def get_bills_by_reference(self, reference_str: str) -> list:
-        """
-        Fetch ACCPAY invoices in Xero by matching EXACT 'Reference' == reference_str.
-        Excludes DELETED. Returns a list of partial invoice objects.
-        """
-        self._refresh_token_if_needed()
-        function_name = 'get_bills_by_reference'
-        self.logger.info(
-            f'[{function_name}] [XeroAPI - reference {reference_str}] 🔎 - Searching ACCPAY by Reference.'
-        )
-
-        try:
-            raw_filter = (
-                'Type=="ACCPAY" AND Reference!=null '
-                f'AND Reference=="{reference_str}"'
-            )
-            invoices = self._retry_on_unauthorized(
-                self.xero.invoices.filter, raw=raw_filter
-            )
-            if not invoices:
-                self.logger.info(
-                    f'[{function_name}] [XeroAPI - reference {reference_str}] ℹ️ - No matching invoices.'
-                )
-                return []
-            results = [inv for inv in invoices if inv.get('Status') != 'DELETED']
-            self.logger.debug(
-                f'[{function_name}] [XeroAPI - reference {reference_str}] ✅ - Found {len(results)} invoice(s).'
-            )
-            return results
-
-        except XeroException as e:
-            self.logger.error(
-                f'[{function_name}] [XeroAPI - reference {reference_str}] ❌ - XeroException: {str(e)}'
-            )
-            return []
-        except Exception as e:
-            self.logger.error(
-                f'[{function_name}] [XeroAPI - reference {reference_str}] 💥 - Unexpected: {str(e)}'
-            )
-            return []
 
     # endregion
 
@@ -1110,11 +1087,6 @@ class XeroAPI(metaclass=SingletonMeta):
         return results
     # endregion
 
-    #endregion
 
 # Singleton instance
 xero_api = XeroAPI()
-
-
-
-

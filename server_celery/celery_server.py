@@ -13,7 +13,8 @@ from server_celery.logging_setup import setup_logging
 
 setup_logging()
 logger = logging.getLogger('admin_logger')
-
+from dotenv import load_dotenv
+load_dotenv("../.env")
 
 celery_app = Celery(
     'celery_app',
@@ -34,7 +35,7 @@ logger.debug(
     f'task_acks_late={celery_app.conf.task_acks_late}'
 )
 
-celery_app.autodiscover_tasks(['celery_tasks'], force=True)
+celery_app.autodiscover_tasks(['server_celery.celery_tasks'], force=True)
 
 @celery_app.on_after_finalize.connect
 def announce_tasks(sender, **kwargs):
@@ -50,7 +51,7 @@ def init_db(**kwargs):
     db_settings = config.get_database_settings(config.USE_LOCAL)
     try:
         initialize_database(db_settings['url'])
-        logger.info('DB initialization is done.')
+        logger.info('DB in itialization is done.')
     except Exception as e:
         logger.error(f'DB initialization failed! Error={e}', exc_info=True)
 
@@ -62,8 +63,9 @@ def signal_worker_init(sender=None, **kwargs):
     """
     logger.info('👷\u200d♀️ Celery Worker is starting up... Warm up the engines!')
     try:
-        purged_count = celery_app.control.purge()
-        logger.warning(f'Purged {purged_count} tasks from the queue at startup.')
+        pass
+        #purged_count = celery_app.control.purge()
+        #logger.warning(f'Purged {purged_count} tasks from the queue at startup.')
     except Exception as e:
         logger.error(f'Error while purging tasks at startup: {e}', exc_info=True)
 

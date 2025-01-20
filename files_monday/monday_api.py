@@ -4,8 +4,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dotenv import load_dotenv
 import requests
-from helper_functions import list_to_dict
-from logger import setup_logging
+from utilities.helper_functions import list_to_dict
 from utilities.singleton import SingletonMeta
 from utilities.config import Config
 from monday import MondayClient

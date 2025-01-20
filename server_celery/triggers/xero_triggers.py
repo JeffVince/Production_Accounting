@@ -53,12 +53,57 @@ def handle_xero_bill_delete(bill_id: int) -> None:
 
 def handle_xero_bill_line_item_create(bill_line_item_id: int) -> None:
     logger.info(f'[handle_xero_bill_line_item_create] [LineItem - {bill_line_item_id}] 🚀 - Triggered.')
-    # Possibly xero_services.create_line_item_in_xero(bill_line_item_id)
+
+    # 1) Find the parent bill_id from the line item
+    line_item = xero_services.db_ops.search_bill_line_items(['id'], [bill_line_item_id])
+    if not line_item:
+        logger.warning(f'[handle_xero_bill_line_item_create] - No line item found for ID={bill_line_item_id}.')
+        return
+    if isinstance(line_item, list):
+        line_item = line_item[0]
+
+    parent_id = line_item.get('parent_id')
+    if not parent_id:
+        logger.warning(f'[handle_xero_bill_line_item_create] - Line item has no parent_id.')
+        return
+
+    # 2) Use the three helpers
+    #    (a) Adjust the parent's date range if needed
+    xero_services.set_largest_date_range(parent_id)
+
+    #    (b) Propagate parent's xero_id into line item
+    xero_services.set_parent_xero_id_on_line_item(parent_id, bill_line_item_id)
+
+    #    (c) Sync line item to Xero (unless final)
+    xero_services.sync_line_item_to_xero(parent_id, bill_line_item_id, is_create=True)
+
 
 def handle_xero_bill_line_item_update(bill_line_item_id: int) -> None:
     logger.info(f'[handle_xero_bill_line_item_update] [LineItem - {bill_line_item_id}] 🔄 - Triggered.')
-    # Possibly xero_services.update_line_item_in_xero(bill_line_item_id)
+
+    # 1) Find the parent bill_id from the line item
+    line_item = xero_services.db_ops.search_bill_line_items(['id'], [bill_line_item_id])
+    if not line_item:
+        logger.warning(f'[handle_xero_bill_line_item_update] - No line item found for ID={bill_line_item_id}.')
+        return
+    if isinstance(line_item, list):
+        line_item = line_item[0]
+
+    parent_id = line_item.get('parent_id')
+    if not parent_id:
+        logger.warning(f'[handle_xero_bill_line_item_update] - Line item has no parent_id.')
+        return
+
+    # 2) Use the three helpers
+    #    (a) Adjust the parent's date range if needed
+    xero_services.set_largest_date_range(parent_id)
+
+    #    (b) Propagate parent's xero_id into line item
+    xero_services.set_parent_xero_id_on_line_item(parent_id, bill_line_item_id)
+
+    #    (c) Sync line item to Xero (unless final), but this time is_create=False
+    xero_services.sync_line_item_to_xero(parent_id, bill_line_item_id, is_create=False)
 
 def handle_xero_bill_line_item_delete(bill_line_item_id: int) -> None:
     logger.info(f'[handle_xero_bill_line_item_delete] [LineItem - {bill_line_item_id}] ❌ - Triggered.')
-    # Possibly xero_services.delete_line_item_in_xero(bill_line_item_id)
+    # Possibly xero_services.delete_line_item_in_xero(xero_bill_line_item)

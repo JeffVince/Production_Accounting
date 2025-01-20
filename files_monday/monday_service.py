@@ -3,7 +3,6 @@ import logging
 from typing import Any
 import requests
 from database.database_util import DatabaseOperations
-from logger import setup_logging
 from utilities.singleton import SingletonMeta
 from utilities.config import Config
 from files_monday.monday_util import monday_util

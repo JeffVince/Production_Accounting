@@ -2,7 +2,7 @@ import logging
 from dropbox import files
 from flask import Blueprint, request, jsonify
 from files_dropbox.dropbox_client import dropbox_client
-from files_dropbox.dropbox_service import dropbox_service
+from files_dropbox.dropbox_service import DropboxService
 from files_dropbox.dropbox_util import dropbox_util
 from utilities.singleton import SingletonMeta
 dropbox_blueprint = Blueprint('files_dropbox', __name__)
@@ -12,7 +12,7 @@ class DropboxWebhookHandler(metaclass=SingletonMeta):
     def __init__(self):
         if not hasattr(self, '_initialized'):
             self.logger = logging.getLogger('dropbox_logger')
-            self.dropbox_service = dropbox_service
+            self.dropbox_service = DropboxService()
             self.logger.info('[__init__] - Dropbox Webhook Handler  initialized')
             self.dropbox_client = dropbox_client
             self.dropbox_util = dropbox_util

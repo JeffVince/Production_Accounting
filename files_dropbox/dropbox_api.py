@@ -8,7 +8,7 @@ from dropbox import common
 from dropbox.files import FolderMetadata, FileMetadata
 from files_dropbox.dropbox_client import dropbox_client
 from dropbox.exceptions import ApiError
-from singleton import SingletonMeta
+from utilities.singleton import SingletonMeta
 from utilities.config import Config
 
 class DropboxAPI(metaclass=SingletonMeta):

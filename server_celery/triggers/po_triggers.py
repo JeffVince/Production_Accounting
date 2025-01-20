@@ -1,12 +1,17 @@
 import logging
 from typing import Optional, Dict, Any
 from database.database_util import DatabaseOperations
+from files_budget.po_log_service import po_log_service
 db_ops = DatabaseOperations()
 logger = logging.getLogger('database_logger')
 
 class DatabaseOperationError(Exception):
     """Raised when a database operation fails or returns an unexpected result."""
     pass
+
+def handle_po_log_create() -> None:
+    logger.info(f'[PO LOG CREATE]')
+    po_log_service.po_log_new_trigger()
 
 def handle_project_create(project_id: int) -> None:
     logger.info(f'[PROJECT CREATE] ID={project_id}')

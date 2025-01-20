@@ -1,0 +1,173 @@
+/* control_panel.css */
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #f0f2f5;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 40px auto;
+    background: #ffffff;
+    padding: 20px 40px;
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+h1 {
+    text-align: center;
+    color: #333333;
+    margin-bottom: 30px;
+}
+
+.input-section {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 30px;
+}
+
+.input-section input {
+    width: 300px;
+    padding: 10px 15px;
+    border: 2px solid #cccccc;
+    border-radius: 5px;
+    font-size: 16px;
+    transition: border-color 0.3s;
+}
+
+.input-section input:focus {
+    border-color: #007bff;
+    outline: none;
+}
+
+.button-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 10px;
+    justify-items: center;
+    align-items: center;
+    padding: 20px 0;
+}
+
+.task-button {
+    width: 110px;
+    height: 110px;
+    background-color: #007bff; /* Default color */
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    text-align: center;
+    cursor: pointer;
+    transition: background-color 0.3s, transform 0.2s, box-shadow 0.3s;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 10px;
+    box-sizing: border-box;
+    word-wrap: break-word;
+}
+
+/* Category-Specific Colors */
+.task-button.po-log-new {
+    background-color: #ff5722; /* Deep Orange */
+}
+
+.task-button.invoice {
+    background-color: #17a2b8; /* Teal */
+}
+
+.task-button.detail-item {
+    background-color: #6f42c1; /* Purple */
+}
+
+.task-button.purchase-order {
+    background-color: #ffc107; /* Amber */
+    color: #212529;
+}
+
+.task-button.contact {
+    background-color: #dc3545; /* Red */
+}
+
+.task-button.bill-line-item {
+    background-color: #28a745; /* Green */
+}
+
+.task-button.bank-transaction {
+    background-color: #fd7e14; /* Orange */
+}
+
+.task-button.account-code {
+    background-color: #20c997; /* Teal Green */
+}
+
+.task-button.receipt {
+    background-color: #6610f2; /* Indigo */
+}
+
+.task-button.spend-money {
+    background-color: #e83e8c; /* Pink */
+}
+
+.task-button.tax-account {
+    background-color: #343a40; /* Dark */
+}
+
+.task-button.xero-bill {
+    background-color: #007bff; /* Blue */
+}
+
+.task-button:hover {
+    opacity: 0.9;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.task-button:active {
+    transform: translateY(0);
+    box-shadow: none;
+}
+
+.task-button.active {
+    filter: brightness(1.3);
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.6);
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+    .container {
+        padding: 10px 20px;
+    }
+
+    .input-section input {
+        width: 200px;
+    }
+
+    .task-button {
+        width: 100px;
+        height: 100px;
+        font-size: 11px;
+    }
+}
+
+@media (max-width: 480px) {
+    .button-grid {
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+        gap: 8px;
+    }
+
+    .task-button {
+        width: 90px;
+        height: 90px;
+        font-size: 10px;
+    }
+
+    .input-section input {
+        width: 150px;
+    }
+}

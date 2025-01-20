@@ -15,7 +15,7 @@ from flask import Flask, request, jsonify
 from logger import setup_logging
 from files_dropbox.dropbox_api import dropbox_api
 setup_logging()
-logger = logging.getLogger('server_logger')
+logger = logging.getLogger('admin_logger')
 RUN_FROM_LOCAL = False
 UPLOAD_ONLY = False
 job_queue = queue.Queue()

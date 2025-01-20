@@ -1,9 +1,11 @@
 import logging
 from utilities.singleton import SingletonMeta
-from triggers.xero_triggers import handle_spend_money_create, handle_spend_money_update, handle_spend_money_delete, handle_xero_bill_create, handle_xero_bill_update, handle_xero_bill_delete, handle_xero_bill_line_item_create, handle_xero_bill_line_item_update, handle_xero_bill_line_item_delete
-from triggers.po_triggers import handle_project_create, handle_project_update, handle_project_delete, handle_purchase_order_create, handle_purchase_order_update, handle_purchase_order_delete, handle_detail_item_create, handle_detail_item_update, handle_detail_item_delete
-from triggers.invoice_receipt_triggers import handle_invoice_create_or_update, handle_invoice_delete, handle_receipt_create, handle_receipt_update, handle_receipt_delete
-from triggers.contact_triggers import handle_contact_create, handle_contact_update, handle_contact_delete, handle_tax_account_create, handle_tax_account_update, handle_tax_account_delete, handle_account_code_create, handle_account_code_update, handle_account_code_delete
+from server_celery.triggers.xero_triggers import handle_spend_money_create, handle_spend_money_update, handle_spend_money_delete, handle_xero_bill_create, handle_xero_bill_update, handle_xero_bill_delete, handle_xero_bill_line_item_create, handle_xero_bill_line_item_update, handle_xero_bill_line_item_delete
+from server_celery.triggers.po_triggers import handle_project_create, handle_project_update, handle_project_delete, \
+    handle_purchase_order_create, handle_purchase_order_update, handle_purchase_order_delete, handle_detail_item_create, \
+    handle_detail_item_update, handle_detail_item_delete, handle_po_log_create
+from server_celery.triggers.invoice_receipt_triggers import handle_invoice_create_or_update, handle_invoice_delete, handle_receipt_create, handle_receipt_update, handle_receipt_delete
+from server_celery.triggers.contact_triggers import handle_contact_create, handle_contact_update, handle_contact_delete, handle_tax_account_create, handle_tax_account_update, handle_tax_account_delete, handle_account_code_create, handle_account_code_update, handle_account_code_delete
 
 class CeleryTaskService(metaclass=SingletonMeta):
     """
@@ -14,6 +16,9 @@ class CeleryTaskService(metaclass=SingletonMeta):
 
     def __init__(self):
         self.logger = logging.getLogger('admin_logger')
+
+    def po_log_trigger_on_create(self):
+        return handle_po_log_create()
 
     def bill_line_item_trigger_on_create(self, bill_line_item_id: int):
         return handle_xero_bill_line_item_create(bill_line_item_id)
@@ -119,4 +124,5 @@ class CeleryTaskService(metaclass=SingletonMeta):
 
     def account_code_trigger_on_delete(self, account_code_id: int):
         return handle_account_code_delete(account_code_id)
+
 celery_task_service = CeleryTaskService()

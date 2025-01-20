@@ -1,81 +1,85 @@
-<!-- templates/control_panel.html -->
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <title>Control Panel</title>
-  <!-- Example using Bootstrap 5 CDN -->
-  <link
-    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
-    rel="stylesheet"
-  >
+    <meta charset="UTF-8" />
+    <title>Celery Task Control Panel</title>
+    <!-- Link to the CSS file using Flask's url_for -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='control_panel.css') }}">
 </head>
-<body class="bg-light">
+<body>
+    <div class="container">
+        <h1>Celery Task Control Panel</h1>
 
-<div class="container py-4">
-  <h1 class="mb-4">Orchestrator Control Panel</h1>
+        <!-- Input Field Section -->
+        <div class="input-section">
+            <input type="text" id="task_input" placeholder="Enter ID here">
+        </div>
 
-  <!-- Each button posts the name of the function you want to trigger -->
-  <form action="/trigger_function" method="POST" class="mb-3">
-    <input type="hidden" name="function_name" value="schedule_monday_contact_sync" />
-    <button type="submit" class="btn btn-primary">Sync Monday Contact from Monday -> DB</button>
-  </form>
+        <!-- Grid of Buttons -->
+        <div class="button-grid">
+            <!-- New PO Log [NEW] Button -->
+            <button class="task-button po-log-new" data-route="trigger_po_log_new">PO Log [NEW]</button>
 
-  <form action="/trigger_function" method="POST" class="mb-3">
-    <input type="hidden" name="function_name" value="sync_spend_money_items" />
-    <button type="submit" class="btn btn-primary">Sync Spend Money Items from Xero -> DB</button>
-  </form>
+            <!-- Invoice Tasks -->
+            <button class="task-button invoice" data-route="trigger_invoice_create">Invoice [CREATE]</button>
+            <button class="task-button invoice" data-route="trigger_invoice_delete">Invoice [DELETE]</button>
 
-  <form action="/trigger_function" method="POST" class="mb-3">
-    <input type="hidden" name="function_name" value="sync_contacts" />
-    <button type="submit" class="btn btn-primary">Sync Contacts from DB -> Xero </button>
-  </form>
+            <!-- Detail Item Tasks -->
+            <button class="task-button detail-item" data-route="trigger_detail_item_create">Detail Item [CREATE]</button>
+            <button class="task-button detail-item" data-route="trigger_detail_item_update">Detail Item [UPDATE]</button>
+            <button class="task-button detail-item" data-route="trigger_detail_item_delete">Detail Item [DELETE]</button>
 
-  <form action="/trigger_function" method="POST" class="mb-3">
-    <input type="hidden" name="function_name" value="sync_xero_bills" />
-    <button type="submit" class="btn btn-primary">Sync Xero Bills from Xero -> DB</button>
-  </form>
+            <!-- Purchase Order Tasks -->
+            <button class="task-button purchase-order" data-route="trigger_purchase_order_create">Purchase Order [CREATE]</button>
+            <button class="task-button purchase-order" data-route="trigger_purchase_order_update">Purchase Order [UPDATE]</button>
+            <button class="task-button purchase-order" data-route="trigger_purchase_order_delete">Purchase Order [DELETE]</button>
 
-    <form action="/trigger_function" method="POST" class="mb-3">
-    <input type="hidden" name="function_name" value="scan_project_receipts" />
-    <div class="mb-2">
-      <label for="project_number" class="form-label">Project Number</label>
-      <input
-        type="text"
-        class="form-control"
-        name="project_number"
-        id="project_number"
-        placeholder="e.g. 2416"
-        required
-      />
+            <!-- Contact Tasks -->
+            <button class="task-button contact" data-route="trigger_contact_create">Contact [CREATE]</button>
+            <button class="task-button contact" data-route="trigger_contact_update">Contact [UPDATE]</button>
+            <button class="task-button contact" data-route="trigger_contact_delete">Contact [DELETE]</button>
+
+            <!-- Bill Line Item Tasks -->
+            <button class="task-button bill-line-item" data-route="trigger_bill_line_item_create">Bill Line Item [CREATE]</button>
+            <button class="task-button bill-line-item" data-route="trigger_bill_line_item_update">Bill Line Item [UPDATE]</button>
+            <button class="task-button bill-line-item" data-route="trigger_bill_line_item_delete">Bill Line Item [DELETE]</button>
+
+            <!-- Bank Transaction Tasks -->
+            <button class="task-button bank-transaction" data-route="trigger_bank_transaction_create">Bank Transaction [CREATE]</button>
+            <button class="task-button bank-transaction" data-route="trigger_bank_transaction_update">Bank Transaction [UPDATE]</button>
+            <button class="task-button bank-transaction" data-route="trigger_bank_transaction_delete">Bank Transaction [DELETE]</button>
+
+            <!-- Account Code Tasks -->
+            <button class="task-button account-code" data-route="trigger_account_code_create">Account Code [CREATE]</button>
+            <button class="task-button account-code" data-route="trigger_account_code_update">Account Code [UPDATE]</button>
+            <button class="task-button account-code" data-route="trigger_account_code_delete">Account Code [DELETE]</button>
+
+            <!-- Receipt Tasks -->
+            <button class="task-button receipt" data-route="trigger_receipt_create">Receipt [CREATE]</button>
+            <button class="task-button receipt" data-route="trigger_receipt_update">Receipt [UPDATE]</button>
+            <button class="task-button receipt" data-route="trigger_receipt_delete">Receipt [DELETE]</button>
+
+            <!-- SpendMoney Tasks -->
+            <button class="task-button spend-money" data-route="trigger_spend_money_create">SpendMoney [CREATE]</button>
+            <button class="task-button spend-money" data-route="trigger_spend_money_update">SpendMoney [UPDATE]</button>
+            <button class="task-button spend-money" data-route="trigger_spend_money_delete">SpendMoney [DELETE]</button>
+
+            <!-- TaxAccount Tasks -->
+            <button class="task-button tax-account" data-route="trigger_tax_account_create">TaxAccount [CREATE]</button>
+            <button class="task-button tax-account" data-route="trigger_tax_account_update">TaxAccount [UPDATE]</button>
+            <button class="task-button tax-account" data-route="trigger_tax_account_delete">TaxAccount [DELETE]</button>
+
+            <!-- XeroBill Tasks -->
+            <button class="task-button xero-bill" data-route="trigger_xero_bill_create">XeroBill [CREATE]</button>
+            <button class="task-button xero-bill" data-route="trigger_xero_bill_update">XeroBill [UPDATE]</button>
+            <button class="task-button xero-bill" data-route="trigger_xero_bill_delete">XeroBill [DELETE]</button>
+            <button class="task-button xero-bill" data-route="trigger_create_xero_bill_line_items">XeroBill Line Items [CREATE]</button>
+            <button class="task-button xero-bill" data-route="trigger_update_xero_bill_line_item">XeroBill Line Item [UPDATE]</button>
+            <button class="task-button xero-bill" data-route="trigger_delete_xero_bill_line_item">XeroBill Line Item [DELETE]</button>
+        </div>
     </div>
-    <button type="submit" class="btn btn-primary">
-      Scan Receipts for Project
-    </button>
-  </form>
 
-      <form action="/trigger_function" method="POST" class="mb-3">
-    <input type="hidden" name="function_name" value="scan_project_invoice" />
-    <div class="mb-2">
-      <label for="project_number" class="form-label">Project Number</label>
-      <input
-        type="text"
-        class="form-control"
-        name="project_number"
-        id="project_number_invoice"
-        placeholder="e.g. 2416"
-        required
-      />
-    </div>
-    <button type="submit" class="btn btn-primary">
-      Scan Invoices for Project
-    </button>
-  </form>
-
-</div>
-
-<script
-  src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"
-></script>
+    <!-- Link to the JS file using Flask's url_for -->
+    <script src="{{ url_for('static', filename='control_panel.js') }}"></script>
 </body>
 </html>

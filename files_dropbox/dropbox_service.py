@@ -18,19 +18,19 @@ from concurrent.futures import ThreadPoolExecutor, wait, ALL_COMPLETED
 from datetime import datetime
 from typing import Optional
 from files_dropbox.dropbox_api import dropbox_api
-from config import Config
+from utilities.config import Config
 from files_dropbox.dropbox_client import dropbox_client
 from files_dropbox.dropbox_util import dropbox_util
 from files_monday.monday_api import monday_api
 from files_monday.monday_util import monday_util
 from files_monday.monday_service import monday_service
-from po_log_database_util import po_log_database_util
-from po_log_processor import POLogProcessor
+from files_budget.po_log_database_util import po_log_database_util
+from files_budget.po_log_processor import POLogProcessor
 from utilities.singleton import SingletonMeta
-from ocr_service import OCRService
+from files_dropbox.ocr_service import OCRService
 from database.database_util import DatabaseOperations
 
-class DropboxService(metaclass=SingletonMeta):
+class DropboxService():
     """
     📦 DropboxService
     =================
@@ -45,7 +45,7 @@ class DropboxService(metaclass=SingletonMeta):
     SHOWBIZ_REGEX = '.mbb'
     PROJECT_NUMBER = ''
 
-    USE_TEMP_FILE = True
+    USE_TEMP_FILE = False
     DEBUG_STARTING_PO_NUMBER = 0
     SKIP_DATABASE = False
     ADD_PO_TO_MONDAY = True
@@ -1459,6 +1459,3 @@ class DropboxService(metaclass=SingletonMeta):
             if re.search(self.INVOICE_REGEX, file_name, re.IGNORECASE):
                 self.logger.debug(f'[_scan_po_folder_for_invoices] - Found potential invoice file in dropbox: {dropbox_path}')
                 self.process_invoice(dropbox_path)
-
-
-dropbox_service = DropboxService()

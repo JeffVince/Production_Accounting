@@ -5,7 +5,7 @@ from datetime import datetime
 from dropbox_util import dropbox_util
 from models import PurchaseOrder, DetailItem, Invoice
 from database.db_util import get_db_session
-from singleton import SingletonMeta
+from utilities.singleton import SingletonMeta
 
 class DropboxDatabaseUtil:
 

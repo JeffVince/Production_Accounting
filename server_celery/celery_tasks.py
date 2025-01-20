@@ -5,9 +5,8 @@ Houses all Celery tasks.
 Does not import 'database_trigger.py' to avoid circular references.
 """
 from celery import shared_task
-from celery_task_services import celery_task_service
-from database.db_util import initialize_database
-from utilities.config import Config
+from server_celery.celery_task_services import celery_task_service
+
 import logging
 logger = logging.getLogger('admin_logger')
 
@@ -462,4 +461,21 @@ def delete_xero_bill_line_item(line_item_id: int):
         return 'Success'
     except Exception as e:
         logger.error(f'💥 Problem with delete_xero_bill_line_item({line_item_id}): {e}', exc_info=True)
+        raise
+
+
+@shared_task
+def process_po_log_create():
+    """
+    The Celery task for handling PO Log [NEW] action.
+    Executes the logic to process PO log files.
+    """
+    logger.info('🚀 Starting process_po_log_new shared task.')
+    try:
+        trigger_service = celery_task_service
+        trigger_service.po_log_trigger_on_create()
+        logger.info('🎉 Done with PO Log [NEW] task.')
+        return 'PO Log [NEW] task completed successfully!'
+    except Exception as e:
+        logger.error(f'💥 Problem in process_po_log_new(): {e}', exc_info=True)
         raise

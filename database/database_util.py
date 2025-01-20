@@ -19,7 +19,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 # Import your SQLAlchemy models
-from models import (
+from database.models import (
     Contact, Project, PurchaseOrder, DetailItem, BankTransaction,
     BillLineItem, Invoice, AccountCode, Receipt, SpendMoney, TaxAccount,
     XeroBill, User, TaxLedger, BudgetMap
@@ -747,9 +747,9 @@ class DatabaseOperations:
             unique_lookup['xero_reference_number'] = kwargs['xero_reference_number']
         return self._create_record(XeroBill, unique_lookup=unique_lookup, **kwargs)
 
-    def update_xero_bill(self, parent_id, **kwargs):
-        self.logger.debug(f'[update_xero_bill] - 🏷 update_xero_bill -> XeroBill(id={parent_id}), data={kwargs}')
-        return self._update_record(XeroBill, parent_id, **kwargs)
+    def update_xero_bill(self, xero_bill_id, **kwargs):
+        self.logger.debug(f'[update_xero_bill] - 🏷 update_xero_bill -> XeroBill(id={xero_bill_id}), data={kwargs}')
+        return self._update_record(XeroBill, xero_bill_id, **kwargs)
 
     def search_xero_bill_by_keys(
         self,
