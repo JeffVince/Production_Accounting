@@ -61,7 +61,7 @@ def setup_logging():
     EXCEPT for the Flask `web_logger`. We'll do that in `setup_web_logger()`.
     """
     os.makedirs('./logs', exist_ok=True)
-    basepath = './logs/'
+    basepath = './server_webhook/logs/'
 
     # Prepare our custom formatter
     formatter = PaddedFormatter(

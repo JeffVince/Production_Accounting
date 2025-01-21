@@ -275,13 +275,13 @@ def _remove_trigger_routing(table_name: str, content: str) -> str:
         logger.info("Removed references for '%s' from database_trigger.py", table_name)
     return updated
 
-def update_database_trigger_service_file(table_name: str, create=False, delete=False, trigger_service_path: str='../server_celery/celery_task_services.py'):
+def update_database_trigger_service_file(table_name: str, create=False, delete=False, trigger_service_path: str='../server_celery/celery_task_router.py'):
     """
     If create=True, add new <table_name>_trigger_on_create/update/delete at bottom.
     If delete=True, remove them.
     """
     if not os.path.exists(trigger_service_path):
-        logger.warning('celery_task_services.py not found at %s', trigger_service_path)
+        logger.warning('celery_task_router.py not found at %s', trigger_service_path)
         return
     with open(trigger_service_path, 'r', encoding='utf-8') as f:
         content = f.read()
@@ -294,9 +294,9 @@ def update_database_trigger_service_file(table_name: str, create=False, delete=F
     if updated_content != content:
         with open(trigger_service_path, 'w', encoding='utf-8') as wf:
             wf.write(updated_content)
-        logger.info("celery_task_services.py updated for table '%s'.", table_name)
+        logger.info("celery_task_router.py updated for table '%s'.", table_name)
     else:
-        logger.info("No changes made to celery_task_services.py for '%s'.", table_name)
+        logger.info("No changes made to celery_task_router.py for '%s'.", table_name)
 
 def _add_trigger_service_methods(table_name: str, content: str) -> str:
     region_pattern = f'# region.*?{table_name.upper()} TRIGGERS'
@@ -305,7 +305,7 @@ def _add_trigger_service_methods(table_name: str, content: str) -> str:
         return content
     code_block = _build_trigger_service_methods(table_name)
     updated_content = content.strip() + f'\n\n{code_block}\n'
-    logger.info("Added new trigger region for '%s' to celery_task_services.py", table_name)
+    logger.info("Added new trigger region for '%s' to celery_task_router.py", table_name)
     return updated_content
 
 def _build_trigger_service_methods(table_name: str) -> str:
@@ -316,14 +316,14 @@ def _remove_trigger_service_methods(table_name: str, content: str) -> str:
     region_pattern = f'# region.*?{table_name.upper()} TRIGGERS.*?# endregion'
     updated = re.sub(region_pattern, '', content, flags=re.DOTALL)
     if updated != content:
-        logger.info("Removed region block for '%s' triggers from celery_task_services.py", table_name)
+        logger.info("Removed region block for '%s' triggers from celery_task_router.py", table_name)
         return updated
     pattern = f'def\\s+{table_name}_trigger_on_create\\(.*?\\n\\ndef\\s+{table_name}_trigger_on_update\\(.*?\\n\\ndef\\s+{table_name}_trigger_on_delete\\(.*?\\n\\n'
     updated = re.sub(pattern, '', content, flags=re.DOTALL)
     if updated == content:
-        logger.warning("No trigger methods found to remove for '%s' in celery_task_services.py.", table_name)
+        logger.warning("No trigger methods found to remove for '%s' in celery_task_router.py.", table_name)
     else:
-        logger.info("Removed trigger methods for '%s' from celery_task_services.py", table_name)
+        logger.info("Removed trigger methods for '%s' from celery_task_router.py", table_name)
     return updated
 
 def update_celery_tasks_file(table_name: str, create=False, delete=False, celery_file_path: str='../server_celery/celery_tasks.py'):

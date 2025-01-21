@@ -30,7 +30,11 @@ def handle_xero_bill_create(bill_id: int) -> None:
     Called when a new XeroBill record is created locally, so let's reflect it in Xero.
     """
     logger.info(f'[handle_xero_bill_create] [XeroBill - {bill_id}] 🚀 - Triggered.')
-    xero_services.create_xero_bill_in_xero(bill_id)
+    db_ops = DatabaseOperations()
+    xero_bill = db_ops.search_xero_bills(['id'], [bill_id])
+
+    xero_services.create_xero_bill_in_xero(xero_bill)
+    xero_services.set_xero_id_on_line_items(xero_bill)
     return
 
 def handle_xero_bill_update(bill_id: int) -> None:
@@ -75,8 +79,7 @@ def handle_xero_bill_line_item_create(bill_line_item_id: int) -> None:
     xero_services.set_parent_xero_id_on_line_item(parent_id, bill_line_item_id)
 
     #    (c) Sync line item to Xero (unless final)
-    xero_services.sync_line_item_to_xero(parent_id, bill_line_item_id, is_create=True)
-
+    xero_services.create_bill_line_item_in_xero(bill_line_item_id)
 
 def handle_xero_bill_line_item_update(bill_line_item_id: int) -> None:
     logger.info(f'[handle_xero_bill_line_item_update] [LineItem - {bill_line_item_id}] 🔄 - Triggered.')

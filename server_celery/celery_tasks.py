@@ -5,7 +5,7 @@ Houses all Celery tasks.
 Does not import 'database_trigger.py' to avoid circular references.
 """
 from celery import shared_task
-from server_celery.celery_task_services import celery_task_service
+from server_celery.celery_task_router import celery_task_service
 
 import logging
 logger = logging.getLogger('admin_logger')

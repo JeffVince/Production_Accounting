@@ -30,6 +30,24 @@ def get_db_session():
     finally:
         session.remove()
 
+
+@contextmanager
+def batch_commit():
+    # session_factory might be a scoped_session or hold a reference to your engine
+    # If session_factory.bind is your engine:
+    engine = session_factory.bind
+    SessionLocal = sessionmaker(bind=engine)
+    session = SessionLocal()  # a brand-new Session object
+
+    try:
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
 @contextmanager
 def make_local_session():
     """

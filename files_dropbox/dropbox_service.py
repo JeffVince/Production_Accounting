@@ -218,241 +218,6 @@ class DropboxService():
         self.add_po_data_to_db(main_items, detail_items, contacts, project_number)
         self.logger.info('[po_log_orchestrator] - ✅ PO Log orchestration complete!')
 
-    def extract_data_from_po_log(self, temp_file_path: str, project_number: str):
-        """
-        Parse the local PO log file to extract main_items, detail_items, and contacts.
-
-        :param temp_file_path: The local file path
-        :param project_number: The project ID
-        :return: (main_items, detail_items, contacts)
-        """
-        try:
-            self.logger.info(f'[extract_data_from_po_log] - 🔎 Parsing PO log for project {project_number} at {temp_file_path}')
-            (main_items, detail_items, contacts) = self.po_log_processor.parse_showbiz_po_log(temp_file_path)
-            self.logger.info(f'[extract_data_from_po_log] - 📝 Extracted {len(main_items)} main items, {len(detail_items)} detail items, and {len(contacts)} contacts.')
-            return (main_items, detail_items, contacts)
-        except Exception as e:
-            self.logger.exception(f'[extract_data_from_po_log] - 💥 Error while parsing PO Log data: {e}', exc_info=True)
-            return ([], [], [])
-
-    def add_po_data_to_db(self, main_items, detail_items, contacts, project_number: str):
-        """
-        🚀 DB Processing Method
-        ----------------------
-        *New Batch Logic*:
-        1) Convert project_number to an int.
-        2) Fetch all existing POs with that project_number in one shot.
-        3) For each main_item (PO), decide if it's new or existing (based on po_number).
-           Then batch create or update accordingly ONLY if data has changed.
-        4) Fetch all existing DetailItems with that same project_number in one shot.
-        5) For each detail_item, decide if new or existing (based on (po_number, detail_number, line_number)).
-           Then batch create or update accordingly ONLY if data has changed (and unless it's in a final state).
-        6) Link contact if needed. We skip manual `project_id` lookups.
-        """
-        self.logger.info(f'[add_po_data_to_db] - 🚀 Kicking off aggregator for PO log data with project_number={project_number}')
-        pn_int = int(project_number)
-
-        # Retrieve known contacts for reference
-        all_db_contacts = self.database_util.search_contacts()
-        self.logger.info('[add_po_data_to_db] - 🤝 Loaded existing contacts from the DB.')
-
-        # Retrieve existing POs for the project
-        existing_pos = self.database_util.search_purchase_orders(column_names=['project_number'], values=[pn_int])
-        if existing_pos is None:
-            existing_pos = []
-        elif isinstance(existing_pos, dict):
-            existing_pos = [existing_pos]
-        pos_by_number = {po['po_number']: po for po in existing_pos}
-        self.logger.info(f'[add_po_data_to_db] - 📄 Found {len(pos_by_number)} existing POs in DB for project {pn_int}.')
-
-        def _po_has_changes(existing_po, new_data, contact_id):
-            """
-            Compare relevant PO fields to see if there's a difference
-            """
-            if existing_po.get('description') != new_data.get('description'):
-                return True
-            if existing_po.get('po_type') != new_data.get('po_type'):
-                return True
-            if existing_po.get('contact_id') != contact_id:
-                return True
-            return False
-
-        # Process main_items
-        for (i, item) in enumerate(main_items):
-            try:
-                if self.DEBUG_STARTING_PO_NUMBER and int(item['po_number']) < self.DEBUG_STARTING_PO_NUMBER:
-                    continue
-                contact_id = self._find_or_create_contact(item, contacts, i, all_db_contacts)
-                po_number = int(item['po_number'])
-                existing_po = pos_by_number.get(po_number)
-
-                if existing_po:
-                    # Check for changes
-                    if _po_has_changes(existing_po, item, contact_id):
-                        self.logger.info(f'[add_po_data_to_db] - 🔄 Updating existing PO {po_number} with new data from PO log...')
-                        updated_po = self.database_util.update_purchase_order_by_keys(
-                            project_number=pn_int,
-                            po_number=po_number,
-                            description=item.get('description'),
-                            po_type=item.get('po_type'),
-                            contact_id=contact_id
-                        )
-                        if updated_po:
-                            pos_by_number[po_number] = updated_po
-                    else:
-                        self.logger.debug(f'[add_po_data_to_db] - ⏭ No changes detected for PO {po_number}, skipping update.')
-                else:
-                    # Create new
-                    self.logger.info(f'[add_po_data_to_db] - 🆕 Creating a new PO record from PO log for {po_number}...')
-                    new_po = self.database_util.create_purchase_order_by_keys(
-                        project_number=pn_int,
-                        po_number=po_number,
-                        description=item.get('description'),
-                        po_type=item.get('po_type'),
-                        contact_id=contact_id
-                    )
-                    if new_po:
-                        pos_by_number[po_number] = new_po
-            except Exception as ex:
-                self.logger.error(f"[add_po_data_to_db] - 💥 Error while processing PO {item.get('po_number')}: {ex}", exc_info=True)
-
-        # Retrieve existing detail items
-        existing_details = self.database_util.search_detail_items(['project_number'], [pn_int])
-        if existing_details is None:
-            existing_details = []
-        elif isinstance(existing_details, dict):
-            existing_details = [existing_details]
-        detail_dict = {}
-        for d in existing_details:
-            key = (d['po_number'], d['detail_number'], d['line_number'])
-            detail_dict[key] = d
-        self.logger.info(f'[add_po_data_to_db] - 📋 Found {len(detail_dict)} existing detail items in DB for project {pn_int}.')
-
-        COMPLETED_STATUSES = {'PAID', 'LOGGED', 'RECONCILED', 'REVIEWED'}
-
-        def _detail_item_has_changes(existing_di, new_data):
-            """
-            Compare relevant DetailItem fields to see differences
-            """
-            from datetime import datetime
-
-            def to_date(value):
-                if not value:
-                    return None
-                if isinstance(value, datetime):
-                    return value.date()
-                if isinstance(value, str):
-                    try:
-                        parsed_dt = datetime.fromisoformat(value)
-                        return parsed_dt.date()
-                    except ValueError:
-                        try:
-                            parsed_dt = datetime.strptime(value, '%Y-%m-%d')
-                            return parsed_dt.date()
-                        except:
-                            return value
-                return value
-
-            old_date = to_date(existing_di.get('transaction_date'))
-            new_date = to_date(new_data.get('date'))
-            if old_date != new_date:
-                return True
-
-            old_due = to_date(existing_di.get('due_date'))
-            new_due = to_date(new_data.get('due date'))
-            if old_due != new_due:
-                return True
-
-            if existing_di.get('vendor') != new_data.get('vendor'):
-                return True
-            if existing_di.get('description') != new_data.get('description'):
-                return True
-            if float(existing_di.get('rate', 0)) != float(new_data.get('rate', 0)):
-                return True
-            if float(existing_di.get('quantity', 1)) != float(new_data.get('quantity', 1)):
-                return True
-            if float(existing_di.get('ot', 0)) != float(new_data.get('OT', 0)):
-                return True
-            if float(existing_di.get('fringes', 0)) != float(new_data.get('fringes', 0)):
-                return True
-            if (existing_di.get('state') or '').upper() != (new_data.get('state') or '').upper():
-                return True
-            if existing_di.get('account_code') != new_data.get('account'):
-                return True
-            if existing_di.get('payment_type') != new_data.get('payment_type'):
-                return True
-            return False
-
-        # Process detail_items
-        for sub_item in detail_items:
-            po_number = None
-            detail_number = None
-            line_number = None
-            try:
-                if self.DEBUG_STARTING_PO_NUMBER and int(sub_item['po_number']) < self.DEBUG_STARTING_PO_NUMBER:
-                    continue
-                po_number = int(sub_item['po_number'])
-                detail_number = int(sub_item['detail_item_id'])
-                line_number = int(sub_item['line_number'])
-                key = (po_number, detail_number, line_number)
-                existing_di = detail_dict.get(key)
-
-                if existing_di:
-                    current_state = (existing_di['state'] or '').upper()
-                    if current_state in COMPLETED_STATUSES:
-                        self.logger.info(f"[add_po_data_to_db] - ⏭ Detail {key} is in final state ({current_state}); skipping.")
-                        continue
-
-                    if _detail_item_has_changes(existing_di, sub_item):
-                        self.logger.info(f'[add_po_data_to_db] - 🔄 Updating detail item {key} with new data from PO log...')
-                        updated_di = self.database_util.update_detail_item_by_keys(
-                            project_number=pn_int,
-                            po_number=po_number,
-                            detail_number=detail_number,
-                            line_number=line_number,
-                            vendor=sub_item.get('vendor'),
-                            description=sub_item.get('description'),
-                            transaction_date=sub_item.get('date'),
-                            due_date=sub_item.get('due date'),
-                            rate=sub_item.get('rate', 0),
-                            quantity=sub_item.get('quantity', 1),
-                            ot=sub_item.get('OT', 0),
-                            fringes=sub_item.get('fringes', 0),
-                            state=sub_item['state'],
-                            account_code=sub_item['account'],
-                            payment_type=sub_item['payment_type']
-                        )
-                        if updated_di:
-                            detail_dict[key] = updated_di
-                    else:
-                        self.logger.debug(f'[add_po_data_to_db] - ⏭ No changes detected for detail item {key}. Skipping update.')
-                else:
-                    self.logger.debug(f'[add_po_data_to_db] - 🆕 Creating new detail item {key} from PO log data...')
-                    new_di = self.database_util.create_detail_item_by_keys(
-                        project_number=pn_int,
-                        po_number=po_number,
-                        detail_number=detail_number,
-                        line_number=line_number,
-                        vendor=sub_item.get('vendor'),
-                        description=sub_item.get('description'),
-                        transaction_date=sub_item.get('date'),
-                        due_date=sub_item.get('due date'),
-                        rate=sub_item.get('rate', 0),
-                        quantity=sub_item.get('quantity', 1),
-                        ot=sub_item.get('OT', 0),
-                        fringes=sub_item.get('fringes', 0),
-                        state=sub_item['state'],
-                        account_code=sub_item['account'],
-                        payment_type=sub_item['payment_type']
-                    )
-                    if new_di:
-                        detail_dict[key] = new_di
-            except Exception as ex:
-                self.logger.error(f'[add_po_data_to_db] - 💥 Error processing detail item {key}: {ex}', exc_info=True)
-
-        self.logger.info('[add_po_data_to_db] - ✅ Finished processing PO log data into DB aggregator.')
-        return main_items
-
     def _find_or_create_contact(self, item, contacts, index, all_db_contacts):
         """
         Helper to match or create a contact from the 'main_items' list
@@ -777,6 +542,243 @@ class DropboxService():
         except Exception as e:
             self.logger.exception(f'[process_receipt] - 💥 Error processing receipt {filename}: {e}', exc_info=True)
             return
+
+
+    def extract_data_from_po_log(self, temp_file_path: str, project_number: str):
+        """
+        Parse the local PO log file to extract main_items, detail_items, and contacts.
+
+        :param temp_file_path: The local file path
+        :param project_number: The project ID
+        :return: (main_items, detail_items, contacts)
+        """
+        try:
+            self.logger.info(f'[extract_data_from_po_log] - 🔎 Parsing PO log for project {project_number} at {temp_file_path}')
+            (main_items, detail_items, contacts) = self.po_log_processor.parse_showbiz_po_log(temp_file_path)
+            self.logger.info(f'[extract_data_from_po_log] - 📝 Extracted {len(main_items)} main items, {len(detail_items)} detail items, and {len(contacts)} contacts.')
+            return (main_items, detail_items, contacts)
+        except Exception as e:
+            self.logger.exception(f'[extract_data_from_po_log] - 💥 Error while parsing PO Log data: {e}', exc_info=True)
+            return ([], [], [])
+
+    def add_po_data_to_db(self, main_items, detail_items, contacts, project_number: str):
+        """
+        🚀 DB Processing Method
+        ----------------------
+        *New Batch Logic*:
+        1) Convert project_number to an int.
+        2) Fetch all existing POs with that project_number in one shot.
+        3) For each main_item (PO), decide if it's new or existing (based on po_number).
+           Then batch create or update accordingly ONLY if data has changed.
+        4) Fetch all existing DetailItems with that same project_number in one shot.
+        5) For each detail_item, decide if new or existing (based on (po_number, detail_number, line_number)).
+           Then batch create or update accordingly ONLY if data has changed (and unless it's in a final state).
+        6) Link contact if needed. We skip manual `project_id` lookups.
+        """
+        self.logger.info(f'[add_po_data_to_db] - 🚀 Kicking off aggregator for PO log data with project_number={project_number}')
+        pn_int = int(project_number)
+
+        # Retrieve known contacts for reference
+        all_db_contacts = self.database_util.search_contacts()
+        self.logger.info('[add_po_data_to_db] - 🤝 Loaded existing contacts from the DB.')
+
+        # Retrieve existing POs for the project
+        existing_pos = self.database_util.search_purchase_orders(column_names=['project_number'], values=[pn_int])
+        if existing_pos is None:
+            existing_pos = []
+        elif isinstance(existing_pos, dict):
+            existing_pos = [existing_pos]
+        pos_by_number = {po['po_number']: po for po in existing_pos}
+        self.logger.info(f'[add_po_data_to_db] - 📄 Found {len(pos_by_number)} existing POs in DB for project {pn_int}.')
+
+        def _po_has_changes(existing_po, new_data, contact_id):
+            """
+            Compare relevant PO fields to see if there's a difference
+            """
+            if existing_po.get('description') != new_data.get('description'):
+                return True
+            if existing_po.get('po_type') != new_data.get('po_type'):
+                return True
+            if existing_po.get('contact_id') != contact_id:
+                return True
+            return False
+
+        # Process main_items
+        for (i, item) in enumerate(main_items):
+            try:
+                if self.DEBUG_STARTING_PO_NUMBER and int(item['po_number']) < self.DEBUG_STARTING_PO_NUMBER:
+                    continue
+                contact_id = self._find_or_create_contact(item, contacts, i, all_db_contacts)
+                po_number = int(item['po_number'])
+                existing_po = pos_by_number.get(po_number)
+
+                if existing_po:
+                    # Check for changes
+                    if _po_has_changes(existing_po, item, contact_id):
+                        self.logger.info(f'[add_po_data_to_db] - 🔄 Updating existing PO {po_number} with new data from PO log...')
+                        updated_po = self.database_util.update_purchase_order_by_keys(
+                            project_number=pn_int,
+                            po_number=po_number,
+                            description=item.get('description'),
+                            po_type=item.get('po_type'),
+                            contact_id=contact_id
+                        )
+                        if updated_po:
+                            pos_by_number[po_number] = updated_po
+                    else:
+                        self.logger.debug(f'[add_po_data_to_db] - ⏭ No changes detected for PO {po_number}, skipping update.')
+                else:
+                    # Create new
+                    self.logger.info(f'[add_po_data_to_db] - 🆕 Creating a new PO record from PO log for {po_number}...')
+                    new_po = self.database_util.create_purchase_order_by_keys(
+                        project_number=pn_int,
+                        po_number=po_number,
+                        description=item.get('description'),
+                        po_type=item.get('po_type'),
+                        contact_id=contact_id
+                    )
+                    if new_po:
+                        pos_by_number[po_number] = new_po
+            except Exception as ex:
+                self.logger.error(f"[add_po_data_to_db] - 💥 Error while processing PO {item.get('po_number')}: {ex}", exc_info=True)
+
+        # Retrieve existing detail items
+        existing_details = self.database_util.search_detail_items(['project_number'], [pn_int])
+        if existing_details is None:
+            existing_details = []
+        elif isinstance(existing_details, dict):
+            existing_details = [existing_details]
+        detail_dict = {}
+        for d in existing_details:
+            key = (d['po_number'], d['detail_number'], d['line_number'])
+            detail_dict[key] = d
+        self.logger.info(f'[add_po_data_to_db] - 📋 Found {len(detail_dict)} existing detail items in DB for project {pn_int}.')
+
+        COMPLETED_STATUSES = {'PAID', 'LOGGED', 'RECONCILED', 'REVIEWED'}
+
+        def _detail_item_has_changes(existing_di, new_data):
+            """
+            Compare relevant DetailItem fields to see differences
+            """
+            from datetime import datetime
+
+            def to_date(value):
+                if not value:
+                    return None
+                if isinstance(value, datetime):
+                    return value.date()
+                if isinstance(value, str):
+                    try:
+                        parsed_dt = datetime.fromisoformat(value)
+                        return parsed_dt.date()
+                    except ValueError:
+                        try:
+                            parsed_dt = datetime.strptime(value, '%Y-%m-%d')
+                            return parsed_dt.date()
+                        except:
+                            return value
+                return value
+
+            old_date = to_date(existing_di.get('transaction_date'))
+            new_date = to_date(new_data.get('date'))
+            if old_date != new_date:
+                return True
+
+            old_due = to_date(existing_di.get('due_date'))
+            new_due = to_date(new_data.get('due date'))
+            if old_due != new_due:
+                return True
+
+            if existing_di.get('vendor') != new_data.get('vendor'):
+                return True
+            if existing_di.get('description') != new_data.get('description'):
+                return True
+            if float(existing_di.get('rate', 0)) != float(new_data.get('rate', 0)):
+                return True
+            if float(existing_di.get('quantity', 1)) != float(new_data.get('quantity', 1)):
+                return True
+            if float(existing_di.get('ot', 0)) != float(new_data.get('OT', 0)):
+                return True
+            if float(existing_di.get('fringes', 0)) != float(new_data.get('fringes', 0)):
+                return True
+            if (existing_di.get('state') or '').upper() != (new_data.get('state') or '').upper():
+                return True
+            if existing_di.get('account_code') != new_data.get('account'):
+                return True
+            if existing_di.get('payment_type') != new_data.get('payment_type'):
+                return True
+            return False
+
+        # Process detail_items
+        for sub_item in detail_items:
+            po_number = None
+            detail_number = None
+            line_number = None
+            try:
+                if self.DEBUG_STARTING_PO_NUMBER and int(sub_item['po_number']) < self.DEBUG_STARTING_PO_NUMBER:
+                    continue
+                po_number = int(sub_item['po_number'])
+                detail_number = int(sub_item['detail_item_id'])
+                line_number = int(sub_item['line_number'])
+                key = (po_number, detail_number, line_number)
+                existing_di = detail_dict.get(key)
+
+                if existing_di:
+                    current_state = (existing_di['state'] or '').upper()
+                    if current_state in COMPLETED_STATUSES:
+                        self.logger.info(f"[add_po_data_to_db] - ⏭ Detail {key} is in final state ({current_state}); skipping.")
+                        continue
+
+                    if _detail_item_has_changes(existing_di, sub_item):
+                        self.logger.info(f'[add_po_data_to_db] - 🔄 Updating detail item {key} with new data from PO log...')
+                        updated_di = self.database_util.update_detail_item_by_keys(
+                            project_number=pn_int,
+                            po_number=po_number,
+                            detail_number=detail_number,
+                            line_number=line_number,
+                            vendor=sub_item.get('vendor'),
+                            description=sub_item.get('description'),
+                            transaction_date=sub_item.get('date'),
+                            due_date=sub_item.get('due date'),
+                            rate=sub_item.get('rate', 0),
+                            quantity=sub_item.get('quantity', 1),
+                            ot=sub_item.get('OT', 0),
+                            fringes=sub_item.get('fringes', 0),
+                            state=sub_item['state'],
+                            account_code=sub_item['account'],
+                            payment_type=sub_item['payment_type']
+                        )
+                        if updated_di:
+                            detail_dict[key] = updated_di
+                    else:
+                        self.logger.debug(f'[add_po_data_to_db] - ⏭ No changes detected for detail item {key}. Skipping update.')
+                else:
+                    self.logger.debug(f'[add_po_data_to_db] - 🆕 Creating new detail item {key} from PO log data...')
+                    new_di = self.database_util.create_detail_item_by_keys(
+                        project_number=pn_int,
+                        po_number=po_number,
+                        detail_number=detail_number,
+                        line_number=line_number,
+                        vendor=sub_item.get('vendor'),
+                        description=sub_item.get('description'),
+                        transaction_date=sub_item.get('date'),
+                        due_date=sub_item.get('due date'),
+                        rate=sub_item.get('rate', 0),
+                        quantity=sub_item.get('quantity', 1),
+                        ot=sub_item.get('OT', 0),
+                        fringes=sub_item.get('fringes', 0),
+                        state=sub_item['state'],
+                        account_code=sub_item['account'],
+                        payment_type=sub_item['payment_type']
+                    )
+                    if new_di:
+                        detail_dict[key] = new_di
+            except Exception as ex:
+                self.logger.error(f'[add_po_data_to_db] - 💥 Error processing detail item {key}: {ex}', exc_info=True)
+
+        self.logger.info('[add_po_data_to_db] - ✅ Finished processing PO log data into DB aggregator.')
+        return main_items
+
 
     def process_tax_form(self, dropbox_path: str):
         """
