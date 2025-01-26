@@ -70,12 +70,12 @@ class MondayUtil(metaclass=SingletonMeta):
             self.monday_api_token = os.getenv('MONDAY_API_TOKEN')
             self._subitem_board_id = None
             if not self.monday_api_token:
-                self.logger.error('[__init__] - Monday API Token not found. Please set it in the environment variables.')
+                self.logger.error('Monday API Token not found. Please set it in the environment variables.')
                 raise EnvironmentError('Missing MONDAY_API_TOKEN')
             self.headers = {'Authorization': self.monday_api_token, 'Content-Type': 'application/json', 'API-Version': '2023-10'}
             self.client = MondayClient(self.monday_api_token)
             self._subitem_board_id = self.retrieve_subitem_board_id()
-            self.logger.info(f'[__init__] - Retrieved subitem board ID: {self._subitem_board_id}')
+            self.logger.info(f'Retrieved subitem board ID: {self._subitem_board_id}')
             self._initialized = True
 
     @property

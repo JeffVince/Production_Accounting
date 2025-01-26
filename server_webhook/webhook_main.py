@@ -31,36 +31,36 @@ logger.debug("Succesfully imported into Webhook Main")
 # Create a Blueprint instead of a full Flask app
 webhook_main_bp = Blueprint('webhook_main_bp', __name__)
 
-logger.debug("🐣 [ webhook_main_bp ] - Blueprint created, preparing to register sub-blueprints...")
+logger.debug("🐣 Blueprint created, preparing to register sub-blueprints...")
 
 # Register other sub-blueprints:
 #webhook_main_bp.register_blueprint(monday_blueprint, url_prefix='/webhook/monday')
-#logger.debug("🧩 [ webhook_main_bp ] - monday_blueprint registered at '/webhook/monday'")
+#logger.debug("🧩 monday_blueprint registered at '/webhook/monday'")
 
 webhook_main_bp.register_blueprint(dropbox_blueprint, url_prefix='/webhook/dropbox')
-logger.debug("🧩 [ webhook_main_bp ] - dropbox_blueprint registered at '/webhook/dropbox'")
+logger.debug("🧩 dropbox_blueprint registered at '/webhook/dropbox'")
 
 webhook_main_bp.register_blueprint(control_panel_bp)
-logger.debug("🧩 [ webhook_main_bp ] - control_panel_bp registered with default prefix '/'")
+logger.debug("🧩 control_panel_bp registered with default prefix '/'")
 
 webhook_main_bp.register_blueprint(account_tax_bp)
-logger.debug("🧩 [ webhook_main_bp ] - account_tax_bp registered with default prefix '/'")
+logger.debug("🧩 account_tax_bp registered with default prefix '/'")
 
 # Load config
-logger.debug("🔧 [ webhook_main_bp ] - Loading configuration from Config()...")
+logger.debug("🔧 Loading configuration from Config()...")
 config = Config()
-logger.debug("🔧 [ webhook_main_bp ] - Configuration loaded successfully. Details below:")
-logger.info(f"📝 [ webhook_main_bp ] - USE_TEMP={config.USE_TEMP}, SKIP_MAIN={config.SKIP_MAIN}, "
+logger.debug("🔧 Configuration loaded successfully. Details below:")
+logger.info(f"📝 USE_TEMP={config.USE_TEMP}, SKIP_MAIN={config.SKIP_MAIN}, "
             f"USE_LOCAL={config.USE_LOCAL}, APP_DEBUG={config.APP_DEBUG}, "
             f"WEBHOOK_MAIN_PORT={config.WEBHOOK_MAIN_PORT}, "
             f"WEBHOOK_MAIN_PORT_DEBUG={config.WEBHOOK_MAIN_PORT_DEBUG}, "
             f"DATABASE_URL={config.DATABASE_URL}")
 
 # Initialize the AccountTaxModel
-logger.debug("🔧 [ webhook_main_bp ] - Initializing AccountTaxModel...")
+logger.debug("🔧 Initializing AccountTaxModel...")
 db_view_util = AccountTaxModel()
-logger.debug("🔧 [ webhook_main_bp ] - AccountTaxModel initialized successfully.")
-logger.info("✅ [ webhook_main_bp ] - Server webhook main blueprint is ready and loaded!")
+logger.debug("🔧 AccountTaxModel initialized successfully.")
+logger.info("✅ Server webhook main blueprint is ready and loaded!")
 
 # --------------------------------------------------------------------------
 #                           Route Handlers
@@ -77,7 +77,7 @@ def account_tax_view():
     logger.debug(f"📥 [ /account_tax_view ] - Received sort parameter: {sort}")
     records = db_view_util.get_all_account_with_tax(sort_by=sort)
     logger.debug("📃 [ /account_tax_view ] - Retrieved records from db_view_util.")
-    logger.info(f"✅ [ /account_tax_view ] - Rendering map_codes_view.html with {len(records)} record(s).")
+#    logger.info(f"✅ [ /account_tax_view ] - Rendering map_codes_view.html with {len(records)} record(s).")
     return render_template('map_codes_view.html', records=records, sort=sort)
 
 @webhook_main_bp.route('/bulk_update_account_tax', methods=['POST'])

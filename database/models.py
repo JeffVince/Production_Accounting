@@ -19,15 +19,16 @@ Base = declarative_base()
 #region 📄 Contact & User
 class Contact(Base):
     __tablename__ = 'contact'
-    id = Column(MYSQL_INTEGER(unsigned=True), primary_key=True, autoincrement=True)
+    id = Column(MYSQL_BIGINT(unsigned=True), primary_key=True, autoincrement=True)
     name = Column(String(255), nullable=False, index=True)
     vendor_status = Column(
         Enum('PENDING', 'TO VERIFY', 'APPROVED', 'ISSUE'),
         nullable=False,
-        server_default='PENDING'
-    )
+        server_default='PENDING')
     payment_details = Column(String(255), nullable=False, server_default='PENDING')
-    vendor_type = Column(String(45), nullable=True)
+    vendor_type = Column(
+        Enum('vendor', 'CC', 'PC', 'INDIVIDUAL', 'S-CORP', 'C-CORP'),
+        nullable=True)
     email = Column(String(100), nullable=True)
     phone = Column(String(45), nullable=True)
     address_line_1 = Column(String(255), nullable=True)
@@ -77,9 +78,9 @@ class Contact(Base):
 
 class User(Base):
     __tablename__ = 'users'
-    id = Column(MYSQL_INTEGER(unsigned=True), primary_key=True, autoincrement=True)
+    id = Column(MYSQL_BIGINT(unsigned=True), primary_key=True, autoincrement=True)
     username = Column(String(100), nullable=False)
-    contact_id = Column(MYSQL_INTEGER(unsigned=True),
+    contact_id = Column(MYSQL_BIGINT(unsigned=True),
                         ForeignKey('contact.id', onupdate='CASCADE', ondelete='SET NULL'),
                         nullable=True)
     created_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
@@ -98,9 +99,9 @@ class User(Base):
 #region 💲 BudgetMap & AccountCode (Parent/Child)
 class BudgetMap(Base):
     __tablename__ = 'budget_map'
-    id = Column(MYSQL_INTEGER(unsigned=True), primary_key=True, autoincrement=True)
+    id = Column(MYSQL_BIGINT(unsigned=True), primary_key=True, autoincrement=True)
     map_name = Column(String(100), nullable=False)
-    user_id = Column(MYSQL_INTEGER(unsigned=True),
+    user_id = Column(MYSQL_BIGINT(unsigned=True),
                      ForeignKey('users.id', onupdate='CASCADE', ondelete='CASCADE'),
                      nullable=False)
     created_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
@@ -118,12 +119,12 @@ class BudgetMap(Base):
 
 class AccountCode(Base):
     __tablename__ = 'account_code'
-    id = Column(MYSQL_INTEGER(unsigned=True), primary_key=True, autoincrement=True)
+    id = Column(MYSQL_BIGINT(unsigned=True), primary_key=True, autoincrement=True)
     code = Column(String(45), nullable=False, unique=False)
-    budget_map_id = Column(MYSQL_INTEGER(unsigned=True),
+    budget_map_id = Column(MYSQL_BIGINT(unsigned=True),
                            ForeignKey('budget_map.id', onupdate='CASCADE', ondelete='SET NULL'),
                            nullable=True)
-    tax_id = Column(MYSQL_INTEGER(unsigned=True),
+    tax_id = Column(MYSQL_BIGINT(unsigned=True),
                     ForeignKey('tax_account.id', onupdate='CASCADE', ondelete='SET NULL'),
                     nullable=True)
     account_description = Column(String(45), nullable=True)
@@ -148,9 +149,9 @@ class AccountCode(Base):
 #region 🧾 TaxLedger & TaxAccount (Parent/Child)
 class TaxLedger(Base):
     __tablename__ = 'tax_ledger'
-    id = Column(MYSQL_INTEGER(unsigned=True), primary_key=True, autoincrement=True)
+    id = Column(MYSQL_BIGINT(unsigned=True), primary_key=True, autoincrement=True)
     name = Column(String(100), nullable=False)
-    user_id = Column(MYSQL_INTEGER(unsigned=True),
+    user_id = Column(MYSQL_BIGINT(unsigned=True),
                      ForeignKey('users.id', onupdate='CASCADE', ondelete='CASCADE'),
                      nullable=False)
     created_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
@@ -168,10 +169,10 @@ class TaxLedger(Base):
 
 class TaxAccount(Base):
     __tablename__ = 'tax_account'
-    id = Column(MYSQL_INTEGER(unsigned=True), primary_key=True, autoincrement=True)
+    id = Column(MYSQL_BIGINT(unsigned=True), primary_key=True, autoincrement=True)
     tax_code = Column(String(45), nullable=False, unique=False)  # DB has no unique on tax_code, just on id
     description = Column(String(255), nullable=True)
-    tax_ledger_id = Column(MYSQL_INTEGER(unsigned=True),
+    tax_ledger_id = Column(MYSQL_BIGINT(unsigned=True),
                            ForeignKey('tax_ledger.id', onupdate='CASCADE', ondelete='SET NULL'),
                            nullable=True)
     created_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
@@ -191,10 +192,10 @@ class TaxAccount(Base):
 #region 📜 AuditLog
 class AuditLog(Base):
     __tablename__ = 'audit_log'
-    id = Column(MYSQL_INTEGER(unsigned=True), primary_key=True, autoincrement=True)
-    table_id = Column(MYSQL_INTEGER(unsigned=True), nullable=True)
+    id = Column(MYSQL_BIGINT(unsigned=True), primary_key=True, autoincrement=True)
+    table_id = Column(MYSQL_BIGINT(unsigned=True), nullable=True)
     operation = Column(String(10), nullable=False)
-    record_id = Column(MYSQL_INTEGER(unsigned=True), nullable=True)
+    record_id = Column(MYSQL_BIGINT(unsigned=True), nullable=True)
     message = Column(String(255), nullable=True)
     created_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
 
@@ -212,15 +213,17 @@ class AuditLog(Base):
 #region 💰 BankTransaction
 class BankTransaction(Base):
     __tablename__ = 'bank_transaction'
-    id = Column(MYSQL_INTEGER(unsigned=True), primary_key=True, autoincrement=True)
+    id = Column(MYSQL_BIGINT(unsigned=True), primary_key=True, autoincrement=True)
     mercury_transaction_id = Column(String(100), nullable=False, unique=True)
     state = Column(String(45), nullable=False, server_default='Pending')
-    xero_bill_id = Column(MYSQL_INTEGER(unsigned=True),
+    xero_bill_id = Column(MYSQL_BIGINT(unsigned=True),
                           ForeignKey('xero_bill.id', onupdate='NO ACTION', ondelete='NO ACTION'),
                           nullable=False)
-    xero_spend_money_id = Column(MYSQL_INTEGER(unsigned=True),
+    xero_spend_money_id = Column(MYSQL_BIGINT(unsigned=True),
                                  ForeignKey('spend_money.id', onupdate='NO ACTION', ondelete='NO ACTION'),
                                  nullable=False)
+    tax_code = Column(MYSQL_INTEGER)
+    amount = Column(MYSQL_DECIMAL)
     created_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
     updated_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'))
 
@@ -233,6 +236,8 @@ class BankTransaction(Base):
             'id': self.id,
             'mercury_transaction_id': self.mercury_transaction_id,
             'state': self.state,
+            'tax_code': self.tax_code,
+            'amount': self.amount,
             'xero_bill_id': self.xero_bill_id,
             'xero_spend_money_id': self.xero_spend_money_id,
             'created_at': self.created_at,
@@ -240,24 +245,32 @@ class BankTransaction(Base):
         }
 #endregion
 
-#region 📑 XeroBill & BillLineItem (Parent/Child)
+#region 📑 XeroBill & XeroBillLineItem (Parent/Child)
 class XeroBill(Base):
     __tablename__ = 'xero_bill'
-    id = Column(MYSQL_INTEGER(unsigned=True), primary_key=True, autoincrement=True)
+    id = Column(MYSQL_BIGINT(unsigned=True), primary_key=True, autoincrement=True)
     state = Column(String(45), nullable=False, server_default='Draft')
     project_number = Column(MYSQL_INTEGER(unsigned=True), nullable=True)
     po_number = Column(MYSQL_INTEGER(unsigned=True), nullable=True)
     detail_number = Column(MYSQL_INTEGER(unsigned=True), nullable=True)
     transaction_date = Column(Date, nullable=True)  # Matching DATE in MySQL
     due_date = Column(Date, nullable=True)          # Matching DATE in MySQL
+    xero_reference_number = Column(
+        String(50),
+        Computed(
+            "concat(lpad(`project_number`, 4, '0'), '_', "
+            "lpad(`po_number`, 2, '0'), '_', "
+            "lpad(`detail_number`, 2, '0'))",
+            persisted=True
+        )
+    )
     xero_id = Column(String(255), nullable=True)
     xero_link = Column(String(255), nullable=True)
-    xero_reference_number = Column(String(45), nullable=True, unique=False)
     updated_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'))
     created_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
 
-    bill_line_items = relationship(
-        'BillLineItem',
+    xero_bill_line_items = relationship(
+        'XeroBillLineItem',
         back_populates='xero_bill',
         cascade='all, delete-orphan'
     )
@@ -279,20 +292,22 @@ class XeroBill(Base):
         }
 
 
-class BillLineItem(Base):
-    __tablename__ = 'bill_line_item'
-    id = Column(MYSQL_INTEGER(unsigned=True), primary_key=True, autoincrement=True)
+class XeroBillLineItem(Base):
+    __tablename__ = 'xero_bill_line_item'
+    id = Column(MYSQL_BIGINT(unsigned=True), primary_key=True, autoincrement=True)
     project_number = Column(MYSQL_INTEGER(unsigned=True), nullable=True)
     po_number = Column(MYSQL_INTEGER(unsigned=True), nullable=True)
     detail_number = Column(MYSQL_INTEGER(unsigned=True), nullable=True)
     line_number = Column(MYSQL_INTEGER(unsigned=True), nullable=True)
     description = Column(String(255), nullable=True)
+    transaction_date = Column(Date, nullable=True)  # Matching DATE in MySQL
+    due_date = Column(Date, nullable=True)          # Matching DATE in MySQL
     quantity = Column(MYSQL_DECIMAL(10, 0), nullable=True)
     unit_amount = Column(MYSQL_DECIMAL(10, 0), nullable=True)
     line_amount = Column(MYSQL_DECIMAL(10, 0), nullable=True)
     account_code = Column(MYSQL_INTEGER, nullable=True)
     parent_id = Column(
-        MYSQL_INTEGER(unsigned=True),
+        MYSQL_BIGINT(unsigned=True),
         ForeignKey('xero_bill.id', onupdate='CASCADE', ondelete='CASCADE'),
         nullable=False
     )
@@ -301,7 +316,7 @@ class BillLineItem(Base):
     updated_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'))
     created_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
 
-    xero_bill = relationship('XeroBill', back_populates='bill_line_items')
+    xero_bill = relationship('XeroBill', back_populates='xero_bill_line_items')
 
     def to_dict(self):
         return {
@@ -327,7 +342,7 @@ class BillLineItem(Base):
 class PoLog(Base):
     __tablename__ = 'po_log'
 
-    id = Column(MYSQL_INTEGER(unsigned=True), primary_key=True, autoincrement=True)
+    id = Column(MYSQL_BIGINT(unsigned=True), primary_key=True, autoincrement=True)
     project_number = Column(MYSQL_INTEGER(unsigned=True), nullable=True)
     filename = Column(String(255), nullable=False)
     db_path = Column(String(255), nullable=False)
@@ -357,7 +372,7 @@ class PoLog(Base):
 #region 🗂 Project, PurchaseOrder & DetailItem (Parent/Child)
 class DetailItem(Base):
     __tablename__ = 'detail_item'
-    id = Column(MYSQL_INTEGER(unsigned=True), primary_key=True, autoincrement=True)
+    id = Column(MYSQL_BIGINT(unsigned=True), primary_key=True, autoincrement=True)
     project_number = Column(MYSQL_INTEGER(unsigned=True), nullable=True)
     po_number = Column(MYSQL_INTEGER(unsigned=True), nullable=True)
     detail_number = Column(MYSQL_INTEGER(unsigned=True), nullable=False)
@@ -384,8 +399,8 @@ class DetailItem(Base):
         ),
         nullable=False
     )
-    receipt_id = Column(MYSQL_INTEGER(unsigned=True), nullable=True)
-    invoice_id = Column(MYSQL_INTEGER(unsigned=True), nullable=True)
+    receipt_id = Column(MYSQL_BIGINT(unsigned=True), nullable=True)
+    invoice_id = Column(MYSQL_BIGINT(unsigned=True), nullable=True)
     pulse_id = Column(MYSQL_BIGINT, nullable=True)
     parent_pulse_id = Column(MYSQL_BIGINT, nullable=True)
     created_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
@@ -421,7 +436,7 @@ class DetailItem(Base):
 
 class Project(Base):
     __tablename__ = 'project'
-    id = Column(MYSQL_INTEGER(unsigned=True), primary_key=True, autoincrement=True)
+    id = Column(MYSQL_BIGINT(unsigned=True), primary_key=True, autoincrement=True)
     user_id = Column(MYSQL_INTEGER, nullable=True)  # The new SQL doesn't define a FK constraint
     project_number = Column(MYSQL_INTEGER(unsigned=True), nullable=True)
     name = Column(String(100), nullable=False)
@@ -453,18 +468,19 @@ class Project(Base):
 
 class PurchaseOrder(Base):
     __tablename__ = 'purchase_order'
-    id = Column(MYSQL_INTEGER(unsigned=True), primary_key=True, autoincrement=True)
+    id = Column(MYSQL_BIGINT(unsigned=True), primary_key=True, autoincrement=True)
     project_number = Column(MYSQL_INTEGER(unsigned=True), nullable=True)
     po_number = Column(MYSQL_INTEGER(unsigned=True), nullable=False)
+    vendor_name = Column(String(100))
     description = Column(String(255), nullable=True)
     po_type = Column(String(45), nullable=True)
     producer = Column(String(100), nullable=True)
     pulse_id = Column(MYSQL_BIGINT, nullable=True)
     folder_link = Column(String(255), nullable=True)
-    contact_id = Column(MYSQL_INTEGER(unsigned=True),
+    contact_id = Column(MYSQL_BIGINT(unsigned=True),
                         ForeignKey('contact.id', ondelete='SET NULL'),
                         nullable=True)
-    project_id = Column(MYSQL_INTEGER(unsigned=True),
+    project_id = Column(MYSQL_BIGINT(unsigned=True),
                         ForeignKey('project.id', onupdate='NO ACTION', ondelete='NO ACTION'),
                         nullable=False)
     created_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
@@ -483,6 +499,7 @@ class PurchaseOrder(Base):
             'id': self.id,
             'project_number': self.project_number,
             'po_number': self.po_number,
+            'vendor_name': self.vendor_name,
             'description': self.description,
             'po_type': self.po_type,
             'producer': self.producer,
@@ -498,9 +515,9 @@ class PurchaseOrder(Base):
 #region 💸 Invoice, Receipt & SpendMoney
 class Invoice(Base):
     __tablename__ = 'invoice'
-    id = Column(MYSQL_INTEGER(unsigned=True), primary_key=True, autoincrement=True)
+    id = Column(MYSQL_BIGINT(unsigned=True), primary_key=True, autoincrement=True)
     project_number = Column(MYSQL_INTEGER(unsigned=True), nullable=False)
-    po_number = Column(MYSQL_INTEGER(unsigned=True), nullable=False)
+    po_number = Column(MYSQL_BIGINT(unsigned=True), nullable=False)
     invoice_number = Column(MYSQL_INTEGER(unsigned=True), nullable=False)
     term = Column(MYSQL_INTEGER, nullable=True)
     total = Column(MYSQL_DECIMAL(15, 2), nullable=True, server_default='0.00')
@@ -526,9 +543,9 @@ class Invoice(Base):
 
 class Receipt(Base):
     __tablename__ = 'receipt'
-    id = Column(MYSQL_INTEGER(unsigned=True), primary_key=True, autoincrement=True)
+    id = Column(MYSQL_BIGINT(unsigned=True), primary_key=True, autoincrement=True)
     project_number = Column(MYSQL_INTEGER(unsigned=True), nullable=False)
-    po_number = Column(MYSQL_INTEGER(unsigned=True), nullable=True)
+    po_number = Column(MYSQL_BIGINT(unsigned=True), nullable=True)
     detail_number = Column(MYSQL_INTEGER(unsigned=True), nullable=True)
     line_number = Column(MYSQL_INTEGER(unsigned=True), nullable=True)
     receipt_description = Column(String(255), nullable=True)
@@ -538,7 +555,7 @@ class Receipt(Base):
     file_link = Column(String(255), nullable=False)
     created_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
     updated_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'))
-    spend_money_id = Column(MYSQL_INTEGER(unsigned=True), nullable=True)
+    spend_money_id = Column(MYSQL_BIGINT(unsigned=True), nullable=True)
 
     def to_dict(self):
         return {
@@ -560,13 +577,25 @@ class Receipt(Base):
 
 class SpendMoney(Base):
     __tablename__ = 'spend_money'
-    id = Column(MYSQL_INTEGER(unsigned=True), primary_key=True, autoincrement=True)
+    id = Column(MYSQL_BIGINT(unsigned=True), primary_key=True, autoincrement=True)
     project_number = Column(MYSQL_INTEGER(unsigned=True), nullable=True)
-    po_number = Column(MYSQL_INTEGER(unsigned=True), nullable=True)
+    po_number = Column(MYSQL_BIGINT(unsigned=True), nullable=True)
     detail_number = Column(MYSQL_INTEGER(unsigned=True), nullable=True)
     line_number = Column(MYSQL_INTEGER(unsigned=True), nullable=True)
-    xero_spend_money_reference_number = Column(String(100), nullable=True, unique=True)
+    xero_spend_money_reference_number = Column(
+        String(50),
+        Computed(
+            "CONCAT(LPAD(project_number, 4, '0'), '_', "
+            "LPAD(po_number, 2, '0'), '_', "
+            "LPAD(detail_number, 2, '0'), '_', "
+            "LPAD(line_number, 2, '0'))",
+            persisted=True  # Indicates that the column is STORED
+        ),
+        nullable=True,
+        unique=True
+    )
     xero_link = Column(String(255), nullable=True)
+    amount = Column(MYSQL_DECIMAL(), nullable=False)
     state = Column(String(45), nullable=False, server_default='Draft')
     created_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
     updated_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'))
@@ -586,13 +615,13 @@ class SpendMoney(Base):
         }
 #endregion
 
-#region 🧮 Table (the table literally named "table")
-class Table(Base):  # Represents the table literally named "table"
-    __tablename__ = 'table'
-    # Note: your SQL has it as "id int not null auto_increment" (not unsigned)
-    id = Column(MYSQL_INTEGER(unsigned=False), primary_key=True, autoincrement=True)
+#region 🧮 SysTable (the table literally named "table")
+class SysTable(Base):
+    __tablename__ = 'sys_table'
+    # Note: your SQL has it as "id int not null auto_increment" (now modified to BIGINT UNSIGNED)
+    id = Column(MYSQL_BIGINT(unsigned=True), primary_key=True, autoincrement=True)
     name = Column(String(100), nullable=False)
-    type = Column(Enum('SYSTEM', 'PARENT', 'CHILD', 'SINGLE', 'PARENT/CHILD'), nullable=False, server_default='SINGLE')
+    type = Column(Enum('SYSTEM', 'PARENT/CHILD', 'PARENT', 'CHILD', 'SINGLE'), nullable=False, server_default='SINGLE')
     integration_name = Column(String(45), nullable=True)
     integration_type = Column(Enum('PARENT', 'CHILD', 'SINGLE'), nullable=False, server_default='SINGLE')
     integration_connection = Column(
@@ -614,4 +643,4 @@ class Table(Base):  # Represents the table literally named "table"
             'created_at': self.created_at,
             'updated_at': self.updated_at
         }
-#endregion_q
+#endregion

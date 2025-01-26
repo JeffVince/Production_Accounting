@@ -23,10 +23,10 @@ class MondayAPI(metaclass=SingletonMeta):
         if not hasattr(self, '_initialized'):
             try:
                 self.logger = logging.getLogger('monday_logger')
-                self.logger.debug('[__init__] - Initializing MondayAPI singleton... ⚙️')
+                self.logger.debug('Initializing MondayAPI singleton... ⚙️')
                 self.api_token = Config.MONDAY_API_TOKEN
                 if not self.api_token:
-                    self.logger.warning('[__init__] - ⚠️ MONDAY_API_TOKEN is not set. Check .env or your configuration.')
+                    self.logger.warning('⚠️ MONDAY_API_TOKEN is not set. Check .env or your configuration.')
                 self.api_url = 'https://api.monday.com/v2/'
                 self.client = MondayClient(self.api_token)
                 self.monday_util = monday_util
@@ -35,10 +35,10 @@ class MondayAPI(metaclass=SingletonMeta):
                 self.CONTACT_BOARD_ID = self.monday_util.CONTACT_BOARD_ID
                 self.project_id_column = self.monday_util.PO_PROJECT_ID_COLUMN
                 self.po_number_column = self.monday_util.PO_NUMBER_COLUMN
-                self.logger.info('[__init__] - ✅ Monday API initialized successfully 🏗️')
+                self.logger.info('✅ Monday API initialized successfully 🏗️')
                 self._initialized = True
             except Exception as init_ex:
-                self.logger.exception(f'[__init__] - ❌ Error during MondayAPI initialization: {init_ex}')
+                self.logger.exception(f'❌ Error during MondayAPI initialization: {init_ex}')
                 raise init_ex
 
     def _make_request(self, query: str, variables: dict=None):
@@ -132,9 +132,9 @@ class MondayAPI(metaclass=SingletonMeta):
         :param column_values: Column values in JSON or dict format
         :return: GraphQL response
         """
-        self.logger.debug(f"[create_item] - 🆕 Creating item on board {board_id}, group '{group_id}', name='{name}'...")
+        self.logger.debug(f"[create_item] - 🆕 Creating item on board {board_id},name='{name}'...")
         query = '\n        mutation ($board_id: ID!, $group_id: String, $item_name: String!, $column_values: JSON) {\n            create_item(board_id: $board_id, group_id: $group_id, item_name: $item_name, column_values: $column_values) {\n                id\n            }\n        }\n        '
-        variables = {'board_id': int(board_id), 'group_id': group_id, 'item_name': name, 'column_values': column_values}
+        variables = {'board_id': int(board_id), 'item_name': name, 'column_values': column_values}
         return self._make_request(query, variables)
 
     def create_subitem(self, parent_item_id: int, subitem_name: str, column_values: dict):
@@ -829,7 +829,19 @@ class MondayAPI(metaclass=SingletonMeta):
         for cv in column_values:
             col_id = cv['id']
             parsed_values[col_id] = parse_column_value(cv)
-        return {'pulse_id': contact_item['id'], 'phone': parsed_values.get(self.monday_util.CONTACT_PHONE), 'email': parsed_values.get(self.monday_util.CONTACT_EMAIL), 'address_line_1': parsed_values.get(self.monday_util.CONTACT_ADDRESS_LINE_1), 'address_line_2': parsed_values.get(self.monday_util.CONTACT_ADDRESS_LINE_2), 'city': parsed_values.get(self.monday_util.CONTACT_ADDRESS_CITY), 'zip_code': parsed_values.get(self.monday_util.CONTACT_ADDRESS_ZIP), 'region': parsed_values.get(self.monday_util.CONTACT_REGION), 'country': parsed_values.get(self.monday_util.CONTACT_ADDRESS_COUNTRY), 'tax_type': parsed_values.get(self.monday_util.CONTACT_TAX_TYPE), 'tax_number_str': parsed_values.get(self.monday_util.CONTACT_TAX_NUMBER), 'payment_details': parsed_values.get(self.monday_util.CONTACT_PAYMENT_DETAILS), 'vendor_status': parsed_values.get(self.monday_util.CONTACT_STATUS), 'tax_form_link': parsed_values.get(self.monday_util.CONTACT_TAX_FORM_LINK)}
+        return {'pulse_id': contact_item['id'], 'phone': parsed_values.get(self.monday_util.CONTACT_PHONE),
+                'email': parsed_values.get(self.monday_util.CONTACT_EMAIL),
+                'address_line_1': parsed_values.get(self.monday_util.CONTACT_ADDRESS_LINE_1),
+                'address_line_2': parsed_values.get(self.monday_util.CONTACT_ADDRESS_LINE_2),
+                'city': parsed_values.get(self.monday_util.CONTACT_ADDRESS_CITY),
+                'zip_code': parsed_values.get(self.monday_util.CONTACT_ADDRESS_ZIP),
+                'region': parsed_values.get(self.monday_util.CONTACT_REGION),
+                'country': parsed_values.get(self.monday_util.CONTACT_ADDRESS_COUNTRY),
+                'tax_type': parsed_values.get(self.monday_util.CONTACT_TAX_TYPE),
+                'tax_number_str': parsed_values.get(self.monday_util.CONTACT_TAX_NUMBER),
+                'payment_details': parsed_values.get(self.monday_util.CONTACT_PAYMENT_DETAILS),
+                'vendor_status': parsed_values.get(self.monday_util.CONTACT_STATUS),
+                'tax_form_link': parsed_values.get(self.monday_util.CONTACT_TAX_FORM_LINK)}
 
     def create_contact_in_monday(self, name: str) -> dict:
         """

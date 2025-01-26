@@ -109,7 +109,7 @@ SELECT
     po.po_number AS purchase_order_number,
     p.name AS project_name
 FROM xero_bill xb
-    JOIN bill_line_item bli  ON xb.id = bli.parent_id
+    JOIN xero_bill_line_item bli  ON xb.id = bli.parent_id
     LEFT JOIN detail_item di ON bli.detail_item_id = di.id
     LEFT JOIN purchase_order po ON di.po_id = po.id
     LEFT JOIN project p         ON po.project_id = p.id;

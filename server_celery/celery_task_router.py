@@ -1,7 +1,7 @@
 import logging
 from utilities.singleton import SingletonMeta
-from server_celery.triggers.xero_triggers import handle_spend_money_create, handle_spend_money_update, handle_spend_money_delete, handle_xero_bill_create, handle_xero_bill_update, handle_xero_bill_delete, handle_xero_bill_line_item_create, handle_xero_bill_line_item_update, handle_xero_bill_line_item_delete
-from server_celery.triggers.po_triggers import handle_project_create, handle_project_update, handle_project_delete, \
+from server_celery.triggers.xero_triggers import handle_spend_money_create, handle_spend_money_update, handle_spend_money_delete, handle_xero_bill_create, handle_xero_bill_update, handle_xero_bill_delete, handle_xero_xero_bill_line_item_create, handle_xero_xero_bill_line_item_update, handle_xero_xero_bill_line_item_delete
+from server_celery.triggers.budget_triggers import handle_project_create, handle_project_update, handle_project_delete, \
     handle_purchase_order_create, handle_purchase_order_update, handle_purchase_order_delete, handle_detail_item_create, \
     handle_detail_item_update, handle_detail_item_delete, handle_po_log_create
 from server_celery.triggers.invoice_receipt_triggers import handle_invoice_create_or_update, handle_invoice_delete, handle_receipt_create, handle_receipt_update, handle_receipt_delete
@@ -15,19 +15,19 @@ class CeleryTaskService(metaclass=SingletonMeta):
     """
 
     def __init__(self):
-        self.logger = logging.getLogger('admin_logger')
+        pass
 
-    def po_log_trigger_on_create(self):
-        return handle_po_log_create()
+    def po_log_trigger_on_create(self, po_log_id: int):
+        return handle_po_log_create(po_log_id=po_log_id)
 
-    def bill_line_item_trigger_on_create(self, bill_line_item_id: int):
-        return handle_xero_bill_line_item_create(bill_line_item_id)
+    def xero_bill_line_item_trigger_on_create(self, xero_bill_line_item_id: int):
+        return handle_xero_xero_bill_line_item_create(xero_bill_line_item_id)
 
-    def bill_line_item_trigger_on_update(self, bill_line_item_id: int):
-        return handle_xero_bill_line_item_update(bill_line_item_id)
+    def xero_bill_line_item_trigger_on_update(self, xero_bill_line_item_id: int):
+        return handle_xero_xero_bill_line_item_update(xero_bill_line_item_id)
 
-    def bill_line_item_trigger_on_delete(self, bill_line_item_id: int):
-        return handle_xero_bill_line_item_delete(bill_line_item_id)
+    def xero_bill_line_item_trigger_on_delete(self, xero_bill_line_item_id: int):
+        return handle_xero_xero_bill_line_item_delete(xero_bill_line_item_id)
 
     def spend_money_trigger_on_create(self, spend_money_id: int):
         return handle_spend_money_create(spend_money_id)
@@ -47,14 +47,14 @@ class CeleryTaskService(metaclass=SingletonMeta):
     def delete_xero_bill_trigger(self, bill_id: int):
         return handle_xero_bill_delete(bill_id)
 
-    def create_xero_bill_line_items_trigger(self, bill_id: int):
-        return handle_xero_bill_line_item_create(bill_id)
+    def create_xero_xero_bill_line_items_trigger(self, bill_id: int):
+        return handle_xero_xero_bill_line_item_create(bill_id)
 
-    def update_xero_bill_line_item_trigger(self, line_item_id: int):
-        return handle_xero_bill_line_item_update(line_item_id)
+    def update_xero_xero_bill_line_item_trigger(self, line_item_id: int):
+        return handle_xero_xero_bill_line_item_update(line_item_id)
 
-    def delete_xero_bill_line_item_trigger(self, line_item_id: int):
-        return handle_xero_bill_line_item_delete(line_item_id)
+    def delete_xero_xero_bill_line_item_trigger(self, line_item_id: int):
+        return handle_xero_xero_bill_line_item_delete(line_item_id)
 
     def project_trigger_on_create(self, project_id: int):
         return handle_project_create(project_id)

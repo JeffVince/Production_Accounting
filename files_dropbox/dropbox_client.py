@@ -26,7 +26,7 @@ class DropboxClient(metaclass=SingletonMeta):
             os.makedirs(self.CURSOR_DIR, exist_ok=True)
             self._internal_lock = threading.Lock()
             self.access_token = self.get_access_token()
-            self.logger.info('[__init__] - Dropbox Client Initialized')
+            self.logger.info('Dropbox Client Initialized')
         try:
             self.dbx_team = DropboxTeam(oauth2_access_token=self.access_token, oauth2_refresh_token=self.DROPBOX_REFRESH_TOKEN, app_key=self.DROPBOX_APP_KEY, app_secret=self.DROPBOX_APP_SECRET)
             members = self.dbx_team.team_members_list().members
@@ -36,10 +36,10 @@ class DropboxClient(metaclass=SingletonMeta):
                     self.member_id = member.profile.team_member_id
                     break
             if not self.member_id:
-                self.logger.error(f"[__init__] - Member with email '{self.MY_EMAIL}' not found in the team.")
+                self.logger.error(f"Member with email '{self.MY_EMAIL}' not found in the team.")
                 raise Exception('Member not found.')
             self.dbx = self.dbx_team.as_user(self.member_id)
-            self.logger.info(f"[__init__] - Impersonated user '{self.MY_EMAIL}' with member ID '{self.member_id}'.")
+            self.logger.info(f"Impersonated user '{self.MY_EMAIL}' with member ID '{self.member_id}'.")
             namespaces = self.dbx_team.team_namespaces_list().namespaces
             self.namespace_id = None
             for ns in namespaces:
@@ -47,15 +47,15 @@ class DropboxClient(metaclass=SingletonMeta):
                     self.namespace_id = ns.namespace_id
                     break
             if self.namespace_id:
-                self.logger.info(f"[__init__] - Found namespace '{self.NAMESPACE_NAME}' with ID '{self.namespace_id}'. Setting path root.")
+                self.logger.info(f"Found namespace '{self.NAMESPACE_NAME}' with ID '{self.namespace_id}'. Setting path root.")
                 path_root = common.PathRoot.namespace_id(self.namespace_id)
                 self.dbx = self.dbx.with_path_root(path_root)
-                self.logger.debug(f"[__init__] - Path root set to namespace ID '{self.namespace_id}'.")
+                self.logger.debug(f"Path root set to namespace ID '{self.namespace_id}'.")
             else:
-                self.logger.warning(f"[__init__] - Namespace '{self.NAMESPACE_NAME}' not found. Using default path root.")
+                self.logger.warning(f"Namespace '{self.NAMESPACE_NAME}' not found. Using default path root.")
             self.start_token_refresher()
         except Exception as e:
-            self.logger.error(f'[__init__] - An error occurred while creating Dropbox client: {e}', exc_info=True)
+            self.logger.error(f'An error occurred while creating Dropbox client: {e}', exc_info=True)
             raise e
         self._initialized = True
 

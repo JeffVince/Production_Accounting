@@ -15,7 +15,7 @@ class MondayWebhookHandler(metaclass=SingletonMeta):
             self.mondayAPI = monday_api
             self.db_util = monday_database_util
             self.monday_util = monday_util
-            self.logger.info('[__init__] - Monday Webhook Handler Initialized')
+            self.logger.info('Monday Webhook Handler Initialized')
             self._initialized = True
 
     @staticmethod

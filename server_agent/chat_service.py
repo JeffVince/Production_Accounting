@@ -16,7 +16,7 @@ class ChatService:
         config = Config()
         db_settings = config.get_database_settings(config.USE_LOCAL)
         initialize_database(db_settings['url'])
-        self.logger.debug('[__init__] - Database initialized in ChatService constructor.')
+        self.logger.debug('Database initialized in ChatService constructor.')
 
     def create_table(self, table_name: str, columns_or_defs: Any):
         """
@@ -33,7 +33,7 @@ class ChatService:
         update_database_util_files(table_name, create=True)
         update_database_trigger_file(table_name, create=True)
         update_celery_tasks_file(table_name, create=True)
-        self.logger.info(f"[create_table] - Table '{table_name}' created successfully in DB + code.")
+        self.logger.info(f"[create_table] - SysTable '{table_name}' created successfully in DB + code.")
 
     def update_table(self, table_name: str, updates: Dict[str, Any]):
         """
@@ -46,7 +46,7 @@ class ChatService:
         update_database_util_files(table_name, create=False)
         update_database_trigger_file(table_name, create=False)
         update_celery_tasks_file(table_name, create=False)
-        self.logger.info(f"[update_table] - Table '{table_name}' updated successfully (DB + code).")
+        self.logger.info(f"[update_table] - SysTable '{table_name}' updated successfully (DB + code).")
 
     def delete_table(self, table_name: str):
         self.logger.info(f'[delete_table] - delete_table -> {table_name}')
@@ -56,7 +56,7 @@ class ChatService:
         update_database_util_files(table_name, delete=True)
         update_database_trigger_file(table_name, delete=True)
         update_celery_tasks_file(table_name, delete=True)
-        self.logger.info(f"[delete_table] - Table '{table_name}' dropped (DB + code).")
+        self.logger.info(f"[delete_table] - SysTable '{table_name}' dropped (DB + code).")
 
     def insert_data(self, table_name: str, data: Dict[str, Any]):
         self.logger.info(f'[insert_data] - insert_data -> {table_name}, data={data}')

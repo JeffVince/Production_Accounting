@@ -1,267 +1,283 @@
-SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS; 
-SET UNIQUE_CHECKS=0;
-SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS; 
-SET FOREIGN_KEY_CHECKS=0;
-SET @OLD_SQL_MODE=@@SQL_MODE; 
-SET SQL_MODE='ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION';
+-- MySQL Workbench Forward Engineering
+
+SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0;
+SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0;
+SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION';
+
+-- -----------------------------------------------------
+-- Schema mydb
+-- -----------------------------------------------------
+-- -----------------------------------------------------
+-- Schema virtual_pm
+-- -----------------------------------------------------
 
 -- -----------------------------------------------------
 -- Schema virtual_pm
 -- -----------------------------------------------------
-CREATE SCHEMA IF NOT EXISTS `virtual_pm`
-  DEFAULT CHARACTER SET utf8mb4
-  COLLATE utf8mb4_unicode_ci;
-
-USE `virtual_pm`;
+CREATE SCHEMA IF NOT EXISTS `virtual_pm` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci ;
+USE `virtual_pm` ;
 
 -- -----------------------------------------------------
--- Drop any old tables if needed
+-- Table `virtual_pm`.`contact`
 -- -----------------------------------------------------
-DROP TABLE IF EXISTS `contact_po`;
-
--- -----------------------------------------------------
--- Table: tax_account
--- -----------------------------------------------------
-DROP TABLE IF EXISTS `tax_account`;
-CREATE TABLE IF NOT EXISTS `tax_account` (
-  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  `tax_code` VARCHAR(45) NOT NULL,
-  `description` VARCHAR(255) NULL DEFAULT NULL,
-  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`)
-)
-ENGINE = InnoDB
-DEFAULT CHARSET = utf8mb4
-COLLATE = utf8mb4_unicode_ci;
-
-CREATE UNIQUE INDEX `id_UNIQUE`
-  ON `tax_account` (`id` ASC);
-
--- -----------------------------------------------------
--- Table: aicp_code
--- -----------------------------------------------------
-DROP TABLE IF EXISTS account_code;
-CREATE TABLE IF NOT EXISTS `aicp_code` (
-  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  `aicp_code` VARCHAR(45) NOT NULL,
-  `tax_id` INT UNSIGNED NOT NULL,
-  `aicp_description` VARCHAR(45) NULL DEFAULT NULL,
-  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  CONSTRAINT `fk_aicp_code_tax_account`
-    FOREIGN KEY (`tax_id`)
-    REFERENCES `tax_account` (`id`)
-)
-ENGINE = InnoDB
-DEFAULT CHARSET = utf8mb4
-COLLATE = utf8mb4_unicode_ci;
-
-CREATE UNIQUE INDEX `aicp_code`
-  ON account_code (code ASC);
-
-CREATE UNIQUE INDEX `id_UNIQUE`
-  ON account_code (`id` ASC);
-
-CREATE INDEX `fk_tax_account_idx`
-  ON account_code (`tax_id` ASC);
-
--- -----------------------------------------------------
--- Table: xero_bill
--- -----------------------------------------------------
-DROP TABLE IF EXISTS `xero_bill`;
-CREATE TABLE IF NOT EXISTS `xero_bill` (
-  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  `state` VARCHAR(45) NOT NULL DEFAULT 'Draft',
-  `xero_reference_number` VARCHAR(45) NULL DEFAULT NULL,
-  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`)
-)
-ENGINE = InnoDB
-DEFAULT CHARSET = utf8mb4
-COLLATE = utf8mb4_unicode_ci;
-
-CREATE UNIQUE INDEX `id_UNIQUE`
-  ON `xero_bill` (`id` ASC);
-
-CREATE UNIQUE INDEX `xero_id`
-  ON `xero_bill` (`xero_reference_number` ASC);
-
--- -----------------------------------------------------
--- Table: spend_money
--- -----------------------------------------------------
-DROP TABLE IF EXISTS `spend_money`;
-CREATE TABLE IF NOT EXISTS `spend_money` (
-  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  `xero_spend_money_reference_number` VARCHAR(100) NULL DEFAULT NULL,
-  `file_link` VARCHAR(255) NULL DEFAULT NULL,
-  `state` VARCHAR(45) NOT NULL DEFAULT 'Draft',
-  `spend_moneycol` VARCHAR(45) NULL DEFAULT NULL,
-  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`)
-)
-ENGINE = InnoDB
-DEFAULT CHARSET = utf8mb4
-COLLATE = utf8mb4_unicode_ci;
-
-CREATE UNIQUE INDEX `id_UNIQUE`
-  ON `spend_money` (`id` ASC);
-
-CREATE UNIQUE INDEX `xero_spend_money_id`
-  ON `spend_money` (`xero_spend_money_reference_number` ASC);
-
--- -----------------------------------------------------
--- Table: bank_transaction
--- -----------------------------------------------------
-DROP TABLE IF EXISTS `bank_transaction`;
-CREATE TABLE IF NOT EXISTS `bank_transaction` (
-  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  `mercury_transaction_id` VARCHAR(100) NOT NULL,
-  `state` VARCHAR(45) NOT NULL DEFAULT 'Pending',
-  `xero_bill_id` INT UNSIGNED NOT NULL,
-  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  `xero_spend_money_id` INT UNSIGNED NOT NULL,
-  PRIMARY KEY (`id`),
-  CONSTRAINT `fk_bank_xero_bills`
-    FOREIGN KEY (`xero_bill_id`)
-    REFERENCES `xero_bill` (`id`),
-  CONSTRAINT `fk_bank_xero_spend_money`
-    FOREIGN KEY (`xero_spend_money_id`)
-    REFERENCES `spend_money` (`id`)
-)
-ENGINE = InnoDB
-DEFAULT CHARSET = utf8mb4
-COLLATE = utf8mb4_unicode_ci;
-
-CREATE UNIQUE INDEX `mercury_transaction_id`
-  ON `bank_transaction` (`mercury_transaction_id` ASC);
-
-CREATE UNIQUE INDEX `id_UNIQUE`
-  ON `bank_transaction` (`id` ASC);
-
-CREATE INDEX `fk_xero_bills_idx`
-  ON `bank_transaction` (`xero_bill_id` ASC);
-
-CREATE INDEX `fk_xero_spend_money_idx`
-  ON `bank_transaction` (`xero_spend_money_id` ASC);
-
--- -----------------------------------------------------
--- Table: project
--- -----------------------------------------------------
-DROP TABLE IF EXISTS `project`;
-CREATE TABLE IF NOT EXISTS `project` (
-  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  `project_number` INT NULL DEFAULT NULL,
-  `name` VARCHAR(100) NOT NULL,
-  `status` ENUM('Active','Closed') NOT NULL DEFAULT 'Active',
-  `total_spent` DECIMAL(10,2) NULL DEFAULT '0.00',
-  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`)
-)
-ENGINE = InnoDB
-AUTO_INCREMENT = 3
-DEFAULT CHARSET = utf8mb4
-COLLATE = utf8mb4_unicode_ci;
-
-CREATE UNIQUE INDEX `id_UNIQUE`
-  ON `project` (`id` ASC);
-
--- -----------------------------------------------------
--- Table: contact
--- -----------------------------------------------------
-DROP TABLE IF EXISTS `contact`;
-CREATE TABLE IF NOT EXISTS `contact` (
-  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  `pulse_id` BIGINT NULL DEFAULT NULL,
+CREATE TABLE IF NOT EXISTS `virtual_pm`.`contact` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `name` VARCHAR(255) NOT NULL,
-  `vendor_type` VARCHAR(45) NULL DEFAULT NULL,
+  `vendor_status` ENUM('PENDING', 'TO VERIFY', 'APPROVED', 'ISSUE') NOT NULL DEFAULT 'PENDING',
   `payment_details` VARCHAR(255) NOT NULL DEFAULT 'PENDING',
+  `vendor_type` VARCHAR(45) NULL DEFAULT NULL,
   `email` VARCHAR(100) NULL DEFAULT NULL,
   `phone` VARCHAR(45) NULL DEFAULT NULL,
   `address_line_1` VARCHAR(255) NULL DEFAULT NULL,
+  `address_line_2` VARCHAR(255) NULL DEFAULT NULL,
   `city` VARCHAR(100) NULL DEFAULT NULL,
   `zip` VARCHAR(20) NULL DEFAULT NULL,
-  `tax_form_link` VARCHAR(255) NULL DEFAULT NULL,
-  `vendor_status` ENUM('PENDING','TO VERIFY','APPROVED','ISSUE') NOT NULL DEFAULT 'PENDING',
+  `region` VARCHAR(45) NULL DEFAULT NULL,
   `country` VARCHAR(100) NULL DEFAULT NULL,
   `tax_type` VARCHAR(45) NULL DEFAULT 'SSN',
-  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  `tax_number` BIGINT NULL DEFAULT NULL,
-  PRIMARY KEY (`id`)
-)
-ENGINE = InnoDB
-AUTO_INCREMENT = 73
-DEFAULT CHARSET = utf8mb4
-COLLATE = utf8mb4_unicode_ci;
-
-CREATE UNIQUE INDEX `id_UNIQUE`
-  ON `contact` (`id` ASC);
-
-CREATE UNIQUE INDEX `pulse_id`
-  ON `contact` (`pulse_id` ASC);
-
--- -----------------------------------------------------
--- Table: purchase_order
---    (with new contact_id to form a one-to-many: one Contact, many POs)
--- -----------------------------------------------------
-DROP TABLE IF EXISTS `purchase_order`;
-CREATE TABLE IF NOT EXISTS `purchase_order` (
-  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  `project_id` INT UNSIGNED NOT NULL,
-  `po_number` INT UNSIGNED NOT NULL,
-  `description` VARCHAR(255) NULL DEFAULT NULL,
-  `po_type` VARCHAR(45) NULL DEFAULT NULL,
-  `state` ENUM('APPROVED','TO VERIFY','ISSUE','PENDING','CC / PC') NOT NULL DEFAULT 'PENDING',
-  `amount_total` DECIMAL(15,2) NOT NULL DEFAULT '0.00',
-  `producer` VARCHAR(100) NULL DEFAULT NULL,
+  `tax_number` VARCHAR(45) NULL DEFAULT NULL,
   `tax_form_link` VARCHAR(255) NULL DEFAULT NULL,
   `pulse_id` BIGINT NULL DEFAULT NULL,
-  `folder_link` VARCHAR(255) NULL DEFAULT NULL,
-  `contact_id` INT UNSIGNED NULL DEFAULT NULL, -- NEW COLUMN FOR 1-to-MANY RELATIONSHIP
+  `xero_id` VARCHAR(255) NULL DEFAULT NULL,
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  CONSTRAINT `fk_purchase_order_project`
-    FOREIGN KEY (`project_id`)
-    REFERENCES `project` (`id`)
-    ON DELETE CASCADE,
-  CONSTRAINT `fk_purchase_order_contact`
-    FOREIGN KEY (`contact_id`)
-    REFERENCES `contact` (`id`)
-    ON DELETE SET NULL
-)
+  UNIQUE INDEX `id_UNIQUE` (`id` ASC) VISIBLE,
+  UNIQUE INDEX `pulse_id` (`pulse_id` ASC) VISIBLE)
 ENGINE = InnoDB
-AUTO_INCREMENT = 161
-DEFAULT CHARSET = utf8mb4
+AUTO_INCREMENT = 4624
+DEFAULT CHARACTER SET = utf8mb4
 COLLATE = utf8mb4_unicode_ci;
 
-CREATE UNIQUE INDEX `project_id`
-  ON `purchase_order` (`project_id` ASC, `po_number` ASC);
-
-CREATE UNIQUE INDEX `id_UNIQUE`
-  ON `purchase_order` (`id` ASC);
-
-CREATE INDEX `project_id_2`
-  ON `purchase_order` (`project_id` ASC);
 
 -- -----------------------------------------------------
--- Table: detail_item
+-- Table `virtual_pm`.`users`
 -- -----------------------------------------------------
-DROP TABLE IF EXISTS `detail_item`;
-CREATE TABLE IF NOT EXISTS `detail_item` (
-  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  `po_id` INT UNSIGNED NOT NULL,
-  `state` ENUM('PENDING','OVERDUE','ISSUE','RTP','RECONCILED','PAID','APPROVED') NOT NULL DEFAULT 'PENDING',
+CREATE TABLE IF NOT EXISTS `virtual_pm`.`users` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `username` VARCHAR(100) NOT NULL,
+  `contact_id` BIGINT UNSIGNED NULL DEFAULT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  INDEX `fk_user_contact` (`contact_id` ASC) VISIBLE,
+  CONSTRAINT `fk_user_contact`
+    FOREIGN KEY (`contact_id`)
+    REFERENCES `virtual_pm`.`contact` (`id`)
+    ON DELETE SET NULL
+    ON UPDATE CASCADE)
+ENGINE = InnoDB
+AUTO_INCREMENT = 2
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
+
+
+-- -----------------------------------------------------
+-- Table `virtual_pm`.`budget_map`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `virtual_pm`.`budget_map` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `map_name` VARCHAR(100) NOT NULL,
+  `user_id` BIGINT UNSIGNED NOT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  INDEX `fk_budget_map_users` (`user_id` ASC) VISIBLE,
+  CONSTRAINT `fk_budget_map_users`
+    FOREIGN KEY (`user_id`)
+    REFERENCES `virtual_pm`.`users` (`id`)
+    ON DELETE CASCADE
+    ON UPDATE CASCADE)
+ENGINE = InnoDB
+AUTO_INCREMENT = 12
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
+
+
+-- -----------------------------------------------------
+-- Table `virtual_pm`.`tax_ledger`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `virtual_pm`.`tax_ledger` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `name` VARCHAR(100) NOT NULL,
+  `user_id` BIGINT UNSIGNED NOT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  INDEX `fk_tax_ledger_users` (`user_id` ASC) VISIBLE,
+  CONSTRAINT `fk_tax_ledger_users`
+    FOREIGN KEY (`user_id`)
+    REFERENCES `virtual_pm`.`users` (`id`)
+    ON DELETE CASCADE
+    ON UPDATE CASCADE)
+ENGINE = InnoDB
+AUTO_INCREMENT = 17
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
+
+
+-- -----------------------------------------------------
+-- Table `virtual_pm`.`tax_account`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `virtual_pm`.`tax_account` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `tax_code` VARCHAR(45) NOT NULL,
+  `description` VARCHAR(255) NULL DEFAULT NULL,
+  `tax_ledger_id` BIGINT UNSIGNED NULL DEFAULT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `id_UNIQUE` (`id` ASC) VISIBLE,
+  INDEX `fk_tax_account_tax_ledger` (`tax_ledger_id` ASC) VISIBLE,
+  CONSTRAINT `fk_tax_account_tax_ledger`
+    FOREIGN KEY (`tax_ledger_id`)
+    REFERENCES `virtual_pm`.`tax_ledger` (`id`)
+    ON DELETE SET NULL
+    ON UPDATE CASCADE)
+ENGINE = InnoDB
+AUTO_INCREMENT = 121
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
+
+
+-- -----------------------------------------------------
+-- Table `virtual_pm`.`account_code`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `virtual_pm`.`account_code` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `code` VARCHAR(45) NOT NULL,
+  `budget_map_id` BIGINT UNSIGNED NULL DEFAULT NULL,
+  `tax_id` BIGINT UNSIGNED NULL DEFAULT NULL,
+  `account_description` VARCHAR(45) NULL DEFAULT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `id_UNIQUE` (`id` ASC) VISIBLE,
+  INDEX `fk_tax_account_idx` (`tax_id` ASC) VISIBLE,
+  INDEX `fk_account_code_budget_map` (`budget_map_id` ASC) VISIBLE,
+  CONSTRAINT `fk_account_code_budget_map`
+    FOREIGN KEY (`budget_map_id`)
+    REFERENCES `virtual_pm`.`budget_map` (`id`)
+    ON DELETE SET NULL
+    ON UPDATE CASCADE,
+  CONSTRAINT `fk_aicp_code_tax_account`
+    FOREIGN KEY (`tax_id`)
+    REFERENCES `virtual_pm`.`tax_account` (`id`)
+    ON DELETE SET NULL
+    ON UPDATE CASCADE)
+ENGINE = InnoDB
+AUTO_INCREMENT = 16608
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
+
+
+-- -----------------------------------------------------
+-- Table `virtual_pm`.`sys_table`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `virtual_pm`.`sys_table` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `name` VARCHAR(100) NOT NULL,
+  `type` ENUM('SYSTEM', 'PARENT/CHILD', 'PARENT', 'CHILD', 'SINGLE') NOT NULL DEFAULT 'SINGLE',
+  `integration_name` VARCHAR(45) NULL DEFAULT NULL,
+  `integration_type` ENUM('PARENT', 'CHILD', 'SINGLE') NOT NULL DEFAULT 'SINGLE',
+  `integration_connection` ENUM('NONE', '1to1', '1toMany', 'Manyto1', 'ManytoMany') NOT NULL DEFAULT 'NONE',
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `table_id_uindex` (`id` ASC) VISIBLE)
+ENGINE = InnoDB
+AUTO_INCREMENT = 53
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
+
+
+-- -----------------------------------------------------
+-- Table `virtual_pm`.`audit_log`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `virtual_pm`.`audit_log` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `table_id` BIGINT UNSIGNED NULL DEFAULT NULL,
+  `operation` VARCHAR(10) NOT NULL,
+  `record_id` BIGINT UNSIGNED NULL DEFAULT NULL,
+  `message` VARCHAR(255) NULL DEFAULT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  INDEX `audit_log_sys_table_id_fk` (`table_id` ASC) VISIBLE,
+  CONSTRAINT `audit_log_sys_table_id_fk`
+    FOREIGN KEY (`table_id`)
+    REFERENCES `virtual_pm`.`sys_table` (`id`)
+    ON DELETE CASCADE
+    ON UPDATE CASCADE)
+ENGINE = InnoDB
+AUTO_INCREMENT = 389530
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_0900_ai_ci;
+
+
+-- -----------------------------------------------------
+-- Table `virtual_pm`.`spend_money`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `virtual_pm`.`spend_money` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `project_number` INT UNSIGNED NULL DEFAULT NULL,
+  `po_number` INT UNSIGNED NULL DEFAULT NULL,
+  `detail_number` INT UNSIGNED NULL DEFAULT NULL,
+  `line_number` INT UNSIGNED NULL DEFAULT NULL,
+  `amount` DECIMAL(10,0) NULL DEFAULT NULL,
+  `state` VARCHAR(45) NOT NULL DEFAULT 'Draft',
+  `tax_code` INT NULL DEFAULT NULL,
+  `xero_link` VARCHAR(255) NULL DEFAULT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `xero_spend_money_id` VARCHAR(100) NULL DEFAULT NULL,
+  `xero_spend_money_reference_number` VARCHAR(50) GENERATED ALWAYS AS (concat(lpad(`project_number`,4,_utf8mb4'0'),_utf8mb4'_',lpad(`po_number`,2,_utf8mb4'0'),_utf8mb4'_',lpad(`detail_number`,2,_utf8mb4'0'),_utf8mb4'_',lpad(`line_number`,2,_utf8mb4'0'))) STORED,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `id_UNIQUE` (`id` ASC) VISIBLE)
+ENGINE = InnoDB
+AUTO_INCREMENT = 1936
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
+
+
+-- -----------------------------------------------------
+-- Table `virtual_pm`.`bank_transaction`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `virtual_pm`.`bank_transaction` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `mercury_transaction_id` VARCHAR(100) NOT NULL,
+  `state` VARCHAR(45) NOT NULL DEFAULT 'Pending',
+  `xero_bill_id` BIGINT UNSIGNED NOT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `xero_spend_money_id` BIGINT UNSIGNED NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `mercury_transaction_id` (`mercury_transaction_id` ASC) VISIBLE,
+  UNIQUE INDEX `id_UNIQUE` (`id` ASC) VISIBLE,
+  INDEX `fk_xero_bills_idx` (`xero_bill_id` ASC) VISIBLE,
+  INDEX `fk_xero_spend_money_idx` (`xero_spend_money_id` ASC) VISIBLE,
+  CONSTRAINT `bank_transaction_xero_spend_money_id_fk`
+    FOREIGN KEY (`xero_spend_money_id`)
+    REFERENCES `virtual_pm`.`spend_money` (`id`)
+    ON DELETE CASCADE
+    ON UPDATE CASCADE)
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
+
+
+-- -----------------------------------------------------
+-- Table `virtual_pm`.`detail_item`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `virtual_pm`.`detail_item` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `project_number` INT UNSIGNED NULL DEFAULT NULL,
+  `po_number` INT UNSIGNED NULL DEFAULT NULL,
   `detail_number` INT UNSIGNED NOT NULL,
   `line_number` INT UNSIGNED NOT NULL,
-  `aicp_code` INT UNSIGNED NOT NULL,
+  `account_code` VARCHAR(45) NOT NULL,
   `vendor` VARCHAR(255) NULL DEFAULT NULL,
+  `payment_type` VARCHAR(45) NULL DEFAULT NULL,
+  `state` ENUM('PENDING', 'OVERDUE', 'REVIEWED', 'ISSUE', 'RTP', 'RECONCILED', 'PAID', 'APPROVED', 'SUBMITTED', 'PO MISMATCH') NOT NULL DEFAULT 'PENDING',
   `description` VARCHAR(255) NULL DEFAULT NULL,
   `transaction_date` DATETIME NULL DEFAULT NULL,
   `due_date` DATETIME NULL DEFAULT NULL,
@@ -269,155 +285,287 @@ CREATE TABLE IF NOT EXISTS `detail_item` (
   `quantity` DECIMAL(15,2) NOT NULL DEFAULT '1.00',
   `ot` DECIMAL(15,2) NULL DEFAULT '0.00',
   `fringes` DECIMAL(15,2) NULL DEFAULT '0.00',
-  `sub_total` DECIMAL(15,2) GENERATED ALWAYS AS (
-       round(((rate * quantity) + IFNULL(ot,0) + IFNULL(fringes,0)),2)
-    ) STORED,
-  `file_link` VARCHAR(255) NULL DEFAULT NULL,
+  `sub_total` DECIMAL(15,2) GENERATED ALWAYS AS (round((((`rate` * `quantity`) + ifnull(`ot`,0)) + ifnull(`fringes`,0)),2)) STORED,
+  `receipt_id` INT UNSIGNED NULL DEFAULT NULL,
+  `invoice_id` INT UNSIGNED NULL DEFAULT NULL,
+  `pulse_id` BIGINT NULL DEFAULT NULL,
+  `parent_pulse_id` BIGINT NULL DEFAULT NULL,
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  CONSTRAINT `fk_detail_item_aicp_code`
-    FOREIGN KEY (`aicp_code`)
-    REFERENCES account_code (`id`),
-  CONSTRAINT `fk_detail_item_purchase_order`
-    FOREIGN KEY (`po_id`)
-    REFERENCES `purchase_order` (`id`)
-    ON DELETE CASCADE
-)
+  UNIQUE INDEX `id_UNIQUE` (`id` ASC) VISIBLE,
+  UNIQUE INDEX `detail_item_pulse_id_uindex` (`pulse_id` ASC) VISIBLE)
 ENGINE = InnoDB
-DEFAULT CHARSET = utf8mb4
+AUTO_INCREMENT = 31346
+DEFAULT CHARACTER SET = utf8mb4
 COLLATE = utf8mb4_unicode_ci;
 
-CREATE UNIQUE INDEX `id_UNIQUE`
-  ON `detail_item` (`id` ASC);
-
-CREATE INDEX `po_id`
-  ON `detail_item` (`po_id` ASC);
-
-CREATE INDEX `fk_aicp_code_idx`
-  ON `detail_item` (account_code ASC);
 
 -- -----------------------------------------------------
--- Table: bill_line_item
+-- Table `virtual_pm`.`invoice`
 -- -----------------------------------------------------
-DROP TABLE IF EXISTS `bill_line_item`;
-CREATE TABLE IF NOT EXISTS `bill_line_item` (
-  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  `xero_bill_id` INT UNSIGNED NOT NULL,
-  `detail_item_id` INT UNSIGNED NOT NULL,
-  PRIMARY KEY (`id`, `detail_item_id`, `xero_bill_id`),
-  CONSTRAINT `fk_bill_line_item_detail_item`
-    FOREIGN KEY (`detail_item_id`)
-    REFERENCES `detail_item` (`id`),
-  CONSTRAINT `fk_bill_line_item_xero_bill`
-    FOREIGN KEY (`xero_bill_id`)
-    REFERENCES `xero_bill` (`id`)
-)
-ENGINE = InnoDB
-DEFAULT CHARSET = utf8mb4
-COLLATE = utf8mb4_unicode_ci;
-
-CREATE UNIQUE INDEX `id_UNIQUE`
-  ON `bill_line_item` (`id` ASC);
-
-CREATE INDEX `fk_detail_item_idx`
-  ON `bill_line_item` (`detail_item_id` ASC);
-
-CREATE INDEX `fk_xero_bill_idx`
-  ON `bill_line_item` (parent_id ASC);
-
--- -----------------------------------------------------
--- Table: invoice
--- -----------------------------------------------------
-DROP TABLE IF EXISTS `invoice`;
-CREATE TABLE IF NOT EXISTS `invoice` (
-  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  `transaction_date` DATETIME NULL DEFAULT NULL,
+CREATE TABLE IF NOT EXISTS `virtual_pm`.`invoice` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `project_number` INT UNSIGNED NOT NULL,
+  `po_number` INT UNSIGNED NOT NULL,
+  `invoice_number` INT UNSIGNED NOT NULL,
   `term` INT NULL DEFAULT NULL,
   `total` DECIMAL(15,2) NULL DEFAULT '0.00',
+  `transaction_date` DATETIME NULL DEFAULT NULL,
   `file_link` VARCHAR(255) NULL DEFAULT NULL,
-  `po_id` INT UNSIGNED NOT NULL,
-  `project_id` INT UNSIGNED NOT NULL,
-  `invoice_number` INT UNSIGNED NOT NULL,
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  CONSTRAINT `fk_invoice_purchase_order`
-    FOREIGN KEY (`po_id`)
-    REFERENCES `purchase_order` (`id`)
-    ON DELETE CASCADE
-)
+  UNIQUE INDEX `id_UNIQUE` (`id` ASC) VISIBLE,
+  INDEX `po_id` (`po_number` ASC) VISIBLE)
 ENGINE = InnoDB
-DEFAULT CHARSET = utf8mb4
+AUTO_INCREMENT = 101
+DEFAULT CHARACTER SET = utf8mb4
 COLLATE = utf8mb4_unicode_ci;
 
-CREATE UNIQUE INDEX `id_UNIQUE`
-  ON `invoice` (`id` ASC);
-
-CREATE INDEX `po_id`
-  ON `invoice` (po_number ASC);
 
 -- -----------------------------------------------------
--- Table: receipt
+-- Table `virtual_pm`.`po_log`
 -- -----------------------------------------------------
-DROP TABLE IF EXISTS `receipt`;
-CREATE TABLE IF NOT EXISTS `receipt` (
-  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  `total` DECIMAL(15,2) NULL DEFAULT '0.00',
-  `receipt_description` VARCHAR(45) NULL DEFAULT NULL,
-  `purchase_date` DATETIME NULL DEFAULT NULL,
-  `file_link` VARCHAR(255) NULL DEFAULT NULL,
+CREATE TABLE IF NOT EXISTS `virtual_pm`.`po_log` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `project_number` INT UNSIGNED NULL DEFAULT NULL,
+  `filename` VARCHAR(255) NULL DEFAULT NULL,
+  `db_path` VARCHAR(255) NOT NULL,
+  `status` ENUM('PENDING', 'STARTED', 'COMPLETED', 'FAILED') NOT NULL DEFAULT 'PENDING',
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  `spend_money_id` INT UNSIGNED NOT NULL,
-  `detail_item_id` INT UNSIGNED NOT NULL,
-  PRIMARY KEY (`id`, `detail_item_id`),
-  CONSTRAINT `fk_receipt_detail_item`
-    FOREIGN KEY (`detail_item_id`)
-    REFERENCES `detail_item` (`id`),
-  CONSTRAINT `fk_receipt_spend_money`
-    FOREIGN KEY (`spend_money_id`)
-    REFERENCES `spend_money` (`id`)
-)
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `id_UNIQUE` (`id` ASC) VISIBLE)
 ENGINE = InnoDB
-DEFAULT CHARSET = utf8mb4
+AUTO_INCREMENT = 4
+DEFAULT CHARACTER SET = utf8mb4
 COLLATE = utf8mb4_unicode_ci;
 
-CREATE UNIQUE INDEX `id_UNIQUE`
-  ON `receipt` (`id` ASC);
-
-CREATE INDEX `fk_spend_money_idx`
-  ON `receipt` (`spend_money_id` ASC);
-
-CREATE INDEX `fk_detail_item_idx`
-  ON `receipt` (`detail_item_id` ASC);
 
 -- -----------------------------------------------------
--- Example placeholders for views 
+-- Table `virtual_pm`.`project`
 -- -----------------------------------------------------
-DROP TABLE IF EXISTS `vw_average_po_value_per_project`;
-CREATE TABLE IF NOT EXISTS `vw_average_po_value_per_project` (`project_id` INT, `project_name` INT, `avg_po_value` INT);
+CREATE TABLE IF NOT EXISTS `virtual_pm`.`project` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `user_id` INT NULL DEFAULT NULL,
+  `project_number` INT NULL DEFAULT NULL,
+  `name` VARCHAR(100) NOT NULL,
+  `status` ENUM('Active', 'Closed') NOT NULL DEFAULT 'Active',
+  `tax_ledger` VARCHAR(45) NULL DEFAULT NULL,
+  `budget_map_id` VARCHAR(45) NULL DEFAULT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `id_UNIQUE` (`id` ASC) VISIBLE)
+ENGINE = InnoDB
+AUTO_INCREMENT = 2329
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
-DROP TABLE IF EXISTS `vw_detail_items_summary`;
-CREATE TABLE IF NOT EXISTS `vw_detail_items_summary` (`po_id` INT, `project_name` INT, `po_number` INT, `total_items` INT, `total_sub_total` INT, `avg_item_cost` INT);
-
-DROP TABLE IF EXISTS `vw_invoice_summary`;
-CREATE TABLE IF NOT EXISTS `vw_invoice_summary` (`invoice_id` INT, `invoice_number` INT, `invoice_total` INT, `transaction_date` INT, `project_name` INT, `po_number` INT, `created_at` INT, `updated_at` INT);
-
-DROP TABLE IF EXISTS `vw_project_totals`;
-CREATE TABLE IF NOT EXISTS `vw_project_totals` (`project_id` INT, `project_name` INT, `status` INT, `total_spent` INT, `number_of_purchase_orders` INT);
-
-DROP TABLE IF EXISTS `vw_purchase_order_details`;
-CREATE TABLE IF NOT EXISTS `vw_purchase_order_details` (`po_id` INT, `project_name` INT, `po_number` INT, `amount_total` INT, `contact_name` INT, `state` INT, `created_at` INT, `updated_at` INT);
 
 -- -----------------------------------------------------
--- sp_create_investor_views (updated to reference PO.contact_id)
+-- Table `virtual_pm`.`purchase_order`
 -- -----------------------------------------------------
-USE `virtual_pm`;
-DROP PROCEDURE IF EXISTS `sp_create_investor_views`;
+CREATE TABLE IF NOT EXISTS `virtual_pm`.`purchase_order` (
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `project_number` INT UNSIGNED NULL DEFAULT NULL,
+  `po_number` INT UNSIGNED NOT NULL,
+  `description` VARCHAR(255) NULL DEFAULT NULL,
+  `po_type` VARCHAR(45) NULL DEFAULT NULL,
+  `producer` VARCHAR(100) NULL DEFAULT NULL,
+  `pulse_id` BIGINT NULL DEFAULT NULL,
+  `folder_link` VARCHAR(255) NULL DEFAULT NULL,
+  `contact_id` BIGINT UNSIGNED NULL DEFAULT NULL,
+  `project_id` BIGINT UNSIGNED NOT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `id_UNIQUE` (`id` ASC) VISIBLE,
+  INDEX `project_id_2` (`project_id` ASC) VISIBLE,
+  INDEX `fk_purchase_order_contact` (`contact_id` ASC) VISIBLE,
+  CONSTRAINT `fk_purchase_order_contact`
+    FOREIGN KEY (`contact_id`)
+    REFERENCES `virtual_pm`.`contact` (`id`)
+    ON DELETE SET NULL,
+  CONSTRAINT `fk_purchase_order_project`
+    FOREIGN KEY (`project_id`)
+    REFERENCES `virtual_pm`.`project` (`id`)
+    ON DELETE CASCADE
+    ON UPDATE CASCADE)
+ENGINE = InnoDB
+AUTO_INCREMENT = 4232
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
+
+
+-- -----------------------------------------------------
+-- Table `virtual_pm`.`receipt`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `virtual_pm`.`receipt` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `project_number` INT UNSIGNED NOT NULL,
+  `po_number` INT UNSIGNED NULL DEFAULT NULL,
+  `detail_number` INT UNSIGNED NULL DEFAULT NULL,
+  `line_number` INT UNSIGNED NULL DEFAULT NULL,
+  `receipt_description` VARCHAR(255) NULL DEFAULT NULL,
+  `total` DECIMAL(15,2) NULL DEFAULT '0.00',
+  `purchase_date` DATETIME NULL DEFAULT NULL,
+  `dropbox_path` VARCHAR(255) NULL DEFAULT NULL,
+  `file_link` VARCHAR(255) NOT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `spend_money_id` BIGINT UNSIGNED NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `id_UNIQUE` (`id` ASC) VISIBLE,
+  INDEX `fk_spend_money_idx` (`spend_money_id` ASC) VISIBLE,
+  CONSTRAINT `receipt_spend_money_id_fk`
+    FOREIGN KEY (`spend_money_id`)
+    REFERENCES `virtual_pm`.`spend_money` (`id`)
+    ON DELETE SET NULL
+    ON UPDATE CASCADE)
+ENGINE = InnoDB
+AUTO_INCREMENT = 393
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
+
+
+-- -----------------------------------------------------
+-- Table `virtual_pm`.`tax_form`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `virtual_pm`.`tax_form` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `contact_id` BIGINT UNSIGNED NOT NULL,
+  `type` ENUM('W9', 'W8-BEN', 'W8-BEN-E') NOT NULL,
+  `filename` VARCHAR(100) NULL DEFAULT NULL,
+  `db_path` VARCHAR(255) NULL DEFAULT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `tax_form_contact_id_uindex` (`contact_id` ASC) VISIBLE,
+  UNIQUE INDEX `tax_form_id_uindex` (`id` ASC) VISIBLE,
+  CONSTRAINT `tax_form_contact_id_fk`
+    FOREIGN KEY (`contact_id`)
+    REFERENCES `virtual_pm`.`contact` (`id`)
+    ON UPDATE CASCADE)
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
+
+
+-- -----------------------------------------------------
+-- Table `virtual_pm`.`xero_bill`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `virtual_pm`.`xero_bill` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `state` VARCHAR(45) NOT NULL DEFAULT 'Draft',
+  `project_number` INT UNSIGNED NULL DEFAULT NULL,
+  `po_number` INT UNSIGNED NULL DEFAULT NULL,
+  `detail_number` INT UNSIGNED NULL DEFAULT NULL,
+  `transaction_date` DATE NULL DEFAULT NULL,
+  `due_date` DATE NULL DEFAULT NULL,
+  `xero_reference_number` VARCHAR(50) GENERATED ALWAYS AS (concat(lpad(`project_number`,4,_utf8mb4'0'),_utf8mb4'_',lpad(`po_number`,2,_utf8mb4'0'),_utf8mb4'_',lpad(`detail_number`,2,_utf8mb4'0'))) STORED,
+  `xero_id` VARCHAR(255) NULL DEFAULT NULL,
+  `xero_link` VARCHAR(255) NULL DEFAULT NULL,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `id_UNIQUE` (`id` ASC) VISIBLE,
+  UNIQUE INDEX `number` (`project_number` DESC, `po_number` DESC, `detail_number` ASC) VISIBLE,
+  UNIQUE INDEX `xero_id` (`xero_reference_number`(45) ASC) VISIBLE)
+ENGINE = InnoDB
+AUTO_INCREMENT = 2796
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
+
+
+-- -----------------------------------------------------
+-- Table `virtual_pm`.`xero_bill_line_item`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `virtual_pm`.`xero_bill_line_item` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `project_number` INT UNSIGNED NULL DEFAULT NULL,
+  `po_number` INT UNSIGNED NULL DEFAULT NULL,
+  `detail_number` INT UNSIGNED NULL DEFAULT NULL,
+  `line_number` INT UNSIGNED NULL DEFAULT NULL,
+  `description` VARCHAR(255) NULL DEFAULT NULL,
+  `quantity` DECIMAL(10,0) NULL DEFAULT NULL,
+  `unit_amount` DECIMAL(10,0) NULL DEFAULT NULL,
+  `line_amount` DECIMAL(10,0) NULL DEFAULT NULL,
+  `account_code` INT NULL DEFAULT NULL,
+  `parent_id` BIGINT UNSIGNED NOT NULL,
+  `xero_bill_line_id` VARCHAR(255) NULL DEFAULT NULL,
+  `parent_xero_id` VARCHAR(255) NULL DEFAULT NULL,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `transaction_date` DATE NULL DEFAULT NULL,
+  `due_date` DATE NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `id_UNIQUE` (`id` ASC) VISIBLE,
+  INDEX `bill_line_item_xero_bill_id_fk` (`parent_id` ASC) VISIBLE,
+  CONSTRAINT `bill_line_item_xero_bill_id_fk`
+    FOREIGN KEY (`parent_id`)
+    REFERENCES `virtual_pm`.`xero_bill` (`id`)
+    ON DELETE CASCADE
+    ON UPDATE CASCADE)
+ENGINE = InnoDB
+AUTO_INCREMENT = 4011
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
+
+USE `virtual_pm` ;
+
+-- -----------------------------------------------------
+-- Placeholder table for view `virtual_pm`.`vw_average_po_value_per_project`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `virtual_pm`.`vw_average_po_value_per_project` (`project_id` INT, `project_name` INT, `avg_po_value` INT);
+
+-- -----------------------------------------------------
+-- Placeholder table for view `virtual_pm`.`vw_detail_items_extended`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `virtual_pm`.`vw_detail_items_extended` (`detail_item_id` INT, `detail_item_state` INT, `detail_description` INT, `detail_subtotal` INT, `po_id` INT, `po_number` INT, `contact_id` INT, `contact_name` INT, `project_id` INT, `project_number` INT, `project_name` INT, `file_link` INT);
+
+-- -----------------------------------------------------
+-- Placeholder table for view `virtual_pm`.`vw_detail_items_summary`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `virtual_pm`.`vw_detail_items_summary` (`po_id` INT, `project_name` INT, `po_number` INT, `total_items` INT, `total_sub_total` INT, `avg_item_cost` INT);
+
+-- -----------------------------------------------------
+-- Placeholder table for view `virtual_pm`.`vw_invoice_summary`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `virtual_pm`.`vw_invoice_summary` (`invoice_id` INT, `invoice_number` INT, `invoice_total` INT, `transaction_date` INT, `project_name` INT, `po_number` INT, `created_at` INT, `updated_at` INT);
+
+-- -----------------------------------------------------
+-- Placeholder table for view `virtual_pm`.`vw_project_stats`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `virtual_pm`.`vw_project_stats` (`project_id` INT, `project_number` INT, `project_name` INT, `total_pos` INT, `total_detail_items` INT, `total_sum_of_detail_items` INT, `cnt_pending` INT, `cnt_overdue` INT, `cnt_reviewed` INT, `cnt_issue` INT, `cnt_rtp` INT, `cnt_reconciled` INT, `cnt_paid` INT, `cnt_approved` INT, `cnt_submitted` INT, `cnt_po_mismatch` INT);
+
+-- -----------------------------------------------------
+-- Placeholder table for view `virtual_pm`.`vw_project_totals`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `virtual_pm`.`vw_project_totals` (`project_id` INT, `project_name` INT, `status` INT, `total_spent` INT, `number_of_purchase_orders` INT);
+
+-- -----------------------------------------------------
+-- Placeholder table for view `virtual_pm`.`vw_purchase_order_details`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `virtual_pm`.`vw_purchase_order_details` (`po_id` INT, `project_name` INT, `po_number` INT, `amount_total` INT, `contact_name` INT, `state` INT, `created_at` INT, `updated_at` INT);
+
+-- -----------------------------------------------------
+-- Placeholder table for view `virtual_pm`.`vw_xero_bills_line_items`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `virtual_pm`.`vw_xero_bills_line_items` (`xero_bill_id` INT, `xero_bill_state` INT, `xero_reference_number` INT, `bill_line_item_id` INT, `bill_line_desc` INT, `bill_line_amount` INT, `bill_line_account_code` INT, `detail_item_id` INT, `detail_item_state` INT, `detail_item_subtotal` INT, `purchase_order_id` INT, `purchase_order_number` INT, `project_name` INT);
+
+-- -----------------------------------------------------
+-- Placeholder table for view `virtual_pm`.`vw_xero_bills_vs_pos`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `virtual_pm`.`vw_xero_bills_vs_pos` (`xero_bill_id` INT, `xero_bill_state` INT, `xero_reference_number` INT, `xero_bill_created_at` INT, `xero_bill_updated_at` INT, `purchase_order_id` INT, `purchase_order_number` INT, `purchase_order_state` INT, `project_id` INT, `project_number` INT, `project_name` INT);
+
+-- -----------------------------------------------------
+-- procedure sp_create_investor_views
+-- -----------------------------------------------------
+
 DELIMITER $$
+USE `virtual_pm`$$
 CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_create_investor_views`()
 BEGIN
     -- 1. Vendor Spend Summary: now join contact <-> purchase_order
@@ -454,7 +602,7 @@ BEGIN
         i.transaction_date AS invoice_date,
         DATEDIFF(i.transaction_date, po.created_at) AS days_to_invoice
     FROM invoice i
-    JOIN purchase_order po ON i.po_number = po.id
+    JOIN purchase_order po ON i.po_id = po.id
     JOIN project p ON p.id = po.project_id;
 
     -- 4. Project Vendor Distribution
@@ -490,118 +638,1064 @@ BEGIN
     FROM project p
     JOIN purchase_order po ON p.id = po.project_id
     GROUP BY p.id, p.name;
-END $$
+END$$
+
 DELIMITER ;
 
+-- -----------------------------------------------------
+-- View `virtual_pm`.`vw_average_po_value_per_project`
+-- -----------------------------------------------------
+DROP TABLE IF EXISTS `virtual_pm`.`vw_average_po_value_per_project`;
+USE `virtual_pm`;
+CREATE  OR REPLACE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `virtual_pm`.`vw_average_po_value_per_project` AS select `virtual_pm`.`p`.`id` AS `project_id`,`virtual_pm`.`p`.`name` AS `project_name`,avg(`virtual_pm`.`po`.`amount_total`) AS `avg_po_value` from (`virtual_pm`.`projects` `p` join `virtual_pm`.`purchase_orders` `po` on((`virtual_pm`.`p`.`id` = `virtual_pm`.`po`.`project_id`))) group by `virtual_pm`.`p`.`id`,`virtual_pm`.`p`.`name`;
+
+-- -----------------------------------------------------
+-- View `virtual_pm`.`vw_detail_items_extended`
+-- -----------------------------------------------------
+DROP TABLE IF EXISTS `virtual_pm`.`vw_detail_items_extended`;
+USE `virtual_pm`;
+CREATE  OR REPLACE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `virtual_pm`.`vw_detail_items_extended` AS select `di`.`id` AS `detail_item_id`,`di`.`state` AS `detail_item_state`,`di`.`description` AS `detail_description`,`di`.`sub_total` AS `detail_subtotal`,`po`.`id` AS `po_id`,`po`.`po_number` AS `po_number`,`c`.`id` AS `contact_id`,`c`.`name` AS `contact_name`,`p`.`id` AS `project_id`,`p`.`project_number` AS `project_number`,`p`.`name` AS `project_name`,coalesce(`r`.`file_link`,`i`.`file_link`) AS `file_link` from (((((`virtual_pm`.`detail_item` `di` join `virtual_pm`.`purchase_order` `po` on((`virtual_pm`.`di`.`po_id` = `virtual_pm`.`po`.`id`))) join `virtual_pm`.`project` `p` on((`po`.`project_id` = `p`.`id`))) left join `virtual_pm`.`contact` `c` on((`po`.`contact_id` = `c`.`id`))) left join `virtual_pm`.`receipt` `r` on((`di`.`receipt_id` = `r`.`id`))) left join `virtual_pm`.`invoice` `i` on((`di`.`invoice_id` = `i`.`id`)));
+
+-- -----------------------------------------------------
+-- View `virtual_pm`.`vw_detail_items_summary`
+-- -----------------------------------------------------
+DROP TABLE IF EXISTS `virtual_pm`.`vw_detail_items_summary`;
+USE `virtual_pm`;
+CREATE  OR REPLACE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `virtual_pm`.`vw_detail_items_summary` AS select `po`.`id` AS `po_id`,`p`.`name` AS `project_name`,`po`.`po_number` AS `po_number`,count(`di`.`id`) AS `total_items`,sum(`di`.`sub_total`) AS `total_sub_total`,avg(`di`.`sub_total`) AS `avg_item_cost` from ((`virtual_pm`.`detail_item` `di` join `virtual_pm`.`purchase_order` `po` on((`po`.`id` = `virtual_pm`.`di`.`po_id`))) join `virtual_pm`.`project` `p` on((`p`.`id` = `po`.`project_id`))) group by `virtual_pm`.`po`.`id`,`virtual_pm`.`p`.`name`,`virtual_pm`.`po`.`po_number`;
+
+-- -----------------------------------------------------
+-- View `virtual_pm`.`vw_invoice_summary`
+-- -----------------------------------------------------
+DROP TABLE IF EXISTS `virtual_pm`.`vw_invoice_summary`;
+USE `virtual_pm`;
+CREATE  OR REPLACE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `virtual_pm`.`vw_invoice_summary` AS select `i`.`id` AS `invoice_id`,`i`.`invoice_number` AS `invoice_number`,`i`.`total` AS `invoice_total`,`i`.`transaction_date` AS `transaction_date`,`p`.`name` AS `project_name`,`po`.`po_number` AS `po_number`,`i`.`created_at` AS `created_at`,`i`.`updated_at` AS `updated_at` from ((`virtual_pm`.`invoice` `i` join `virtual_pm`.`purchase_order` `po` on((`virtual_pm`.`po`.`id` = `virtual_pm`.`i`.`po_id`))) join `virtual_pm`.`project` `p` on((`p`.`id` = `virtual_pm`.`i`.`project_id`)));
+
+-- -----------------------------------------------------
+-- View `virtual_pm`.`vw_project_stats`
+-- -----------------------------------------------------
+DROP TABLE IF EXISTS `virtual_pm`.`vw_project_stats`;
+USE `virtual_pm`;
+CREATE  OR REPLACE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `virtual_pm`.`vw_project_stats` AS select `p`.`id` AS `project_id`,`p`.`project_number` AS `project_number`,`p`.`name` AS `project_name`,count(distinct `po`.`id`) AS `total_pos`,count(distinct `di`.`id`) AS `total_detail_items`,ifnull(sum(`di`.`sub_total`),0) AS `total_sum_of_detail_items`,sum((case when (`di`.`state` = 'PENDING') then 1 else 0 end)) AS `cnt_pending`,sum((case when (`di`.`state` = 'OVERDUE') then 1 else 0 end)) AS `cnt_overdue`,sum((case when (`di`.`state` = 'REVIEWED') then 1 else 0 end)) AS `cnt_reviewed`,sum((case when (`di`.`state` = 'ISSUE') then 1 else 0 end)) AS `cnt_issue`,sum((case when (`di`.`state` = 'RTP') then 1 else 0 end)) AS `cnt_rtp`,sum((case when (`di`.`state` = 'RECONCILED') then 1 else 0 end)) AS `cnt_reconciled`,sum((case when (`di`.`state` = 'PAID') then 1 else 0 end)) AS `cnt_paid`,sum((case when (`di`.`state` = 'APPROVED') then 1 else 0 end)) AS `cnt_approved`,sum((case when (`di`.`state` = 'SUBMITTED') then 1 else 0 end)) AS `cnt_submitted`,sum((case when (`di`.`state` = 'PO MISMATCH') then 1 else 0 end)) AS `cnt_po_mismatch` from ((`virtual_pm`.`project` `p` left join `virtual_pm`.`purchase_order` `po` on((`virtual_pm`.`p`.`id` = `virtual_pm`.`po`.`project_id`))) left join `virtual_pm`.`detail_item` `di` on((`po`.`id` = `virtual_pm`.`di`.`po_id`))) group by `virtual_pm`.`p`.`id`,`virtual_pm`.`p`.`project_number`,`virtual_pm`.`p`.`name`;
+
+-- -----------------------------------------------------
+-- View `virtual_pm`.`vw_project_totals`
+-- -----------------------------------------------------
+DROP TABLE IF EXISTS `virtual_pm`.`vw_project_totals`;
+USE `virtual_pm`;
+CREATE  OR REPLACE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `virtual_pm`.`vw_project_totals` AS select `p`.`id` AS `project_id`,`p`.`name` AS `project_name`,`p`.`status` AS `status`,`virtual_pm`.`p`.`total_spent` AS `total_spent`,count(`virtual_pm`.`po`.`id`) AS `number_of_purchase_orders` from (`virtual_pm`.`project` `p` left join `virtual_pm`.`purchase_order` `po` on((`virtual_pm`.`p`.`id` = `virtual_pm`.`po`.`project_id`))) group by `virtual_pm`.`p`.`id`,`virtual_pm`.`p`.`name`,`virtual_pm`.`p`.`status`,`virtual_pm`.`p`.`total_spent`;
+
+-- -----------------------------------------------------
+-- View `virtual_pm`.`vw_purchase_order_details`
+-- -----------------------------------------------------
+DROP TABLE IF EXISTS `virtual_pm`.`vw_purchase_order_details`;
+USE `virtual_pm`;
+CREATE  OR REPLACE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `virtual_pm`.`vw_purchase_order_details` AS select `po`.`id` AS `po_id`,`p`.`name` AS `project_name`,`po`.`po_number` AS `po_number`,`po`.`amount_total` AS `amount_total`,`c`.`name` AS `contact_name`,`po`.`state` AS `state`,`po`.`created_at` AS `created_at`,`po`.`updated_at` AS `updated_at` from (((`virtual_pm`.`purchase_order` `po` join `virtual_pm`.`project` `p` on((`p`.`id` = `po`.`project_id`))) left join `virtual_pm`.`contact_po` `cpo` on((`cpo`.`po_id` = `po`.`id`))) left join `virtual_pm`.`contact` `c` on((`c`.`id` = `cpo`.`contact_id`)));
+
+-- -----------------------------------------------------
+-- View `virtual_pm`.`vw_xero_bills_line_items`
+-- -----------------------------------------------------
+DROP TABLE IF EXISTS `virtual_pm`.`vw_xero_bills_line_items`;
+USE `virtual_pm`;
+CREATE  OR REPLACE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `virtual_pm`.`vw_xero_bills_line_items` AS select `virtual_pm`.`xb`.`id` AS `xero_bill_id`,`virtual_pm`.`xb`.`state` AS `xero_bill_state`,`virtual_pm`.`xb`.`xero_reference_number` AS `xero_reference_number`,`virtual_pm`.`bli`.`id` AS `bill_line_item_id`,`virtual_pm`.`bli`.`description` AS `bill_line_desc`,`virtual_pm`.`bli`.`line_amount` AS `bill_line_amount`,`virtual_pm`.`bli`.`account_code` AS `bill_line_account_code`,`virtual_pm`.`di`.`id` AS `detail_item_id`,`virtual_pm`.`di`.`state` AS `detail_item_state`,`virtual_pm`.`di`.`sub_total` AS `detail_item_subtotal`,`virtual_pm`.`po`.`id` AS `purchase_order_id`,`virtual_pm`.`po`.`po_number` AS `purchase_order_number`,`virtual_pm`.`p`.`name` AS `project_name` from ((((`virtual_pm`.`xero_bill` `xb` join `virtual_pm`.`bill_line_item` `bli` on((`virtual_pm`.`xb`.`id` = `virtual_pm`.`bli`.`xero_bill_id`))) left join `virtual_pm`.`detail_item` `di` on((`virtual_pm`.`bli`.`detail_item_id` = `virtual_pm`.`di`.`id`))) left join `virtual_pm`.`purchase_order` `po` on((`virtual_pm`.`di`.`po_id` = `virtual_pm`.`po`.`id`))) left join `virtual_pm`.`project` `p` on((`virtual_pm`.`po`.`project_id` = `virtual_pm`.`p`.`id`)));
+
+-- -----------------------------------------------------
+-- View `virtual_pm`.`vw_xero_bills_vs_pos`
+-- -----------------------------------------------------
+DROP TABLE IF EXISTS `virtual_pm`.`vw_xero_bills_vs_pos`;
+USE `virtual_pm`;
+CREATE  OR REPLACE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `virtual_pm`.`vw_xero_bills_vs_pos` AS select `xb`.`id` AS `xero_bill_id`,`xb`.`state` AS `xero_bill_state`,`xb`.`xero_reference_number` AS `xero_reference_number`,`xb`.`created_at` AS `xero_bill_created_at`,`xb`.`updated_at` AS `xero_bill_updated_at`,`po`.`id` AS `purchase_order_id`,`po`.`po_number` AS `purchase_order_number`,`virtual_pm`.`po`.`state` AS `purchase_order_state`,`virtual_pm`.`p`.`id` AS `project_id`,`virtual_pm`.`p`.`project_number` AS `project_number`,`virtual_pm`.`p`.`name` AS `project_name` from ((`virtual_pm`.`xero_bill` `xb` left join `virtual_pm`.`purchase_order` `po` on((`virtual_pm`.`xb`.`po_id` = `virtual_pm`.`po`.`id`))) left join `virtual_pm`.`project` `p` on((`virtual_pm`.`po`.`project_id` = `virtual_pm`.`p`.`id`)));
 USE `virtual_pm`;
 
--- -----------------------------------------------------
--- Triggers remain unchanged
--- -----------------------------------------------------
-
--- AFTER DELETE on purchase_order
-DROP TRIGGER IF EXISTS `trg_purchase_order_ad_update_project`;
+DELIMITER $$
+USE `virtual_pm`$$
 CREATE
 DEFINER=`root`@`localhost`
-TRIGGER `trg_purchase_order_ad_update_project`
-AFTER DELETE
-ON `purchase_order`
+TRIGGER `virtual_pm`.`contact_ad`
+AFTER DELETE ON `virtual_pm`.`contact`
 FOR EACH ROW
 BEGIN
-    DECLARE project_total DECIMAL(15,2);
-    SELECT IFNULL(SUM(amount_total), 0.00)
-      INTO project_total
-      FROM purchase_order
-      WHERE project_id = OLD.project_id;
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'contact'),
+        'DELETE',
+        OLD.id,
+        CONCAT('Deleted contact.id=', OLD.id)
+    );
+END$$
 
-    UPDATE project
-    SET total_spent = project_total
-    WHERE id = OLD.project_id;
-END;
-
--- AFTER UPDATE on purchase_order
-DROP TRIGGER IF EXISTS `trg_purchase_order_au_update_project`;
+USE `virtual_pm`$$
 CREATE
 DEFINER=`root`@`localhost`
-TRIGGER `trg_purchase_order_au_update_project`
-AFTER UPDATE
-ON `purchase_order`
+TRIGGER `virtual_pm`.`contact_ai`
+AFTER INSERT ON `virtual_pm`.`contact`
 FOR EACH ROW
 BEGIN
-    DECLARE project_total DECIMAL(15,2);
-    IF OLD.amount_total <> NEW.amount_total OR OLD.project_id <> NEW.project_id THEN
-        SELECT IFNULL(SUM(amount_total), 0.00)
-            INTO project_total
-            FROM purchase_order
-            WHERE project_id = NEW.project_id;
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'contact'),
+        'INSERT',
+        NEW.id,
+        CONCAT('Inserted contact.id=', NEW.id)
+    );
+END$$
 
-        UPDATE project
-        SET total_spent = project_total
-        WHERE id = NEW.project_id;
-    END IF;
-END;
-
--- AFTER DELETE on detail_item
-DROP TRIGGER IF EXISTS `trg_detail_item_ad_update_po_total`;
+USE `virtual_pm`$$
 CREATE
 DEFINER=`root`@`localhost`
-TRIGGER `trg_detail_item_ad_update_po_total`
-AFTER DELETE
-ON `detail_item`
+TRIGGER `virtual_pm`.`contact_au`
+AFTER UPDATE ON `virtual_pm`.`contact`
 FOR EACH ROW
 BEGIN
-    DECLARE total DECIMAL(15,2);
-    SELECT IFNULL(SUM(sub_total), 0.00)
-      INTO total
-      FROM detail_item
-      WHERE po_id = OLD.po_id;
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'contact'),
+        'UPDATE',
+        NEW.id,
+        CONCAT('Updated contact.id=', NEW.id)
+    );
+END$$
 
-    UPDATE purchase_order
-    SET amount_total = total
-    WHERE id = OLD.po_id;
-END;
-
--- AFTER INSERT on detail_item
-DROP TRIGGER IF EXISTS `trg_detail_item_ai_update_po_total`;
+USE `virtual_pm`$$
 CREATE
 DEFINER=`root`@`localhost`
-TRIGGER `trg_detail_item_ai_update_po_total`
-AFTER INSERT
-ON `detail_item`
+TRIGGER `virtual_pm`.`contact_bu`
+BEFORE UPDATE ON `virtual_pm`.`contact`
 FOR EACH ROW
 BEGIN
-    DECLARE total DECIMAL(15,2);
-    SELECT IFNULL(SUM(sub_total), 0.00)
-      INTO total
-      FROM detail_item
-      WHERE po_id = NEW.po_id;
+  SET NEW.updated_at = CURRENT_TIMESTAMP;
+END$$
 
-    UPDATE purchase_order
-    SET amount_total = total
-    WHERE id = NEW.po_id;
-END;
-
--- AFTER UPDATE on detail_item
-DROP TRIGGER IF EXISTS `trg_detail_item_au_update_po_total`;
+USE `virtual_pm`$$
 CREATE
 DEFINER=`root`@`localhost`
-TRIGGER `trg_detail_item_au_update_po_total`
-AFTER UPDATE
-ON `detail_item`
+TRIGGER `virtual_pm`.`users_ad`
+AFTER DELETE ON `virtual_pm`.`users`
 FOR EACH ROW
 BEGIN
-    DECLARE total DECIMAL(15,2);
-    SELECT IFNULL(SUM(sub_total), 0.00)
-      INTO total
-      FROM detail_item
-      WHERE po_id = NEW.po_id;
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'users'),
+        'DELETE',
+        OLD.id,
+        CONCAT('Deleted users.id=', OLD.id)
+    );
+END$$
 
-    UPDATE purchase_order
-    SET amount_total = total
-    WHERE id = NEW.po_id;
-END;
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`users_ai`
+AFTER INSERT ON `virtual_pm`.`users`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'users'),
+        'INSERT',
+        NEW.id,
+        CONCAT('Inserted users.id=', NEW.id)
+    );
+END$$
 
--- Restore configs
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`users_au`
+AFTER UPDATE ON `virtual_pm`.`users`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'users'),
+        'UPDATE',
+        NEW.id,
+        CONCAT('Updated users.id=', NEW.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`users_bu`
+BEFORE UPDATE ON `virtual_pm`.`users`
+FOR EACH ROW
+BEGIN
+  SET NEW.updated_at = CURRENT_TIMESTAMP;
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`budget_map_ad`
+AFTER DELETE ON `virtual_pm`.`budget_map`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'budget_map'),
+        'DELETE',
+        OLD.id,
+        CONCAT('Deleted budget_map.id=', OLD.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`budget_map_ai`
+AFTER INSERT ON `virtual_pm`.`budget_map`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'budget_map'),
+        'INSERT',
+        NEW.id,
+        CONCAT('Inserted budget_map.id=', NEW.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`budget_map_au`
+AFTER UPDATE ON `virtual_pm`.`budget_map`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'budget_map'),
+        'UPDATE',
+        NEW.id,
+        CONCAT('Updated budget_map.id=', NEW.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`budget_map_bu`
+BEFORE UPDATE ON `virtual_pm`.`budget_map`
+FOR EACH ROW
+BEGIN
+  SET NEW.updated_at = CURRENT_TIMESTAMP;
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`tax_ledger_ad`
+AFTER DELETE ON `virtual_pm`.`tax_ledger`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'tax_ledger'),
+        'DELETE',
+        OLD.id,
+        CONCAT('Deleted tax_ledger.id=', OLD.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`tax_ledger_ai`
+AFTER INSERT ON `virtual_pm`.`tax_ledger`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'tax_ledger'),
+        'INSERT',
+        NEW.id,
+        CONCAT('Inserted tax_ledger.id=', NEW.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`tax_ledger_au`
+AFTER UPDATE ON `virtual_pm`.`tax_ledger`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'tax_ledger'),
+        'UPDATE',
+        NEW.id,
+        CONCAT('Updated tax_ledger.id=', NEW.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`tax_ledger_bu`
+BEFORE UPDATE ON `virtual_pm`.`tax_ledger`
+FOR EACH ROW
+BEGIN
+  SET NEW.updated_at = CURRENT_TIMESTAMP;
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`tax_account_ad`
+AFTER DELETE ON `virtual_pm`.`tax_account`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'tax_account'),
+        'DELETE',
+        OLD.id,
+        CONCAT('Deleted tax_account.id=', OLD.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`tax_account_ai`
+AFTER INSERT ON `virtual_pm`.`tax_account`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'tax_account'),
+        'INSERT',
+        NEW.id,
+        CONCAT('Inserted tax_account.id=', NEW.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`tax_account_au`
+AFTER UPDATE ON `virtual_pm`.`tax_account`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'tax_account'),
+        'UPDATE',
+        NEW.id,
+        CONCAT('Updated tax_account.id=', NEW.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`tax_account_bu`
+BEFORE UPDATE ON `virtual_pm`.`tax_account`
+FOR EACH ROW
+BEGIN
+  SET NEW.updated_at = CURRENT_TIMESTAMP;
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`account_code_ad`
+AFTER DELETE ON `virtual_pm`.`account_code`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'account_code'),
+        'DELETE',
+        OLD.id,
+        CONCAT('Deleted account_code.id=', OLD.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`account_code_ai`
+AFTER INSERT ON `virtual_pm`.`account_code`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'account_code'),
+        'INSERT',
+        NEW.id,
+        CONCAT('Inserted account_code.id=', NEW.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`account_code_au`
+AFTER UPDATE ON `virtual_pm`.`account_code`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'account_code'),
+        'UPDATE',
+        NEW.id,
+        CONCAT('Updated account_code.id=', NEW.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`account_code_bu`
+BEFORE UPDATE ON `virtual_pm`.`account_code`
+FOR EACH ROW
+BEGIN
+  SET NEW.updated_at = CURRENT_TIMESTAMP;
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`spend_money_ad`
+AFTER DELETE ON `virtual_pm`.`spend_money`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'spend_money'),
+        'DELETE',
+        OLD.id,
+        CONCAT('Deleted spend_money.id=', OLD.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`spend_money_ai`
+AFTER INSERT ON `virtual_pm`.`spend_money`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'spend_money'),
+        'INSERT',
+        NEW.id,
+        CONCAT('Inserted spend_money.id=', NEW.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`spend_money_au`
+AFTER UPDATE ON `virtual_pm`.`spend_money`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'spend_money'),
+        'UPDATE',
+        NEW.id,
+        CONCAT('Updated spend_money.id=', NEW.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`spend_money_bu`
+BEFORE UPDATE ON `virtual_pm`.`spend_money`
+FOR EACH ROW
+BEGIN
+  SET NEW.updated_at = CURRENT_TIMESTAMP;
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`bank_transaction_ad`
+AFTER DELETE ON `virtual_pm`.`bank_transaction`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'bank_transaction'),
+        'DELETE',
+        OLD.id,
+        CONCAT('Deleted bank_transaction.id=', OLD.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`bank_transaction_ai`
+AFTER INSERT ON `virtual_pm`.`bank_transaction`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'bank_transaction'),
+        'INSERT',
+        NEW.id,
+        CONCAT('Inserted bank_transaction.id=', NEW.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`bank_transaction_au`
+AFTER UPDATE ON `virtual_pm`.`bank_transaction`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'bank_transaction'),
+        'UPDATE',
+        NEW.id,
+        CONCAT('Updated bank_transaction.id=', NEW.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`bank_transaction_bu`
+BEFORE UPDATE ON `virtual_pm`.`bank_transaction`
+FOR EACH ROW
+BEGIN
+  SET NEW.updated_at = CURRENT_TIMESTAMP;
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`detail_item_ad`
+AFTER DELETE ON `virtual_pm`.`detail_item`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'detail_item'),
+        'DELETE',
+        OLD.id,
+        CONCAT('Deleted detail_item.id=', OLD.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`detail_item_ai`
+AFTER INSERT ON `virtual_pm`.`detail_item`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'detail_item'),
+        'INSERT',
+        NEW.id,
+        CONCAT('Inserted detail_item.id=', NEW.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`detail_item_au`
+AFTER UPDATE ON `virtual_pm`.`detail_item`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'detail_item'),
+        'UPDATE',
+        NEW.id,
+        CONCAT('Updated detail_item.id=', NEW.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`detail_item_bu`
+BEFORE UPDATE ON `virtual_pm`.`detail_item`
+FOR EACH ROW
+BEGIN
+  SET NEW.updated_at = CURRENT_TIMESTAMP;
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`invoice_ad`
+AFTER DELETE ON `virtual_pm`.`invoice`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'invoice'),
+        'DELETE',
+        OLD.id,
+        CONCAT('Deleted invoice.id=', OLD.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`invoice_ai`
+AFTER INSERT ON `virtual_pm`.`invoice`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'invoice'),
+        'INSERT',
+        NEW.id,
+        CONCAT('Inserted invoice.id=', NEW.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`invoice_au`
+AFTER UPDATE ON `virtual_pm`.`invoice`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'invoice'),
+        'UPDATE',
+        NEW.id,
+        CONCAT('Updated invoice.id=', NEW.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`invoice_bu`
+BEFORE UPDATE ON `virtual_pm`.`invoice`
+FOR EACH ROW
+BEGIN
+  SET NEW.updated_at = CURRENT_TIMESTAMP;
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`po_log_ad`
+AFTER DELETE ON `virtual_pm`.`po_log`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'po_log'),
+        'DELETE',
+        OLD.id,
+        CONCAT('Deleted po_log.id=', OLD.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`po_log_ai`
+AFTER INSERT ON `virtual_pm`.`po_log`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'po_log'),
+        'INSERT',
+        NEW.id,
+        CONCAT('Inserted po_log.id=', NEW.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`po_log_au`
+AFTER UPDATE ON `virtual_pm`.`po_log`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'po_log'),
+        'UPDATE',
+        NEW.id,
+        CONCAT('Updated po_log.id=', NEW.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`po_log_bu`
+BEFORE UPDATE ON `virtual_pm`.`po_log`
+FOR EACH ROW
+BEGIN
+  SET NEW.updated_at = CURRENT_TIMESTAMP;
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`project_ad`
+AFTER DELETE ON `virtual_pm`.`project`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'project'),
+        'DELETE',
+        OLD.id,
+        CONCAT('Deleted project.id=', OLD.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`project_ai`
+AFTER INSERT ON `virtual_pm`.`project`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'project'),
+        'INSERT',
+        NEW.id,
+        CONCAT('Inserted project.id=', NEW.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`project_au`
+AFTER UPDATE ON `virtual_pm`.`project`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'project'),
+        'UPDATE',
+        NEW.id,
+        CONCAT('Updated project.id=', NEW.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`project_bu`
+BEFORE UPDATE ON `virtual_pm`.`project`
+FOR EACH ROW
+BEGIN
+  SET NEW.updated_at = CURRENT_TIMESTAMP;
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`purchase_order_ad`
+AFTER DELETE ON `virtual_pm`.`purchase_order`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'purchase_order'),
+        'DELETE',
+        OLD.id,
+        CONCAT('Deleted purchase_order.id=', OLD.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`purchase_order_ai`
+AFTER INSERT ON `virtual_pm`.`purchase_order`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'purchase_order'),
+        'INSERT',
+        NEW.id,
+        CONCAT('Inserted purchase_order.id=', NEW.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`purchase_order_au`
+AFTER UPDATE ON `virtual_pm`.`purchase_order`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'purchase_order'),
+        'UPDATE',
+        NEW.id,
+        CONCAT('Updated purchase_order.id=', NEW.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`purchase_order_bu`
+BEFORE UPDATE ON `virtual_pm`.`purchase_order`
+FOR EACH ROW
+BEGIN
+  SET NEW.updated_at = CURRENT_TIMESTAMP;
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`receipt_ad`
+AFTER DELETE ON `virtual_pm`.`receipt`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'receipt'),
+        'DELETE',
+        OLD.id,
+        CONCAT('Deleted receipt.id=', OLD.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`receipt_ai`
+AFTER INSERT ON `virtual_pm`.`receipt`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'receipt'),
+        'INSERT',
+        NEW.id,
+        CONCAT('Inserted receipt.id=', NEW.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`receipt_au`
+AFTER UPDATE ON `virtual_pm`.`receipt`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'receipt'),
+        'UPDATE',
+        NEW.id,
+        CONCAT('Updated receipt.id=', NEW.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`receipt_bu`
+BEFORE UPDATE ON `virtual_pm`.`receipt`
+FOR EACH ROW
+BEGIN
+  SET NEW.updated_at = CURRENT_TIMESTAMP;
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`tax_form_ad`
+AFTER DELETE ON `virtual_pm`.`tax_form`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'tax_form'),
+        'DELETE',
+        OLD.id,
+        CONCAT('Deleted tax_form.id=', OLD.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`tax_form_ai`
+AFTER INSERT ON `virtual_pm`.`tax_form`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'tax_form'),
+        'INSERT',
+        NEW.id,
+        CONCAT('Inserted tax_form.id=', NEW.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`tax_form_au`
+AFTER UPDATE ON `virtual_pm`.`tax_form`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'tax_form'),
+        'UPDATE',
+        NEW.id,
+        CONCAT('Updated tax_form.id=', NEW.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`tax_form_bu`
+BEFORE UPDATE ON `virtual_pm`.`tax_form`
+FOR EACH ROW
+BEGIN
+  SET NEW.updated_at = CURRENT_TIMESTAMP;
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`xero_bill_ad`
+AFTER DELETE ON `virtual_pm`.`xero_bill`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'xero_bill'),
+        'DELETE',
+        OLD.id,
+        CONCAT('Deleted xero_bill.id=', OLD.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`xero_bill_ai`
+AFTER INSERT ON `virtual_pm`.`xero_bill`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'xero_bill'),
+        'INSERT',
+        NEW.id,
+        CONCAT('Inserted xero_bill.id=', NEW.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`xero_bill_au`
+AFTER UPDATE ON `virtual_pm`.`xero_bill`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'xero_bill'),
+        'UPDATE',
+        NEW.id,
+        CONCAT('Updated xero_bill.id=', NEW.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`xero_bill_bu`
+BEFORE UPDATE ON `virtual_pm`.`xero_bill`
+FOR EACH ROW
+BEGIN
+  SET NEW.updated_at = CURRENT_TIMESTAMP;
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`bill_line_item_ad`
+AFTER DELETE ON `virtual_pm`.`xero_bill_line_item`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'bill_line_item'),
+        'DELETE',
+        OLD.id,
+        CONCAT('Deleted bill_line_item.id=', OLD.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`bill_line_item_ai`
+AFTER INSERT ON `virtual_pm`.`xero_bill_line_item`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'bill_line_item'),
+        'INSERT',
+        NEW.id,
+        CONCAT('Inserted bill_line_item.id=', NEW.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`bill_line_item_au`
+AFTER UPDATE ON `virtual_pm`.`xero_bill_line_item`
+FOR EACH ROW
+BEGIN
+    INSERT INTO `audit_log` (table_id, operation, record_id, message)
+    VALUES (
+        (SELECT `id` FROM `sys_table` WHERE `name` = 'bill_line_item'),
+        'UPDATE',
+        NEW.id,
+        CONCAT('Updated bill_line_item.id=', NEW.id)
+    );
+END$$
+
+USE `virtual_pm`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `virtual_pm`.`bill_line_item_bu`
+BEFORE UPDATE ON `virtual_pm`.`xero_bill_line_item`
+FOR EACH ROW
+BEGIN
+  SET NEW.updated_at = CURRENT_TIMESTAMP;
+END$$
+
+
+DELIMITER ;
+
 SET SQL_MODE=@OLD_SQL_MODE;
 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS;
 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS;

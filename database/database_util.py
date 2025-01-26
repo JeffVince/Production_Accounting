@@ -3,40 +3,36 @@ database/database_util.py
 
 This module provides flexible, DRY (Don't Repeat Yourself) functions for searching,
 creating, updating, deleting, and checking changes for various database records
-using SQLAlchemy ORM with optional session batching.
+using SQLAlchemy ORM with an optional session parameter. If no session is provided,
+it uses `get_db_session()` from db_util to open/close a new session.
 """
+
+from difflib import SequenceMatcher
 from typing import Optional, Dict, Any, List, Union
 import logging
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-# region 🛠️ UTILITY IMPORTS
+# Use the unified session pattern (get_db_session) instead of make_local_session
+from database.db_util import get_db_session
 from database.models import (
     Contact, Project, PurchaseOrder, DetailItem, BankTransaction,
-    BillLineItem, Invoice, AccountCode, Receipt, SpendMoney, TaxAccount,
-    XeroBill, User, TaxLedger, BudgetMap
+    XeroBillLineItem, Invoice, AccountCode, Receipt, SpendMoney, TaxAccount,
+    XeroBill, User, TaxLedger, BudgetMap, PoLog
 )
-from database.db_util import make_local_session
-# endregion
 
-
-#region 🏢 CLASS DEFINITION
 class DatabaseOperations:
     """
     Provides methods to create, read, update, delete, and check changes
     in database records, handling concurrency safely via unique lookups.
     """
 
-    # region 🔧 Initialization
     def __init__(self):
         self.logger = logging.getLogger('database_logger')
         self.logger.debug("🌟 DatabaseOperations initialized.")
-    # endregion
 
     # region 🛠️ Utility Functions
-
-    # region 📦 Serialize
     def _serialize_record(self, record):
         """
         Converts a SQLAlchemy model record into a dict of column_name -> value.
@@ -44,8 +40,7 @@ class DatabaseOperations:
         """
         if not record:
             return None
-        record_values = {c.name: getattr(record, c.name) for c in record.__table__.columns}
-        return record_values
+        return {c.name: getattr(record, c.name) for c in record.__table__.columns}
     # endregion
 
     # region 🔎 Search Records
@@ -64,67 +59,71 @@ class DatabaseOperations:
           - A list if multiple found
           - [] if mismatch or error
         """
-        prefix = "[ BATCH OPERATION ] " if session else ""
+        prefix = "[BATCH OPERATION] " if session else ""
         column_names = column_names or []
         values = values or []
 
         if column_names and values:
             self.logger.debug(f"{prefix}🕵️ Searching {model.__name__} with filters: {list(zip(column_names, values))}")
-            self.logger.info(f"{prefix}🔎 Checking for matches in {model.__name__} for columns/values: {list(zip(column_names, values))}")
+            self.logger.info(f"{prefix}🔎 Checking {model.__name__} for columns/values: {list(zip(column_names, values))}")
             if len(column_names) != len(values):
-                self.logger.warning(f"{prefix}⚠️ Mismatch: number of columns vs. values. Returning empty list.")
+                self.logger.warning(f"{prefix}⚠️ Mismatch: columns vs. values. Returning empty list.")
                 return []
         else:
-            self.logger.debug(f"{prefix}🕵️ Searching all records from {model.__name__}, no filters.")
+            self.logger.debug(f"{prefix}🕵️ Searching all {model.__name__} records (no filters).")
             self.logger.info(f"{prefix}🔎 Fetching entire {model.__name__} table without filters.")
 
+        # If a session was provided, use it, else open a new one with get_db_session().
         if session is not None:
             try:
                 query = session.query(model)
                 if column_names and values:
-                    for (col_name, val) in zip(column_names, values):
+                    for col_name, val in zip(column_names, values):
                         column_attr = getattr(model, col_name, None)
                         if column_attr is None:
-                            self.logger.warning(f"{prefix}😬 '{col_name}' is not valid for {model.__name__}. Returning empty list.")
+                            self.logger.warning(f"{prefix}😬 '{col_name}' invalid for {model.__name__}.")
                             return []
                         query = query.filter(column_attr == val)
 
                 records = query.all()
                 if not records:
-                    self.logger.info(f"{prefix}🙅 No records found in {model.__name__}. Maybe next time!")
+                    self.logger.info(f"{prefix}🙅 No {model.__name__} records found.")
                     return None
-                elif len(records) == 1:
-                    # Specifically changed per prior request:
-                    self.logger.info(f"[_search_records] - ✅ Found a matching {model.__name__}. Bingo!")
+                if len(records) == 1:
+                    self.logger.info(f"{prefix}✅ Found a matching {model.__name__}.")
                     return self._serialize_record(records[0])
                 else:
-                    self.logger.info(f"{prefix}✅ Located {len(records)} records in {model.__name__}. Bundling them up.")
+                    self.logger.info(f"{prefix}✅ Located {len(records)} {model.__name__} records.")
                     return [self._serialize_record(r) for r in records]
+
             except Exception as e:
                 self.logger.error(f"{prefix}❌ Error searching {model.__name__}: {e}", exc_info=True)
                 return []
+
         else:
-            with make_local_session() as new_session:
+            # No session => open a new one
+            with get_db_session() as new_session:
                 try:
                     query = new_session.query(model)
                     if column_names and values:
-                        for (col_name, val) in zip(column_names, values):
+                        for col_name, val in zip(column_names, values):
                             column_attr = getattr(model, col_name, None)
                             if column_attr is None:
-                                self.logger.warning(f"😬 '{col_name}' is not valid for {model.__name__}. Returning empty list.")
+                                self.logger.warning(f"😬 '{col_name}' invalid for {model.__name__}.")
                                 return []
                             query = query.filter(column_attr == val)
 
                     records = query.all()
                     if not records:
-                        self.logger.info(f"🙅 No records found in {model.__name__}. Maybe next time!")
+                        self.logger.info(f"🙅 No {model.__name__} records found.")
                         return None
-                    elif len(records) == 1:
-                        self.logger.info(f"[_search_records] - ✅ Found a matching {model.__name__}. Bingo!")
+                    if len(records) == 1:
+                        self.logger.info("✅ Found exactly one match.")
                         return self._serialize_record(records[0])
                     else:
-                        self.logger.info(f"✅ Located {len(records)} records in {model.__name__}. Bundling them up.")
+                        self.logger.info(f"✅ Found {len(records)} matches for {model.__name__}.")
                         return [self._serialize_record(r) for r in records]
+
                 except Exception as e:
                     new_session.rollback()
                     self.logger.error(f"❌ Error searching {model.__name__}: {e}", exc_info=True)
@@ -140,78 +139,76 @@ class DatabaseOperations:
         **kwargs
     ) -> Optional[Dict[str, Any]]:
         """
-        Creates a new record in the database. Returns its dict form or None on error.
-        Flushes before commit to ensure the ID is generated.
-        Handles concurrency by re-querying if IntegrityError occurs and unique_lookup is provided.
+        Creates a new record. Returns its dict form or None on error.
+        Flushes to get the ID. If IntegrityError and unique_lookup is set,
+        attempts concurrency fallback by re-querying.
         """
-        prefix = "[ BATCH OPERATION ] " if session else ""
-        self.logger.debug(f"{prefix}🧑‍💻 Creating new {model.__name__} with data: {kwargs}")
-        self.logger.info(f"{prefix}🌱 Inserting record into {model.__name__} with {kwargs}")
+        prefix = "[BATCH OPERATION] " if session else ""
+        self.logger.debug(f"{prefix}🧑‍💻 Creating {model.__name__} with: {kwargs}")
+        self.logger.info(f"{prefix}🌱 Insert => {model.__name__} with {kwargs}")
 
         if session is not None:
             try:
                 record = model(**kwargs)
                 session.add(record)
                 session.flush()
-                self.logger.debug(f"{prefix}🎉 Flushed new {model.__name__}, ID now: {getattr(record, 'id', 'N/A')}")
-                self.logger.info(f"{prefix}🌟 Creation successful (pending commit).")
+                self.logger.debug(f"{prefix}🎉 Flushed new {model.__name__}, ID={getattr(record, 'id', 'N/A')}")
                 return self._serialize_record(record)
 
             except IntegrityError:
                 self.logger.debug(f"{prefix}❗ IntegrityError creating {model.__name__}")
                 session.rollback()
-
                 if unique_lookup:
-                    self.logger.warning(f"{prefix}🔎 Attempting concurrency fallback re-query...")
+                    self.logger.warning(f"{prefix}🔎 Trying concurrency fallback re-query...")
                     found = self._search_records(model, list(unique_lookup.keys()), list(unique_lookup.values()), session=session)
                     if found:
                         if isinstance(found, list):
-                            self.logger.info(f"{prefix}⚠️ Found {len(found)} matching records; returning the first.")
+                            self.logger.info(f"{prefix}⚠️ Found {len(found)}; returning first.")
                             return found[0]
                         else:
-                            self.logger.info(f"{prefix}⚠️ Found exactly one existing record after concurrency fallback.")
+                            self.logger.info(f"{prefix}⚠️ Found existing record after fallback.")
                             return found
                     else:
-                        self.logger.error(f"{prefix}❌ No record found after concurrency fallback for {model.__name__}.")
+                        self.logger.error(f"{prefix}❌ No record found after fallback. Returning None.")
                         return None
                 else:
-                    self.logger.error(f"{prefix}❌ No unique_lookup, cannot re-query. Returning None.")
+                    self.logger.error(f"{prefix}❌ No unique_lookup => cannot fallback. Returning None.")
                 return None
+
             except Exception as e:
                 session.rollback()
                 self.logger.error(f"{prefix}💥 Trouble creating {model.__name__}: {e}", exc_info=True)
                 return None
 
         else:
-            with make_local_session() as new_session:
+            # No session => open a new one
+            with get_db_session() as new_session:
                 try:
                     record = model(**kwargs)
                     new_session.add(record)
                     new_session.flush()
-                    self.logger.debug(f"🎉 Flushed new {model.__name__}, ID now: {getattr(record, 'id', 'N/A')}")
                     new_session.commit()
-                    self.logger.info(f"🌟 Creation successful! Record is now in the DB.")
+                    self.logger.debug(f"🎉 Created {model.__name__}, ID={getattr(record, 'id', 'N/A')}")
                     return self._serialize_record(record)
 
                 except IntegrityError:
-                    self.logger.debug(f"❗ IntegrityError creating {model.__name__}")
                     new_session.rollback()
-
+                    self.logger.debug("❗ IntegrityError on create.")
                     if unique_lookup:
                         self.logger.warning("🔎 Attempting concurrency fallback re-query...")
-                        found = self._search_records(model, list(unique_lookup.keys()), list(unique_lookup.values()))
+                        found = self._search_records(model, list(unique_lookup.keys()), list(unique_lookup.values()), session=new_session)
                         if found:
                             if isinstance(found, list):
-                                self.logger.info(f"⚠️ Found {len(found)} matching records; returning the first.")
+                                self.logger.info(f"⚠️ Found {len(found)} matching; returning first.")
                                 return found[0]
                             else:
-                                self.logger.info("⚠️ Found exactly one existing record after concurrency fallback.")
+                                self.logger.info("⚠️ Found exactly one after fallback.")
                                 return found
                         else:
-                            self.logger.error(f"❌ No record found after concurrency fallback for {model.__name__}.")
+                            self.logger.error("❌ Nothing found after fallback.")
                             return None
                     else:
-                        self.logger.error("❌ No unique_lookup, cannot re-query. Returning None.")
+                        self.logger.error("❌ No unique_lookup => cannot fallback. Returning None.")
                     return None
 
                 except Exception as e:
@@ -230,101 +227,97 @@ class DatabaseOperations:
         **kwargs
     ) -> Optional[Dict[str, Any]]:
         """
-        Updates an existing record by primary key. Returns the updated record or None on error.
-        Flushes before commit so changes are visible. Handles concurrency fallback if IntegrityError occurs.
+        Updates an existing record by primary key. Returns updated record or None on error.
+        If IntegrityError and unique_lookup is set, tries concurrency fallback.
         """
-        prefix = "[ BATCH OPERATION ] " if session else ""
+        prefix = "[BATCH OPERATION] " if session else ""
         self.logger.debug(f"{prefix}🔧 Updating {model.__name__}(id={record_id}) with {kwargs}")
-        self.logger.info(f"{prefix}🤝 Checking and then updating {model.__name__}(id={record_id}).")
+        self.logger.info(f"{prefix}🤝 Checking & updating {model.__name__}(id={record_id}).")
 
         if session is not None:
             try:
                 record = session.query(model).get(record_id)
                 if not record:
-                    self.logger.info(f"{prefix}🙅 No {model.__name__} with id={record_id} found.")
+                    self.logger.info(f"{prefix}🙅 No {model.__name__}(id={record_id}) found.")
                     return None
 
-                for (key, value) in kwargs.items():
+                for key, value in kwargs.items():
                     if hasattr(record, key):
                         setattr(record, key, value)
                     else:
-                        self.logger.warning(f"{prefix}⚠️ '{key}' does not exist on {model.__name__}. Skipping.")
+                        self.logger.warning(f"{prefix}⚠️ '{key}' not on {model.__name__}. Skipping.")
 
                 session.flush()
                 self.logger.debug(f"{prefix}🎉 Flushed updated {model.__name__}(id={record_id}).")
-                self.logger.info(f"{prefix}✅ Done updating {model.__name__}.")
                 return self._serialize_record(record)
 
             except IntegrityError:
-                self.logger.warning(f"{prefix}❗ IntegrityError updating {model.__name__}(id={record_id})")
+                self.logger.warning(f"{prefix}❗ IntegrityError on update {model.__name__}(id={record_id})")
                 session.rollback()
-
                 if unique_lookup:
-                    self.logger.warning(f"{prefix}🔎 Attempting concurrency fallback re-query...")
+                    self.logger.warning(f"{prefix}🔎 Concurrency fallback re-query...")
                     found = self._search_records(model, list(unique_lookup.keys()), list(unique_lookup.values()), session=session)
                     if found:
                         if isinstance(found, list):
-                            self.logger.info(f"{prefix}⚠️ Found {len(found)} matching records; returning the first.")
+                            self.logger.info(f"{prefix}⚠️ Found {len(found)}; returning first.")
                             return found[0]
                         else:
-                            self.logger.info(f"{prefix}⚠️ Found exactly one existing record after concurrency fallback.")
+                            self.logger.info(f"{prefix}⚠️ Found exactly one after fallback.")
                             return found
                     else:
-                        self.logger.error(f"{prefix}❌ No record found after concurrency fallback for {model.__name__}.")
+                        self.logger.error(f"{prefix}❌ No record found after fallback.")
                         return None
                 else:
-                    self.logger.error(f"{prefix}❌ No unique_lookup for fallback. Returning None.")
+                    self.logger.error(f"{prefix}❌ No unique_lookup => cannot fallback.")
                 return None
 
             except Exception as e:
                 session.rollback()
-                self.logger.error(f"{prefix}💥 Issue updating {model.__name__}: {e}", exc_info=True)
+                self.logger.error(f"{prefix}💥 Error updating {model.__name__}(id={record_id}): {e}", exc_info=True)
                 return None
 
         else:
-            with make_local_session() as new_session:
+            with get_db_session() as new_session:
                 try:
                     record = new_session.query(model).get(record_id)
                     if not record:
-                        self.logger.info(f"🙅 No {model.__name__} with id={record_id} found.")
+                        self.logger.info(f"🙅 No {model.__name__}(id={record_id}) found.")
                         return None
 
-                    for (key, value) in kwargs.items():
+                    for key, value in kwargs.items():
                         if hasattr(record, key):
                             setattr(record, key, value)
                         else:
-                            self.logger.warning(f"⚠️ '{key}' does not exist on {model.__name__}. Skipping.")
+                            self.logger.warning(f"⚠️ '{key}' not on {model.__name__}. Skipping.")
 
                     new_session.flush()
-                    self.logger.debug(f"🎉 Flushed updated {model.__name__}(id={record_id}).")
                     new_session.commit()
-                    self.logger.info(f"✅ Done updating {model.__name__}.")
+                    self.logger.debug(f"🎉 Updated {model.__name__}(id={record_id}).")
                     return self._serialize_record(record)
 
                 except IntegrityError:
-                    self.logger.warning(f"❗ IntegrityError updating {model.__name__}(id={record_id})")
                     new_session.rollback()
-
+                    self.logger.warning("❗ IntegrityError on update.")
                     if unique_lookup:
-                        self.logger.warning("🔎 Attempting concurrency fallback re-query...")
-                        found = self._search_records(model, list(unique_lookup.keys()), list(unique_lookup.values()))
+                        self.logger.warning("🔎 Attempting fallback re-query after update fail...")
+                        found = self._search_records(model, list(unique_lookup.keys()), list(unique_lookup.values()), session=new_session)
                         if found:
                             if isinstance(found, list):
-                                self.logger.info(f"⚠️ Found {len(found)} matching records; returning the first.")
+                                self.logger.info(f"⚠️ Found {len(found)} matches; returning first.")
                                 return found[0]
                             else:
-                                self.logger.info("⚠️ Found exactly one existing record after concurrency fallback.")
+                                self.logger.info("⚠️ Found exactly one record after fallback.")
                                 return found
                         else:
-                            self.logger.error(f"❌ No record found after concurrency fallback for {model.__name__}.")
+                            self.logger.error("❌ No record found after fallback.")
                             return None
                     else:
-                        self.logger.error("❌ No unique_lookup for fallback. Returning None.")
+                        self.logger.error("❌ No unique_lookup => cannot fallback. Returning None.")
                     return None
 
                 except Exception as e:
                     new_session.rollback()
-                    self.logger.error(f"💥 Issue updating {model.__name__}: {e}", exc_info=True)
+                    self.logger.error(f"💥 Error updating {model.__name__}(id={record_id}): {e}", exc_info=True)
                     return None
     # endregion
 
@@ -338,21 +331,21 @@ class DatabaseOperations:
     ) -> bool:
         """
         Deletes an existing record by primary key. Returns True if deleted, False otherwise.
-        Handles concurrency fallback if an IntegrityError occurs.
+        If IntegrityError with unique_lookup, tries concurrency fallback.
         """
-        prefix = "[ BATCH OPERATION ] " if session else ""
+        prefix = "[BATCH OPERATION] " if session else ""
         self.logger.debug(f"{prefix}🗑️ Deleting {model.__name__}(id={record_id}).")
 
         if session is not None:
             try:
                 record = session.query(model).get(record_id)
                 if not record:
-                    self.logger.info(f"{prefix}🙅 No {model.__name__} with id={record_id} found for deletion.")
+                    self.logger.info(f"{prefix}🙅 No {model.__name__}(id={record_id}) found to delete.")
                     return False
 
                 session.delete(record)
                 session.flush()
-                self.logger.debug(f"{prefix}🗑️ Successfully deleted {model.__name__}(id={record_id}). (pending commit)")
+                self.logger.debug(f"{prefix}🗑️ {model.__name__}(id={record_id}) removed (pending commit).")
                 return True  # caller can commit
 
             except IntegrityError:
@@ -360,56 +353,56 @@ class DatabaseOperations:
                 session.rollback()
 
                 if unique_lookup:
-                    self.logger.warning(f"{prefix}🔎 Attempting concurrency fallback re-query post-delete error...")
+                    self.logger.warning(f"{prefix}🔎 Attempting concurrency fallback re-query (post-delete).")
                     found = self._search_records(model, list(unique_lookup.keys()), list(unique_lookup.values()), session=session)
                     if found:
-                        self.logger.info(f"{prefix}⚠️ Record still exists after fallback. Cannot delete. Found: {found}")
+                        self.logger.info(f"{prefix}⚠️ Record still exists after fallback. Cannot delete.")
                         return False
                     else:
-                        self.logger.error(f"{prefix}❌ No record found after concurrency fallback. Possibly was already deleted.")
+                        self.logger.error(f"{prefix}❌ Not found after fallback. Possibly already deleted.")
                         return False
                 else:
-                    self.logger.error(f"{prefix}❌ No unique_lookup, cannot re-check. Returning False.")
+                    self.logger.error(f"{prefix}❌ No unique_lookup => can't re-check.")
                 return False
+
             except Exception as e:
                 session.rollback()
-                self.logger.error(f"{prefix}💥 Issue deleting {model.__name__}(id={record_id}): {e}", exc_info=True)
+                self.logger.error(f"{prefix}💥 Error deleting {model.__name__}(id={record_id}): {e}", exc_info=True)
                 return False
 
         else:
-            with make_local_session() as new_session:
+            with get_db_session() as new_session:
                 try:
                     record = new_session.query(model).get(record_id)
                     if not record:
-                        self.logger.info(f"🙅 No {model.__name__} with id={record_id} found for deletion.")
+                        self.logger.info(f"🙅 No {model.__name__}(id={record_id}) found to delete.")
                         return False
 
                     new_session.delete(record)
                     new_session.flush()
                     new_session.commit()
-                    self.logger.debug(f"🗑️ Successfully deleted {model.__name__}(id={record_id}).")
+                    self.logger.debug(f"🗑️ Deleted {model.__name__}(id={record_id}).")
                     return True
 
                 except IntegrityError:
-                    self.logger.warning(f"❗ IntegrityError deleting {model.__name__}(id={record_id})")
                     new_session.rollback()
-
+                    self.logger.warning("❗ IntegrityError on delete.")
                     if unique_lookup:
-                        self.logger.warning("🔎 Attempting concurrency fallback re-query post-delete error...")
-                        found = self._search_records(model, list(unique_lookup.keys()), list(unique_lookup.values()))
+                        self.logger.warning("🔎 Attempting fallback re-query (post-delete error).")
+                        found = self._search_records(model, list(unique_lookup.keys()), list(unique_lookup.values()), session=new_session)
                         if found:
-                            self.logger.info(f"⚠️ Record still exists after fallback. Cannot delete. Found: {found}")
+                            self.logger.info(f"⚠️ Record still present => cannot delete.")
                             return False
                         else:
-                            self.logger.error("❌ No record found after concurrency fallback. Possibly was already deleted.")
+                            self.logger.error("❌ Not found after fallback => likely already deleted.")
                             return False
                     else:
-                        self.logger.error("❌ No unique_lookup to re-check. Returning False.")
+                        self.logger.error("❌ No unique_lookup => no re-check. Returning False.")
                     return False
 
                 except Exception as e:
                     new_session.rollback()
-                    self.logger.error(f"💥 Issue deleting {model.__name__}(id={record_id}): {e}", exc_info=True)
+                    self.logger.error(f"💥 Error deleting {model.__name__}(id={record_id}): {e}", exc_info=True)
                     return False
     # endregion
 
@@ -424,55 +417,54 @@ class DatabaseOperations:
     ) -> bool:
         """
         Checks if a record has different values than provided. If record_id is given,
-        fetch by ID. Otherwise, tries unique_filters. Compares each kwarg to the record’s fields.
+        fetch by ID. Otherwise uses unique_filters. Compares each kwarg to the record.
         Returns True if differences are found, else False.
         """
-        prefix = "[ BATCH OPERATION ] " if session else ""
+        prefix = "[BATCH OPERATION] " if session else ""
         if not record_id and not unique_filters:
-            self.logger.warning(f"{prefix}⚠️ Cannot check changes for {model.__name__}; no record_id or unique_filters.")
+            self.logger.warning(f"{prefix}⚠️ No record_id or unique_filters => cannot check changes.")
             return False
 
         record_dict = None
 
-        if record_id:
-            if session is not None:
-                record = session.query(model).get(record_id)
-                if record:
-                    record_dict = self._serialize_record(record)
+        def fetch_record(s: Session):
+            if record_id:
+                rec_obj = s.query(model).get(record_id)
+                return self._serialize_record(rec_obj) if rec_obj else None
             else:
-                with make_local_session() as new_session:
-                    rec = new_session.query(model).get(record_id)
-                    if rec:
-                        record_dict = self._serialize_record(rec)
+                filters_list = list(unique_filters.keys())
+                values_list = list(unique_filters.values())
+                found = self._search_records(model, filters_list, values_list, session=s)
+                if isinstance(found, dict):
+                    return found
+                elif isinstance(found, list) and len(found) == 1:
+                    return found[0]
+                return None
+
+        if session:
+            record_dict = fetch_record(session)
         else:
-            filters_list = list(unique_filters.keys())
-            values_list = list(unique_filters.values())
-            found = self._search_records(model, filters_list, values_list, session=session)
-            if isinstance(found, dict):
-                record_dict = found
-            elif isinstance(found, list) and len(found) == 1:
-                record_dict = found[0]
+            with get_db_session() as new_session:
+                record_dict = fetch_record(new_session)
 
         if not record_dict:
-            self.logger.debug(f"{prefix}🙅 No single {model.__name__} found to compare. Returning False.")
+            self.logger.debug(f"{prefix}🙅 No single {model.__name__} found => no changes.")
             return False
 
-        for (field, new_val) in kwargs.items():
+        for field, new_val in kwargs.items():
             old_val = record_dict.get(field)
+            # if you want to unify state comparisons:
             if field == 'state':
                 old_val = (old_val or '').upper()
                 new_val = (new_val or '').upper()
+
             if old_val != new_val:
                 return True
         return False
     # endregion
 
-    #endregion
-
     ########################################################################
-    # REGIONS FOR EACH MODEL
-    # Each region now follows the order:
-    #   CREATE -> READ -> UPDATE -> DELETE -> HAS CHANGES
+    # BELOW: Region-based CRUD for each model
     ########################################################################
 
     # region 📁 ACCOUNT CODE
@@ -489,19 +481,12 @@ class DatabaseOperations:
         return self._update_record(AccountCode, account_code_id, session=session, **kwargs)
 
     def delete_account_code(self, account_code_id, session: Session = None, **kwargs) -> bool:
-        # Optionally pass unique_lookup if you want concurrency fallback:
         unique_lookup = {}
         if 'code' in kwargs:
             unique_lookup['code'] = kwargs['code']
         return self._delete_record(AccountCode, account_code_id, unique_lookup=unique_lookup, session=session)
 
-    def account_code_has_changes(
-        self,
-        record_id: Optional[int] = None,
-        code: Optional[str] = None,
-        session: Session = None,
-        **kwargs
-    ) -> bool:
+    def account_code_has_changes(self, record_id=None, code=None, session=None, **kwargs) -> bool:
         unique_filters = {}
         if code is not None:
             unique_filters['code'] = code
@@ -534,14 +519,7 @@ class DatabaseOperations:
             unique_lookup['po_number'] = kwargs['po_number']
         return self._delete_record(PurchaseOrder, po_id, unique_lookup=unique_lookup, session=session)
 
-    def purchase_order_has_changes(
-        self,
-        record_id: Optional[int] = None,
-        project_number: Optional[int] = None,
-        po_number: Optional[int] = None,
-        session: Session = None,
-        **kwargs
-    ) -> bool:
+    def purchase_order_has_changes(self, record_id=None, project_number=None, po_number=None, session=None, **kwargs) -> bool:
         unique_filters = {}
         if project_number is not None:
             unique_filters['project_number'] = project_number
@@ -561,7 +539,7 @@ class DatabaseOperations:
         po_number: Optional[int] = None,
         session: Session = None
     ) -> Union[None, Dict[str, Any], List[Dict[str, Any]]]:
-        if not project_number and (not po_number):
+        if not project_number and not po_number:
             return self.search_purchase_orders([], [], session=session)
         col_filters = []
         val_filters = []
@@ -601,12 +579,7 @@ class DatabaseOperations:
     # region 🧱 DETAIL ITEM
     def create_detail_item(self, session: Session = None, **kwargs):
         unique_lookup = {}
-        if (
-            'po_number' in kwargs and
-            'project_number' in kwargs and
-            ('detail_number' in kwargs) and
-            ('line_number' in kwargs)
-        ):
+        if 'po_number' in kwargs and 'project_number' in kwargs and 'detail_number' in kwargs and 'line_number' in kwargs:
             unique_lookup = {
                 'project_number': kwargs['project_number'],
                 'po_number': kwargs['po_number'],
@@ -746,14 +719,7 @@ class DatabaseOperations:
             unique_lookup['name'] = kwargs['name']
         return self._delete_record(Contact, contact_id, unique_lookup=unique_lookup, session=session)
 
-    def contact_has_changes(
-        self,
-        record_id: Optional[int] = None,
-        name: Optional[str] = None,
-        email: Optional[str] = None,
-        session: Session = None,
-        **kwargs
-    ) -> bool:
+    def contact_has_changes(self, record_id=None, name=None, email=None, session=None, **kwargs) -> bool:
         unique_filters = {}
         if name is not None:
             unique_filters['name'] = name
@@ -767,22 +733,90 @@ class DatabaseOperations:
             **kwargs
         )
 
-    def find_contact_close_match(self, contact_name: str, all_db_contacts: List[Dict[str, Any]], cutoff=0.7):
+    def find_contact_close_match(self, contact_name: str, all_db_contacts: List[Dict[str, Any]]) -> Optional[
+        List[Dict[str, Any]]]:
         """
-        Attempts a fuzzy name match among all_db_contacts.
-        Returns a list of possible matches or None.
+        Finds contacts in all_db_contacts that have the same first character as contact_name and are at most one edit away.
+
+        Args:
+            contact_name (str): The name of the contact to match.
+            all_db_contacts (List[Dict[str, Any]]): A list of contact dictionaries to search within.
+
+        Returns:
+            Optional[List[Dict[str, Any]]]: A list of matching contact dictionaries or None if no matches found.
         """
-        from difflib import get_close_matches
         if not all_db_contacts:
-            self.logger.debug("🙅 No existing contacts to match against.")
+            self.logger.debug("🙅 No existing contacts to match.")
             return None
 
-        name_map = {c['name']: c for c in all_db_contacts if c.get('name')}
-        best_matches = get_close_matches(contact_name, name_map.keys(), n=5, cutoff=cutoff)
-        if best_matches:
-            return [name_map[m] for m in best_matches]
+        matches = []
+        contact_name_lower = contact_name.lower()
+        first_char = contact_name_lower[0]
+
+        for contact in all_db_contacts:
+            existing_name = contact.get('name', '').strip()
+            if not existing_name:
+                continue
+
+            existing_name_lower = existing_name.lower()
+
+            # Enforce that the first character matches exactly
+            if existing_name_lower[0] != first_char:
+                continue
+
+            if self._is_one_edit_away(contact_name_lower, existing_name_lower):
+                self.logger.info(f"🤏 Found close match for contact: '{contact_name}'.")
+                matches.append(contact)
+
+        if matches:
+            self.logger.info(f"✅ Found {len(matches)} matching contact(s) for '{contact_name}'.")
+            return matches
         else:
+            self.logger.info(f"🤷 No close matches found for '{contact_name}'.")
             return None
+
+    def _is_one_edit_away(self, s1: str, s2: str) -> bool:
+        """
+        Determines if two strings are at most one edit away from each other.
+        An edit is an insertion, deletion, or substitution of a single character.
+
+        Args:
+            s1 (str): The first string.
+            s2 (str): The second string.
+
+        Returns:
+            bool: True if the strings are at most one edit away, False otherwise.
+        """
+        len1, len2 = len(s1), len(s2)
+
+        # If the length difference is more than 1, they can't be one edit away
+        if abs(len1 - len2) > 1:
+            return False
+
+        # Identify the shorter and longer string
+        if len1 > len2:
+            s1, s2 = s2, s1  # Ensure that s1 is the shorter string
+            len1, len2 = len2, len1
+
+        index1 = index2 = 0
+        found_difference = False
+
+        while index1 < len1 and index2 < len2:
+            if s1[index1] != s2[index2]:
+                if found_difference:
+                    return False
+                found_difference = True
+
+                if len1 == len2:
+                    # Move both pointers if lengths are equal (substitution)
+                    index1 += 1
+            else:
+                index1 += 1  # Move shorter string pointer if characters match
+
+            # Always move pointer for longer string
+            index2 += 1
+
+        return True
 
     def create_minimal_contact(self, contact_name: str, session: Session = None):
         return self.create_contact(name=contact_name, vendor_type='Vendor', session=session)
@@ -795,7 +829,7 @@ class DatabaseOperations:
             unique_lookup['project_number'] = kwargs['project_number']
         return self._create_record(Project, unique_lookup=unique_lookup, session=session, **kwargs)
 
-    def search_projects(self, column_names, values, session: Session = None):
+    def search_projects(self, column_names: List[str], values: List[str], session: Session = None):
         return self._search_records(Project, column_names, values, session=session)
 
     def update_project(self, project_id, session: Session = None, **kwargs):
@@ -807,13 +841,7 @@ class DatabaseOperations:
             unique_lookup['project_number'] = kwargs['project_number']
         return self._delete_record(Project, project_id, unique_lookup=unique_lookup, session=session)
 
-    def project_has_changes(
-        self,
-        record_id: Optional[int] = None,
-        project_number: Optional[int] = None,
-        session: Session = None,
-        **kwargs
-    ) -> bool:
+    def project_has_changes(self, record_id=None, project_number=None, session=None, **kwargs) -> bool:
         unique_filters = {}
         if project_number is not None:
             unique_filters['project_number'] = project_number
@@ -839,13 +867,7 @@ class DatabaseOperations:
     def delete_bank_transaction(self, transaction_id, session: Session = None, **kwargs) -> bool:
         return self._delete_record(BankTransaction, transaction_id, unique_lookup=None, session=session)
 
-    def bank_transaction_has_changes(
-        self,
-        record_id: Optional[int] = None,
-        transaction_id_xero: Optional[str] = None,
-        session: Session = None,
-        **kwargs
-    ) -> bool:
+    def bank_transaction_has_changes(self, record_id=None, transaction_id_xero=None, session=None, **kwargs) -> bool:
         unique_filters = {}
         if transaction_id_xero is not None:
             unique_filters['transaction_id_xero'] = transaction_id_xero
@@ -859,23 +881,7 @@ class DatabaseOperations:
     # endregion
 
     # region 📜 BILL LINE ITEM
-    def create_bill_line_item(self, session: Session = None, **kwargs):
-        unique_lookup = {}
-        if 'parent_id' in kwargs and 'detail_number' in kwargs and ('line_number' in kwargs):
-            unique_lookup = {
-                'parent_id': kwargs['parent_id'],
-                'detail_number': kwargs['detail_number'],
-                'line_number': kwargs['line_number']
-            }
-        return self._create_record(BillLineItem, unique_lookup=unique_lookup, session=session, **kwargs)
-
-    def search_bill_line_items(self, column_names, values, session: Session = None):
-        return self._search_records(BillLineItem, column_names, values, session=session)
-
-    def update_bill_line_item(self, bill_line_item_id, session: Session = None, **kwargs):
-        return self._update_record(BillLineItem, bill_line_item_id, session=session, **kwargs)
-
-    def delete_bill_line_item(self, bill_line_item_id, session: Session = None, **kwargs) -> bool:
+    def create_xero_bill_line_item(self, session: Session = None, **kwargs):
         unique_lookup = {}
         if 'parent_id' in kwargs and 'detail_number' in kwargs and 'line_number' in kwargs:
             unique_lookup = {
@@ -883,9 +889,25 @@ class DatabaseOperations:
                 'detail_number': kwargs['detail_number'],
                 'line_number': kwargs['line_number']
             }
-        return self._delete_record(BillLineItem, bill_line_item_id, unique_lookup=unique_lookup, session=session)
+        return self._create_record(XeroBillLineItem, unique_lookup=unique_lookup, session=session, **kwargs)
 
-    def bill_line_item_has_changes(
+    def search_xero_bill_line_items(self, column_names, values, session: Session = None):
+        return self._search_records(XeroBillLineItem, column_names, values, session=session)
+
+    def update_xero_bill_line_item(self, xero_bill_line_item_id, session: Session = None, **kwargs):
+        return self._update_record(XeroBillLineItem, xero_bill_line_item_id, session=session, **kwargs)
+
+    def delete_xero_bill_line_item(self, xero_bill_line_item_id, session: Session = None, **kwargs) -> bool:
+        unique_lookup = {}
+        if 'parent_id' in kwargs and 'detail_number' in kwargs and 'line_number' in kwargs:
+            unique_lookup = {
+                'parent_id': kwargs['parent_id'],
+                'detail_number': kwargs['detail_number'],
+                'line_number': kwargs['line_number']
+            }
+        return self._delete_record(XeroBillLineItem, xero_bill_line_item_id, unique_lookup=unique_lookup, session=session)
+
+    def xero_bill_line_item_has_changes(
         self,
         record_id: Optional[int] = None,
         parent_id: Optional[int] = None,
@@ -902,14 +924,14 @@ class DatabaseOperations:
         if line_number is not None:
             unique_filters['line_number'] = line_number
         return self._has_changes_for_record(
-            BillLineItem,
+            XeroBillLineItem,
             record_id=record_id,
             unique_filters=unique_filters if not record_id else None,
             session=session,
             **kwargs
         )
 
-    def search_bill_line_item_by_keys(
+    def search_xero_bill_line_item_by_keys(
         self,
         project_number: Optional[int] = None,
         po_number: Optional[int] = None,
@@ -917,8 +939,8 @@ class DatabaseOperations:
         line_number: Optional[int] = None,
         session: Session = None
     ) -> Union[None, Dict[str, Any], List[Dict[str, Any]]]:
-        if not project_number and (not po_number) and (not detail_number) and (not line_number):
-            return self.search_bill_line_items([], [], session=session)
+        if not project_number and not po_number and not detail_number and not line_number:
+            return self.search_xero_bill_line_items([], [], session=session)
         col_filters = []
         val_filters = []
         if project_number is not None:
@@ -933,9 +955,9 @@ class DatabaseOperations:
         if line_number is not None:
             col_filters.append('line_number')
             val_filters.append(line_number)
-        return self.search_bill_line_items(col_filters, val_filters, session=session)
+        return self.search_xero_bill_line_items(col_filters, val_filters, session=session)
 
-    def create_bill_line_item_by_keys(
+    def create_xero_bill_line_item_by_keys(
         self,
         parent_id: int,
         project_number: int,
@@ -957,9 +979,9 @@ class DatabaseOperations:
             'detail_number': detail_number,
             'line_number': line_number
         }
-        return self._create_record(BillLineItem, unique_lookup=unique_lookup, session=session, **kwargs)
+        return self._create_record(XeroBillLineItem, unique_lookup=unique_lookup, session=session, **kwargs)
 
-    def update_bill_line_item_by_keys(
+    def update_xero_bill_line_item_by_keys(
         self,
         project_number: int,
         po_number: int,
@@ -968,14 +990,14 @@ class DatabaseOperations:
         session: Session = None,
         **kwargs
     ):
-        matches = self.search_bill_line_item_by_keys(project_number, po_number, detail_number, line_number, session=session)
+        matches = self.search_xero_bill_line_item_by_keys(project_number, po_number, detail_number, line_number, session=session)
         if not matches:
             return None
         if isinstance(matches, list):
             match = matches[0]
         else:
             match = matches
-        return self.update_bill_line_item(match['id'], session=session, **kwargs)
+        return self.update_xero_bill_line_item(match['id'], session=session, **kwargs)
     # endregion
 
     # region 🧾 INVOICE
@@ -997,13 +1019,7 @@ class DatabaseOperations:
             unique_lookup['invoice_number'] = kwargs['invoice_number']
         return self._delete_record(Invoice, invoice_id, unique_lookup=unique_lookup, session=session)
 
-    def invoice_has_changes(
-        self,
-        record_id: Optional[int] = None,
-        invoice_number: Optional[str] = None,
-        session: Session = None,
-        **kwargs
-    ) -> bool:
+    def invoice_has_changes(self, record_id=None, invoice_number=None, session=None, **kwargs) -> bool:
         unique_filters = {}
         if invoice_number is not None:
             unique_filters['invoice_number'] = invoice_number
@@ -1022,7 +1038,7 @@ class DatabaseOperations:
         invoice_number: Optional[int] = None,
         session: Session = None
     ) -> Union[None, Dict[str, Any], List[Dict[str, Any]]]:
-        if not project_number and (not po_number) and (not invoice_number):
+        if not project_number and not po_number and not invoice_number:
             return self.search_invoices([], [], session=session)
         col_filters = []
         val_filters = []
@@ -1049,7 +1065,6 @@ class DatabaseOperations:
         return self._update_record(Receipt, receipt_id, session=session, **kwargs)
 
     def delete_receipt_by_id(self, receipt_id, session: Session = None, **kwargs) -> bool:
-        # If you have any unique fields for concurrency fallback, populate unique_lookup
         return self._delete_record(Receipt, receipt_id, unique_lookup=None, session=session)
 
     def receipt_has_changes(
@@ -1087,7 +1102,7 @@ class DatabaseOperations:
         line_number: Optional[int] = None,
         session: Session = None
     ):
-        if not project_number and (not po_number) and (not detail_number) and (not line_number):
+        if not project_number and not po_number and not detail_number and not line_number:
             return self.search_receipts([], [], session=session)
         col_filters = []
         val_filters = []
@@ -1144,12 +1159,12 @@ class DatabaseOperations:
         return self._create_record(SpendMoney, session=session, **kwargs)
 
     def search_spend_money(self, column_names, values, deleted=False, session: Session = None):
-        prefix = "[ BATCH OPERATION ] " if session else ""
-        self.logger.debug(
-            f"{prefix}💵 Searching SpendMoney with columns={column_names}, values={values}, deleted={deleted}")
+        prefix = "[BATCH OPERATION] " if session else ""
+        self.logger.debug(f"{prefix}💵 Searching SpendMoney columns={column_names}, vals={values}, deleted={deleted}")
         records = self._search_records(SpendMoney, column_names, values, session=session)
         if not records:
             return records
+        # filter out state=DELETED if not asked for deleted
         if not deleted:
             if isinstance(records, dict):
                 if records.get('state') == 'DELETED':
@@ -1200,7 +1215,7 @@ class DatabaseOperations:
         deleted: bool = False,
         session: Session = None
     ):
-        if not project_number and (not po_number) and (not detail_number) and (not line_number):
+        if not project_number and not po_number and not detail_number and not line_number:
             return self.search_spend_money([], [], deleted=deleted, session=session)
         col_filters = []
         val_filters = []
@@ -1271,13 +1286,7 @@ class DatabaseOperations:
     def delete_tax_account(self, tax_account_id, session: Session = None, **kwargs) -> bool:
         return self._delete_record(TaxAccount, tax_account_id, unique_lookup=None, session=session)
 
-    def tax_account_has_changes(
-        self,
-        record_id: Optional[int] = None,
-        tax_code: Optional[str] = None,
-        session: Session = None,
-        **kwargs
-    ) -> bool:
+    def tax_account_has_changes(self, record_id=None, tax_code=None, session=None, **kwargs) -> bool:
         unique_filters = {}
         if tax_code is not None:
             unique_filters['tax_code'] = tax_code
@@ -1291,10 +1300,16 @@ class DatabaseOperations:
     # endregion
 
     # region 🏷 XERO BILL
-    def create_xero_bill(self, session: Session = None, **kwargs):
-        unique_lookup = {}
-        if 'xero_reference_number' in kwargs:
-            unique_lookup['xero_reference_number'] = kwargs['xero_reference_number']
+
+    def create_xero_bill(self, project_number, po_number, detail_number, session: Session = None, **kwargs):
+        kwargs['project_number'] = project_number
+        kwargs['po_number'] = po_number
+        kwargs['detail_number'] = detail_number
+        unique_lookup = {
+            'project_number': project_number,
+            'po_number': po_number,
+            'detail_number': detail_number
+        }
         return self._create_record(XeroBill, unique_lookup=unique_lookup, session=session, **kwargs)
 
     def search_xero_bills(self, column_names, values, session: Session = None):
@@ -1304,21 +1319,24 @@ class DatabaseOperations:
         return self._update_record(XeroBill, xero_bill_id, session=session, **kwargs)
 
     def delete_xero_bill(self, xero_bill_id, session: Session = None, **kwargs) -> bool:
-        unique_lookup = {}
-        if 'xero_reference_number' in kwargs:
-            unique_lookup['xero_reference_number'] = kwargs['xero_reference_number']
-        return self._delete_record(XeroBill, xero_bill_id, unique_lookup=unique_lookup, session=session)
+        return self._delete_record(XeroBill, xero_bill_id, unique_lookup=None, session=session)
 
     def xero_bill_has_changes(
-        self,
-        record_id: Optional[int] = None,
-        xero_reference_number: Optional[str] = None,
-        session: Session = None,
-        **kwargs
+            self,
+            record_id=None,
+            project_number=None,
+            po_number=None,
+            detail_number=None,
+            session=None,
+            **kwargs
     ) -> bool:
         unique_filters = {}
-        if xero_reference_number is not None:
-            unique_filters['xero_reference_number'] = xero_reference_number
+        if project_number is not None:
+            unique_filters['project_number'] = project_number
+        if po_number is not None:
+            unique_filters['po_number'] = po_number
+        if detail_number is not None:
+            unique_filters['detail_number'] = detail_number
         return self._has_changes_for_record(
             XeroBill,
             record_id=record_id,
@@ -1327,14 +1345,8 @@ class DatabaseOperations:
             **kwargs
         )
 
-    def search_xero_bill_by_keys(
-        self,
-        project_number: Optional[int] = None,
-        po_number: Optional[int] = None,
-        detail_number: Optional[int] = None,
-        session: Session = None
-    ) -> Union[None, Dict[str, Any], List[Dict[str, Any]]]:
-        if not project_number and (not po_number) and (not detail_number):
+    def search_xero_bill_by_keys(self, project_number=None, po_number=None, detail_number=None, session=None):
+        if not project_number and not po_number and not detail_number:
             return self.search_xero_bills([], [], session=session)
         col_filters = []
         val_filters = []
@@ -1349,19 +1361,10 @@ class DatabaseOperations:
             val_filters.append(detail_number)
         return self.search_xero_bills(col_filters, val_filters, session=session)
 
-    def create_xero_bill_by_keys(
-        self,
-        project_number: int,
-        po_number: int,
-        detail_number: int,
-        session: Session = None,
-        **kwargs
-    ):
-        kwargs.update({
-            'project_number': project_number,
-            'po_number': po_number,
-            'detail_number': detail_number
-        })
+    def create_xero_bill_by_keys(self, project_number, po_number, detail_number, session=None, **kwargs):
+        kwargs['project_number'] = project_number
+        kwargs['po_number'] = po_number
+        kwargs['detail_number'] = detail_number
         unique_lookup = {
             'project_number': project_number,
             'po_number': po_number,
@@ -1369,20 +1372,17 @@ class DatabaseOperations:
         }
         return self._create_record(XeroBill, unique_lookup=unique_lookup, session=session, **kwargs)
 
-    def update_xero_bill_by_keys(
-        self,
-        project_number: int,
-        po_number: int,
-        detail_number: int,
-        session: Session = None,
-        **kwargs
-    ):
+    def update_xero_bill_by_keys(self, project_number, po_number, detail_number, session=None, **kwargs):
         bills = self.search_xero_bill_by_keys(project_number, po_number, detail_number, session=session)
         if not bills:
             return None
         if isinstance(bills, list):
             bills = bills[0]
         return self.update_xero_bill(bills['id'], session=session, **kwargs)
+
+
+
+
     # endregion
 
     # region 👤 USER
@@ -1399,13 +1399,7 @@ class DatabaseOperations:
     def delete_user(self, user_id, session: Session = None, **kwargs) -> bool:
         return self._delete_record(User, user_id, unique_lookup=None, session=session)
 
-    def user_has_changes(
-        self,
-        record_id: Optional[int] = None,
-        username: Optional[str] = None,
-        session: Session = None,
-        **kwargs
-    ) -> bool:
+    def user_has_changes(self, record_id=None, username=None, session=None, **kwargs) -> bool:
         unique_filters = {}
         if username is not None:
             unique_filters['username'] = username
@@ -1420,25 +1414,18 @@ class DatabaseOperations:
 
     # region 📒 TAX LEDGER
     def create_tax_ledger(self, session: Session = None, **kwargs):
-        unique_lookup = {}
-        return self._create_record(TaxLedger, unique_lookup=unique_lookup, session=session, **kwargs)
+        return self._create_record(TaxLedger, unique_lookup={}, session=session, **kwargs)
 
     def search_tax_ledgers(self, column_names=None, values=None, session: Session = None):
         return self._search_records(TaxLedger, column_names, values, session=session)
 
     def update_tax_ledger(self, ledger_id, session: Session = None, **kwargs):
-        return self._update_record(TaxLedger, ledger_id, session=session, **kwargs)
+        return self._update_record(TaxLedger, ledger_id, unique_lookup=None, session=session, **kwargs)
 
     def delete_tax_ledger(self, ledger_id, session: Session = None, **kwargs) -> bool:
         return self._delete_record(TaxLedger, ledger_id, unique_lookup=None, session=session)
 
-    def tax_ledger_has_changes(
-        self,
-        record_id: Optional[int] = None,
-        name: Optional[str] = None,
-        session: Session = None,
-        **kwargs
-    ) -> bool:
+    def tax_ledger_has_changes(self, record_id=None, name=None, session=None, **kwargs) -> bool:
         unique_filters = {}
         if name is not None:
             unique_filters['name'] = name
@@ -1453,25 +1440,18 @@ class DatabaseOperations:
 
     # region 📊 BUDGET MAP
     def create_budget_map(self, session: Session = None, **kwargs):
-        unique_lookup = {}
-        return self._create_record(BudgetMap, unique_lookup=unique_lookup, session=session, **kwargs)
+        return self._create_record(BudgetMap, unique_lookup={}, session=session, **kwargs)
 
     def search_budget_maps(self, column_names=None, values=None, session: Session = None):
         return self._search_records(BudgetMap, column_names, values, session=session)
 
     def update_budget_map(self, map_id, session: Session = None, **kwargs):
-        return self._update_record(BudgetMap, map_id, session=session, **kwargs)
+        return self._update_record(BudgetMap, map_id, unique_lookup=None, session=session, **kwargs)
 
     def delete_budget_map(self, map_id, session: Session = None, **kwargs) -> bool:
         return self._delete_record(BudgetMap, map_id, unique_lookup=None, session=session)
 
-    def budget_map_has_changes(
-        self,
-        record_id: Optional[int] = None,
-        map_name: Optional[str] = None,
-        session: Session = None,
-        **kwargs
-    ) -> bool:
+    def budget_map_has_changes(self, record_id=None, map_name=None, session=None, **kwargs) -> bool:
         unique_filters = {}
         if map_name is not None:
             unique_filters['map_name'] = map_name
@@ -1484,4 +1464,131 @@ class DatabaseOperations:
         )
     # endregion
 
-#endregion  # End Class Definition
+    # region 📝 PO LOG
+    def create_po_log(self, session: Session = None, **kwargs):
+        """
+        Creates a new PoLog record in the DB.
+        Returns the created record as a dict or None on failure.
+        """
+        unique_lookup = {}
+        if 'db_path' in kwargs:
+            unique_lookup['db_path'] = kwargs['db_path']
+        return self._create_record(PoLog, unique_lookup=unique_lookup, session=session, **kwargs)
+
+    def search_po_logs(self, column_names=None, values=None, session: Session = None):
+        """
+        Searches PoLog records with optional filters.
+        Returns None, a dict, or a list of dicts.
+        """
+        return self._search_records(PoLog, column_names, values, session=session)
+
+    def update_po_log(self, po_log_id, session: Session = None, **kwargs):
+        """
+        Updates an existing PoLog by ID. Returns updated dict or None on failure.
+        """
+        return self._update_record(PoLog, po_log_id, session=session, **kwargs)
+
+    def delete_po_log(self, po_log_id, session: Session = None, **kwargs) -> bool:
+        """
+        Deletes a PoLog by ID. Returns True if deleted, False otherwise.
+        """
+        unique_lookup = {}
+        if 'db_path' in kwargs:
+            unique_lookup['db_path'] = kwargs['db_path']
+        return self._delete_record(PoLog, po_log_id, unique_lookup=unique_lookup, session=session)
+
+    def po_log_has_changes(
+        self,
+        record_id: Optional[int] = None,
+        project_number: Optional[int] = None,
+        filename: Optional[str] = None,
+        db_path: Optional[str] = None,
+        status: Optional[str] = None,
+        session: Session = None,
+        **kwargs
+    ) -> bool:
+        """
+        Checks if a PoLog record has changed.
+        """
+        unique_filters = {}
+        if db_path is not None:
+            unique_filters['db_path'] = db_path
+        return self._has_changes_for_record(
+            PoLog,
+            record_id=record_id,
+            unique_filters=unique_filters if not record_id else None,
+            session=session,
+            project_number=project_number,
+            filename=filename,
+            db_path=db_path,
+            status=status,
+            **kwargs
+        )
+
+    def search_po_log_by_keys(
+        self,
+        project_number: Optional[int] = None,
+        filename: Optional[str] = None,
+        db_path: Optional[str] = None,
+        status: Optional[str] = None,
+        session: Session = None
+    ) -> Union[None, Dict[str, Any], List[Dict[str, Any]]]:
+        """
+        Searches for PoLog records based on unique keys.
+        """
+        if not project_number and not filename and not db_path and not status:
+            return self.search_po_logs([], [], session=session)
+
+        col_filters = []
+        val_filters = []
+        if project_number is not None:
+            col_filters.append('project_number')
+            val_filters.append(project_number)
+        if filename is not None:
+            col_filters.append('filename')
+            val_filters.append(filename)
+        if db_path is not None:
+            col_filters.append('db_path')
+            val_filters.append(db_path)
+        if status is not None:
+            col_filters.append('status')
+            val_filters.append(status)
+
+        return self.search_po_logs(col_filters, val_filters, session=session)
+
+    def create_po_log_by_keys(
+        self,
+        project_number: int,
+        filename: str,
+        db_path: str,
+        status: str = 'PENDING',
+        session: Session = None,
+        **kwargs
+    ):
+        kwargs.update({
+            'project_number': project_number,
+            'filename': filename,
+            'db_path': db_path,
+            'status': status
+        })
+        unique_lookup = {'db_path': db_path}
+        return self._create_record(PoLog, unique_lookup=unique_lookup, session=session, **kwargs)
+
+    def update_po_log_by_keys(
+        self,
+        project_number: int,
+        filename: str,
+        db_path: str,
+        status: Optional[str] = None,
+        session: Session = None,
+        **kwargs
+    ):
+        matches = self.search_po_log_by_keys(project_number, filename, db_path, session=session)
+        if not matches:
+            return None
+        if isinstance(matches, list):
+            match = matches[0]
+        else:
+            match = matches
+        return self.update_po_log(match['id'], session=session, status=status, **kwargs)
+    # endregion

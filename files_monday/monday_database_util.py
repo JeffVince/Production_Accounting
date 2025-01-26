@@ -21,13 +21,13 @@ class MondayDatabaseUtil(metaclass=SingletonMeta):
             load_dotenv()
             self.monday_api_token = os.getenv('MONDAY_API_TOKEN')
             if not self.monday_api_token:
-                self.logger.error('[__init__] - Monday API Token not found. Please set it in environment variables.')
+                self.logger.error('Monday API Token not found. Please set it in environment variables.')
                 raise EnvironmentError('Missing MONDAY_API_TOKEN')
             self.monday_api_url = 'https://api.monday.com/v2'
             self.monday_util = monday_util
             self.DEFAULT_ACCOUNT_NUMBER = '5000'
             self.DEFAULT_ACCOUNT_CODE = 1
-            self.logger.info('[__init__] - Monday Database Utility initialized')
+            self.logger.info('Monday Database Utility initialized')
             self.db_ops = DatabaseOperations()
             self._initialized = True
 

@@ -9,14 +9,14 @@ from server_webhook.models.control_panel_model import (
     trigger_detail_item_update, trigger_detail_item_create, trigger_detail_item_delete,
     trigger_purchase_order_create, trigger_purchase_order_update, trigger_purchase_order_delete,
     trigger_contact_create, trigger_contact_update, trigger_contact_delete,
-    trigger_bill_line_item_create, trigger_bill_line_item_update, trigger_bill_line_item_delete,
+    trigger_xero_bill_line_item_create, trigger_xero_bill_line_item_update, trigger_xero_bill_line_item_delete,
     trigger_bank_transaction_create, trigger_bank_transaction_update, trigger_bank_transaction_delete,
     trigger_account_code_create, trigger_account_code_update, trigger_account_code_delete,
     trigger_receipt_create, trigger_receipt_update, trigger_receipt_delete,
     trigger_spend_money_create, trigger_spend_money_update, trigger_spend_money_delete,
     trigger_tax_account_create, trigger_tax_account_update, trigger_tax_account_delete,
     trigger_xero_bill_create, trigger_xero_bill_update, trigger_xero_bill_delete,
-    trigger_create_xero_bill_line_items, trigger_update_xero_bill_line_item, trigger_delete_xero_bill_line_item
+    trigger_create_xero_xero_bill_line_items, trigger_update_xero_xero_bill_line_item, trigger_delete_xero_xero_bill_line_item
 )
 
 # Initialize logger
@@ -38,9 +38,9 @@ ROUTE_MAPPING = {
     'trigger_contact_create': trigger_contact_create,
     'trigger_contact_update': trigger_contact_update,
     'trigger_contact_delete': trigger_contact_delete,
-    'trigger_bill_line_item_create': trigger_bill_line_item_create,
-    'trigger_bill_line_item_update': trigger_bill_line_item_update,
-    'trigger_bill_line_item_delete': trigger_bill_line_item_delete,
+    'trigger_xero_bill_line_item_create': trigger_xero_bill_line_item_create,
+    'trigger_xero_bill_line_item_update': trigger_xero_bill_line_item_update,
+    'trigger_xero_bill_line_item_delete': trigger_xero_bill_line_item_delete,
     'trigger_bank_transaction_create': trigger_bank_transaction_create,
     'trigger_bank_transaction_update': trigger_bank_transaction_update,
     'trigger_bank_transaction_delete': trigger_bank_transaction_delete,
@@ -59,9 +59,9 @@ ROUTE_MAPPING = {
     'trigger_xero_bill_create': trigger_xero_bill_create,
     'trigger_xero_bill_update': trigger_xero_bill_update,
     'trigger_xero_bill_delete': trigger_xero_bill_delete,
-    'trigger_create_xero_bill_line_items': trigger_create_xero_bill_line_items,
-    'trigger_update_xero_bill_line_item': trigger_update_xero_bill_line_item,
-    'trigger_delete_xero_bill_line_item': trigger_delete_xero_bill_line_item
+    'trigger_create_xero_xero_bill_line_items': trigger_create_xero_xero_bill_line_items,
+    'trigger_update_xero_xero_bill_line_item': trigger_update_xero_xero_bill_line_item,
+    'trigger_delete_xero_xero_bill_line_item': trigger_delete_xero_xero_bill_line_item
 }
 
 
@@ -70,12 +70,17 @@ def handle_route(route):
     if route not in ROUTE_MAPPING:
         logger.warning(f"Invalid route attempted: {route}")
         return jsonify({"message": "Invalid task route."}), 400
+    else:
+        data = request.get_json()
+        value = data.get('value')
+        logger.info(f"🌟[Event] [Route = {route}] [Value = {value}]")
 
-    data = request.get_json()
-    value = data.get('value')
+
+
+
 
     if value is None:
-        logger.warning(f"No value provided for route: {route}")
+        logger.warning(f"💥 [Event] [Route = {route}] [Value = None]")
         return jsonify({"message": "No ID provided."}), 400
 
     try:

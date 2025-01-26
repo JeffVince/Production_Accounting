@@ -15,6 +15,8 @@ def process_invoice_trigger(invoice_id: int):
     """
     The Celery task for handling invoice creates/updates.
     """
+    logger = logging.getLogger('invoice_logger')
+
     logger.info(f'🚀 Starting process_invoice_trigger shared task. invoice_id={invoice_id}.')
     try:
         trigger_service = celery_task_service
@@ -30,6 +32,8 @@ def process_invoice_delete(invoice_id: int):
     """
     The Celery task for handling invoice deletes.
     """
+    logger = logging.getLogger('invoice_logger')
+
     logger.info(f'🗑️ Handling invoice deletion for invoice_id={invoice_id}.')
     try:
         trigger_service = celery_task_service
@@ -45,6 +49,8 @@ def process_detail_item_update(detail_item_id: int):
     """
     The Celery task for detail items that just turned RTP (or updated).
     """
+    logger = logging.getLogger('budget_logger')
+
     logger.info(f'🌀 Handling updated detail item for detail_item_id={detail_item_id}')
     try:
         trigger_service = celery_task_service
@@ -60,6 +66,8 @@ def process_detail_item_create(detail_item_id: int):
     """
     The Celery task for newly created detail items.
     """
+    logger = logging.getLogger('budget_logger')
+
     logger.info(f'🌀 Handling created detail item for detail_item_id={detail_item_id}')
     try:
         trigger_service = celery_task_service
@@ -73,7 +81,9 @@ def process_detail_item_create(detail_item_id: int):
 @shared_task
 def process_detail_item_delete(detail_item_id: int):
     """
-    The Celery task for deleted detail items.
+    The Celery task for dele
+        logger = logging.getLogger('budget_logger')
+ted detail items.
     """
     logger.info(f'🗑️ Handling deleted detail item for detail_item_id={detail_item_id}')
     try:
@@ -87,6 +97,8 @@ def process_detail_item_delete(detail_item_id: int):
 
 @shared_task
 def process_purchase_order_create(po_id: int):
+    logger = logging.getLogger('budget_logger')
+
     logger.info(f'🚀 Starting process_purchase_order_create shared task. po_id={po_id}.')
     try:
         trigger_service = celery_task_service
@@ -99,6 +111,8 @@ def process_purchase_order_create(po_id: int):
 
 @shared_task
 def process_purchase_order_update(po_id: int):
+    logger = logging.getLogger('budget_logger')
+
     logger.info(f'🔄 Handling updated PurchaseOrder id={po_id}.')
     try:
         trigger_service = celery_task_service
@@ -111,6 +125,8 @@ def process_purchase_order_update(po_id: int):
 
 @shared_task
 def process_purchase_order_delete(po_id: int):
+    logger = logging.getLogger('budget_logger')
+
     logger.info(f'🗑️ Handling deleted PurchaseOrder id={po_id}.')
     try:
         trigger_service = celery_task_service
@@ -123,6 +139,8 @@ def process_purchase_order_delete(po_id: int):
 
 @shared_task
 def process_contact_create(contact_id: int):
+    logger = logging.getLogger('admin_logger')
+
     logger.info(f'🚀 Starting process_contact_create shared task. contact_id={contact_id}.')
     try:
         trigger_service = celery_task_service
@@ -135,6 +153,8 @@ def process_contact_create(contact_id: int):
 
 @shared_task
 def process_contact_update(contact_id: int):
+    logger = logging.getLogger('admin_logger')
+
     logger.info(f'🔄 Handling updated Contact id={contact_id}.')
     try:
         trigger_service = celery_task_service
@@ -147,6 +167,8 @@ def process_contact_update(contact_id: int):
 
 @shared_task
 def process_contact_delete(contact_id: int):
+    logger = logging.getLogger('admin_logger')
+
     logger.info(f'🗑️ Handling deleted Contact id={contact_id}.')
     try:
         trigger_service = celery_task_service
@@ -158,43 +180,51 @@ def process_contact_delete(contact_id: int):
         raise
 
 @shared_task
-def process_bill_line_item_create(bill_line_item_id: int):
-    logger.info(f'🚀 Starting process_bill_line_item_create shared task. bill_line_item_id={bill_line_item_id}.')
+def process_xero_bill_line_item_create(xero_bill_line_item_id: int):
+    logger = logging.getLogger('xero_logger')
+
+    logger.info(f'🚀 Starting process_xero_bill_line_item_create shared task. xero_bill_line_item_id={xero_bill_line_item_id}.')
     try:
         trigger_service = celery_task_service
-        trigger_service.bill_line_item_trigger_on_create(bill_line_item_id)
-        logger.info(f'🎉 Done processing newly created BillLineItem #{bill_line_item_id}.')
-        return f'BillLineItem {bill_line_item_id} created successfully!'
+        trigger_service.xero_bill_line_item_trigger_on_create(xero_bill_line_item_id)
+        logger.info(f'🎉 Done processing newly created XeroBillLineItem #{xero_bill_line_item_id}.')
+        return f'XeroBillLineItem {xero_bill_line_item_id} created successfully!'
     except Exception as e:
-        logger.error(f'💥 Problem in process_bill_line_item_create({bill_line_item_id}): {e}', exc_info=True)
+        logger.error(f'💥 Problem in process_xero_bill_line_item_create({xero_bill_line_item_id}): {e}', exc_info=True)
         raise
 
 @shared_task
-def process_bill_line_item_update(bill_line_item_id: int):
-    logger.info(f'🔄 Handling updated BillLineItem id={bill_line_item_id}.')
+def process_xero_bill_line_item_update(xero_bill_line_item_id: int):
+    logger = logging.getLogger('xero_logger')
+
+    logger.info(f'🔄 Handling updated XeroBillLineItem id={xero_bill_line_item_id}.')
     try:
         trigger_service = celery_task_service
-        trigger_service.bill_line_item_trigger_on_update(bill_line_item_id)
-        logger.info(f'🎉 Done updating BillLineItem #{bill_line_item_id}.')
-        return f'BillLineItem {bill_line_item_id} updated successfully!'
+        trigger_service.xero_bill_line_item_trigger_on_update(xero_bill_line_item_id)
+        logger.info(f'🎉 Done updating XeroBillLineItem #{xero_bill_line_item_id}.')
+        return f'XeroBillLineItem {xero_bill_line_item_id} updated successfully!'
     except Exception as e:
-        logger.error(f'💥 Problem in process_bill_line_item_update({bill_line_item_id}): {e}', exc_info=True)
+        logger.error(f'💥 Problem in process_xero_bill_line_item_update({xero_bill_line_item_id}): {e}', exc_info=True)
         raise
 
 @shared_task
-def process_bill_line_item_delete(bill_line_item_id: int):
-    logger.info(f'🗑️ Handling deleted BillLineItem id={bill_line_item_id}.')
+def process_xero_bill_line_item_delete(xero_bill_line_item_id: int):
+    logger = logging.getLogger('xero_logger')
+
+    logger.info(f'🗑️ Handling deleted XeroBillLineItem id={xero_bill_line_item_id}.')
     try:
         trigger_service = celery_task_service
-        trigger_service.bill_line_item_trigger_on_delete(bill_line_item_id)
-        logger.info(f'✅ BillLineItem #{bill_line_item_id} deletion handled.')
-        return f'BillLineItem {bill_line_item_id} deletion processed!'
+        trigger_service.xero_bill_line_item_trigger_on_delete(xero_bill_line_item_id)
+        logger.info(f'✅ XeroBillLineItem #{xero_bill_line_item_id} deletion handled.')
+        return f'XeroBillLineItem {xero_bill_line_item_id} deletion processed!'
     except Exception as e:
-        logger.error(f'💥 Problem in process_bill_line_item_delete({bill_line_item_id}): {e}', exc_info=True)
+        logger.error(f'💥 Problem in process_xero_bill_line_item_delete({xero_bill_line_item_id}): {e}', exc_info=True)
         raise
 
 @shared_task
 def process_bank_transaction_create(bank_tx_id: int):
+    logger = logging.getLogger('admin_logger')
+
     logger.info(f'🚀 Starting process_bank_transaction_create shared task. bank_tx_id={bank_tx_id}.')
     try:
         trigger_service = celery_task_service
@@ -207,6 +237,8 @@ def process_bank_transaction_create(bank_tx_id: int):
 
 @shared_task
 def process_bank_transaction_update(bank_tx_id: int):
+    logger = logging.getLogger('admin_logger')
+
     logger.info(f'🔄 Handling updated BankTransaction id={bank_tx_id}.')
     try:
         trigger_service = celery_task_service
@@ -219,6 +251,8 @@ def process_bank_transaction_update(bank_tx_id: int):
 
 @shared_task
 def process_bank_transaction_delete(bank_tx_id: int):
+    logger = logging.getLogger('admin_logger')
+
     logger.info(f'🗑️ Handling deleted BankTransaction id={bank_tx_id}.')
     try:
         trigger_service = celery_task_service
@@ -231,6 +265,8 @@ def process_bank_transaction_delete(bank_tx_id: int):
 
 @shared_task
 def process_account_code_create(account_code_id: int):
+    logger = logging.getLogger('budget_logger')
+
     logger.info(f'🚀 Starting process_account_code_create shared task. account_code_id={account_code_id}.')
     try:
         trigger_service = celery_task_service
@@ -243,6 +279,8 @@ def process_account_code_create(account_code_id: int):
 
 @shared_task
 def process_account_code_update(account_code_id: int):
+    logger = logging.getLogger('budget_logger')
+
     logger.info(f'🔄 Handling updated AccountCode id={account_code_id}.')
     try:
         trigger_service = celery_task_service
@@ -255,6 +293,8 @@ def process_account_code_update(account_code_id: int):
 
 @shared_task
 def process_account_code_delete(account_code_id: int):
+    logger = logging.getLogger('budget_logger')
+
     logger.info(f'🗑️ Handling deleted AccountCode id={account_code_id}.')
     try:
         trigger_service = celery_task_service
@@ -267,6 +307,8 @@ def process_account_code_delete(account_code_id: int):
 
 @shared_task
 def process_receipt_create(receipt_id: int):
+    logger = logging.getLogger('invoice_logger')
+
     logger.info(f'🚀 Starting process_receipt_create shared task. receipt_id={receipt_id}.')
     try:
         trigger_service = celery_task_service
@@ -279,6 +321,8 @@ def process_receipt_create(receipt_id: int):
 
 @shared_task
 def process_receipt_update(receipt_id: int):
+    logger = logging.getLogger('invoice_logger')
+
     logger.info(f'🔄 Handling updated Receipt id={receipt_id}.')
     try:
         trigger_service = celery_task_service
@@ -291,6 +335,8 @@ def process_receipt_update(receipt_id: int):
 
 @shared_task
 def process_receipt_delete(receipt_id: int):
+    logger = logging.getLogger('invoice_logger')
+
     logger.info(f'🗑️ Handling deleted Receipt id={receipt_id}.')
     try:
         trigger_service = celery_task_service
@@ -303,6 +349,8 @@ def process_receipt_delete(receipt_id: int):
 
 @shared_task
 def process_spend_money_create(spend_money_id: int):
+    logger = logging.getLogger('xero_logger')
+
     logger.info(f'🚀 Starting process_spend_money_create shared task. spend_money_id={spend_money_id}.')
     try:
         trigger_service = celery_task_service
@@ -315,6 +363,8 @@ def process_spend_money_create(spend_money_id: int):
 
 @shared_task
 def process_spend_money_update(spend_money_id: int):
+    logger = logging.getLogger('xero_logger')
+
     logger.info(f'🔄 Handling updated SpendMoney id={spend_money_id}.')
     try:
         trigger_service = celery_task_service
@@ -327,6 +377,8 @@ def process_spend_money_update(spend_money_id: int):
 
 @shared_task
 def process_spend_money_delete(spend_money_id: int):
+    logger = logging.getLogger('xero_logger')
+
     logger.info(f'🗑️ Handling deleted SpendMoney id={spend_money_id}.')
     try:
         trigger_service = celery_task_service
@@ -339,6 +391,8 @@ def process_spend_money_delete(spend_money_id: int):
 
 @shared_task
 def process_tax_account_create(tax_account_id: int):
+    logger = logging.getLogger('xero_logger')
+
     logger.info(f'🚀 Starting process_tax_account_create shared task. tax_account_id={tax_account_id}.')
     try:
         trigger_service = celery_task_service
@@ -351,6 +405,8 @@ def process_tax_account_create(tax_account_id: int):
 
 @shared_task
 def process_tax_account_update(tax_account_id: int):
+    logger = logging.getLogger('xero_logger')
+
     logger.info(f'🔄 Handling updated TaxAccount id={tax_account_id}.')
     try:
         trigger_service = celery_task_service
@@ -363,6 +419,8 @@ def process_tax_account_update(tax_account_id: int):
 
 @shared_task
 def process_tax_account_delete(tax_account_id: int):
+    logger = logging.getLogger('xero_logger')
+
     logger.info(f'🗑️ Handling deleted TaxAccount id={tax_account_id}.')
     try:
         trigger_service = celery_task_service
@@ -378,6 +436,8 @@ def process_xero_bill_update(bill_id: int):
     """
     The Celery task for handling updated XeroBills.
     """
+    logger = logging.getLogger('xero_logger')
+
     logger.info(f'🚀 Starting update_xero_bill shared task. bill_id={bill_id}.')
     try:
         trigger_service = celery_task_service
@@ -393,6 +453,8 @@ def process_xero_bill_create(bill_id: str):
     """
     The Celery task for handling newly created XeroBills.
     """
+    logger = logging.getLogger('xero_logger')
+
     logger.info(f'🌀 NEW TASK - CREATE - XERO BILL - STARTED 🌀 {bill_id}.')
     try:
         trigger_service = celery_task_service
@@ -404,33 +466,37 @@ def process_xero_bill_create(bill_id: str):
         raise
 
 @shared_task
-def create_xero_bill_line_items(bill_id: int):
+def create_xero_xero_bill_line_items(bill_id: int):
     """
     The Celery task for handling newly inserted line items for a XeroBill.
     """
+    logger = logging.getLogger('xero_logger')
+
     logger.info(f'🌀 Handling created line items for bill_id={bill_id}')
     try:
         trigger_service = celery_task_service
-        trigger_service.create_xero_bill_line_items_trigger(bill_id)
+        trigger_service.create_xero_xero_bill_line_items_trigger(bill_id)
         logger.info(f'✅ XeroBill line items created for bill_id={bill_id}')
         return 'Success'
     except Exception as e:
-        logger.error(f'💥 Problem with create_xero_bill_line_items({bill_id}): {e}', exc_info=True)
+        logger.error(f'💥 Problem with create_xero_xero_bill_line_items({bill_id}): {e}', exc_info=True)
         raise
 
 @shared_task
-def update_xero_bill_line_item(line_item_id: int):
+def update_xero_xero_bill_line_item(line_item_id: int):
     """
     The Celery task for handling updated line items for a XeroBill.
     """
+    logger = logging.getLogger('xero_logger')
+
     logger.info(f'🌀 Handling updated line item for line_item_id={line_item_id}')
     try:
         trigger_service = celery_task_service
-        trigger_service.update_xero_bill_line_item_trigger(line_item_id)
+        trigger_service.update_xero_xero_bill_line_item_trigger(line_item_id)
         logger.info(f'✅ XeroBill line item updated for id={line_item_id}')
         return 'Success'
     except Exception as e:
-        logger.error(f'💥 Problem with update_xero_bill_line_item({line_item_id}): {e}', exc_info=True)
+        logger.error(f'💥 Problem with update_xero_xero_bill_line_item({line_item_id}): {e}', exc_info=True)
         raise
 
 @shared_task
@@ -438,6 +504,8 @@ def process_xero_bill_delete(bill_id: int):
     """
     The Celery task for handling deleted XeroBills.
     """
+    logger = logging.getLogger('xero_logger')
+
     logger.info(f'🗑️ Handling deleted XeroBill bill_id={bill_id}.')
     try:
         trigger_service = celery_task_service
@@ -449,31 +517,35 @@ def process_xero_bill_delete(bill_id: int):
         raise
 
 @shared_task
-def delete_xero_bill_line_item(line_item_id: int):
+def delete_xero_xero_bill_line_item(line_item_id: int):
     """
     The Celery task for handling deleted line items for a XeroBill.
     """
+    logger = logging.getLogger('xero_logger')
+
     logger.info(f'🗑️ Handling deleted line item for line_item_id={line_item_id}')
     try:
         trigger_service = celery_task_service
-        trigger_service.delete_xero_bill_line_item_trigger(line_item_id)
+        trigger_service.delete_xero_xero_bill_line_item_trigger(line_item_id)
         logger.info(f'✅ XeroBill line item #{line_item_id} deletion handled.')
         return 'Success'
     except Exception as e:
-        logger.error(f'💥 Problem with delete_xero_bill_line_item({line_item_id}): {e}', exc_info=True)
+        logger.error(f'💥 Problem with delete_xero_xero_bill_line_item({line_item_id}): {e}', exc_info=True)
         raise
 
 
 @shared_task
-def process_po_log_create():
+def process_po_log_create(po_log_id: int):
     """
     The Celery task for handling PO Log [NEW] action.
     Executes the logic to process PO log files.
     """
+    logger = logging.getLogger('budget_logger')
+
     logger.info('🚀 Starting process_po_log_new shared task.')
     try:
         trigger_service = celery_task_service
-        trigger_service.po_log_trigger_on_create()
+        trigger_service.po_log_trigger_on_create(po_log_id)
         logger.info('🎉 Done with PO Log [NEW] task.')
         return 'PO Log [NEW] task completed successfully!'
     except Exception as e:

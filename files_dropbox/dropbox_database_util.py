@@ -12,7 +12,7 @@ class DropboxDatabaseUtil:
     def __init__(self):
         self.logger = logging.getLogger('dropbox')
         self.dropbox_util = dropbox_util
-        self.logger.info('[__init__] - 📦 Dropbox Database Util initialized 🌟')
+        self.logger.info('📦 Dropbox Database Util initialized 🌟')
 
     def add_invoice_link_to_detail_items(self, project_id: str, po_number: str, invoice_number: int, file_link: str):
         with get_db_session() as session:

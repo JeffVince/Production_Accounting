@@ -12,7 +12,7 @@ class POLogProcessor(metaclass=SingletonMeta):
     def __init__(self):
         if not hasattr(self, '_initialized'):
             self.logger = logging.getLogger('po_log_logger')
-            self.logger.info('[__init__] - 🎬🍿 PO Log Processor initialized 🌟')
+            self.logger.info('🎬🍿 PO Log Processor initialized 🌟')
             self._initialized = True
 
     def _extract_project_number(self, file_path: str) -> str:
@@ -318,5 +318,14 @@ class POLogProcessor(metaclass=SingletonMeta):
             self.logger.debug(f'[parse_showbiz_po_log] - 🗒 Detail Items: {detail_items}')
             self.logger.debug(f'[parse_showbiz_po_log] - 🗒 Contacts: {contacts}')
         self.logger.info('[parse_showbiz_po_log] - ✅ Parsing completed successfully! 🏁')
+
+
+
+
         return (main_items, detail_items, contacts)
+
+
+
 po_log_processor = POLogProcessor()
+
+

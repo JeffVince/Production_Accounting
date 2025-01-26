@@ -114,10 +114,10 @@ class ShowbizPoLogPrinter:
             if len(segments) >= 1:
                 self.project_folder_name = segments[0]
             else:
-                self.logger.error('[__init__] - ❌ Cannot determine project_folder_name from file_path.')
+                self.logger.error('❌ Cannot determine project_folder_name from file_path.')
         if not self.upload_only:
             self.setup_images()
-        self.logger.info('[__init__] - 🎉 Initialized ShowbizPoLogPrinter instance.')
+        self.logger.info('🎉 Initialized ShowbizPoLogPrinter instance.')
 
     def setup_images(self):
         """

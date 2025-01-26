@@ -12,28 +12,17 @@ from utilities.singleton import SingletonMeta
 dropbox_blueprint = Blueprint('files_dropbox', __name__)
 
 
-@dropbox_blueprint.route('/', methods=['GET', 'POST'])
-def dropbox_webhook(self):
-    if request.method == 'GET':
-        challenge = request.args.get('challenge')
-        if challenge:
-            return (challenge, 200)
-        return (jsonify({'message': 'No challenge provided.'}), 400)
-    elif request.method == 'POST':
-        event = request.get_json()
-        return dropbox_webhook_handler.handle_dropbox_event(event)
-
 class DropboxWebhookHandler(metaclass=SingletonMeta):
 
     def __init__(self):
         if not hasattr(self, '_initialized'):
             self.logger = logging
-            logger.info('[__init__] - Dropbox Webhook Handler init started')
+            logger.info('Dropbox Webhook Handler init started')
             self.dropbox_service = DropboxService()
 
             self.dropbox_client = dropbox_client
 
-            self.logger.info('[__init__] - Dropbox Webhook Handler initialized')
+            self.logger.info('Dropbox Webhook Handler initialized')
             self._initialized = True
 
     def handle_dropbox_event(self, event):
@@ -97,4 +86,18 @@ class DropboxWebhookHandler(metaclass=SingletonMeta):
                 self.logger.error(f'[process_event_data] - Failed to save cursor in the finally block: {e}', exc_info=True)
 
 
+
 dropbox_webhook_handler = DropboxWebhookHandler()
+
+@dropbox_blueprint.route('/', methods=['GET', 'POST'])
+def dropbox_webhook():
+    if request.method == 'GET':
+        challenge = request.args.get('challenge')
+        if challenge:
+            return (challenge, 200)
+        return (jsonify({'message': 'No challenge provided.'}), 400)
+    elif request.method == 'POST':
+        event = request.get_json()
+        return dropbox_webhook_handler.handle_dropbox_event(event)
+
+

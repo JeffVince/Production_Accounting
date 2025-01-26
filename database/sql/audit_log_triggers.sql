@@ -164,7 +164,7 @@ END $$
 -----------------------------------------------------
 
 CREATE TRIGGER `bill_line_item_ai`
-AFTER INSERT ON `bill_line_item`
+AFTER INSERT ON xero_bill_line_item
 FOR EACH ROW
 BEGIN
     INSERT INTO `audit_log` (table_name, operation, record_id, message)
@@ -172,7 +172,7 @@ BEGIN
 END $$
 
 CREATE TRIGGER `bill_line_item_au`
-AFTER UPDATE ON `bill_line_item`
+AFTER UPDATE ON xero_bill_line_item
 FOR EACH ROW
 BEGIN
     INSERT INTO `audit_log` (table_name, operation, record_id, message)
@@ -180,7 +180,7 @@ BEGIN
 END $$
 
 CREATE TRIGGER `bill_line_item_ad`
-AFTER DELETE ON `bill_line_item`
+AFTER DELETE ON xero_bill_line_item
 FOR EACH ROW
 BEGIN
     INSERT INTO `audit_log` (table_name, operation, record_id, message)

@@ -25,7 +25,7 @@ class PoLogDatabaseUtil(metaclass=SingletonMeta):
     def __init__(self):
         if not hasattr(self, '_initialized'):
             self.logger = logging.getLogger('po_log_logger')
-            self.logger.info('[__init__] - PO Log Database Util initialized')
+            self.logger.info('PO Log Database Util initialized')
             self.db_ops = DatabaseOperations()
             self._initialized = True
 

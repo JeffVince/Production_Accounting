@@ -8,21 +8,11 @@
 </head>
 <body>
     <div class="container">
-        <h1>Celery Task Control Panel</h1>
 
-        <!-- Input Field Section -->
-        <div class="input-section">
-            <input type="text" id="task_input" placeholder="Enter ID here">
-        </div>
+
 
         <!-- Grid of Buttons -->
         <div class="button-grid">
-            <!-- New PO Log [NEW] Button -->
-            <button class="task-button po-log-new" data-route="trigger_po_log_new">PO Log [NEW]</button>
-
-            <!-- Invoice Tasks -->
-            <button class="task-button invoice" data-route="trigger_invoice_create">Invoice [CREATE]</button>
-            <button class="task-button invoice" data-route="trigger_invoice_delete">Invoice [DELETE]</button>
 
             <!-- Detail Item Tasks -->
             <button class="task-button detail-item" data-route="trigger_detail_item_create">Detail Item [CREATE]</button>
@@ -54,11 +44,19 @@
             <button class="task-button account-code" data-route="trigger_account_code_update">Account Code [UPDATE]</button>
             <button class="task-button account-code" data-route="trigger_account_code_delete">Account Code [DELETE]</button>
 
+
+
+
             <!-- Receipt Tasks -->
             <button class="task-button receipt" data-route="trigger_receipt_create">Receipt [CREATE]</button>
             <button class="task-button receipt" data-route="trigger_receipt_update">Receipt [UPDATE]</button>
             <button class="task-button receipt" data-route="trigger_receipt_delete">Receipt [DELETE]</button>
+                        <!-- New PO Log [NEW] Button -->
+            <button class="task-button po-log-new" data-route="trigger_po_log_new">PO Log [NEW]</button>
 
+            <!-- Invoice Tasks -->
+            <button class="task-button invoice" data-route="trigger_invoice_create">Invoice [CREATE]</button>
+            <button class="task-button invoice" data-route="trigger_invoice_delete">Invoice [DELETE]</button>
             <!-- SpendMoney Tasks -->
             <button class="task-button spend-money" data-route="trigger_spend_money_create">SpendMoney [CREATE]</button>
             <button class="task-button spend-money" data-route="trigger_spend_money_update">SpendMoney [UPDATE]</button>
@@ -77,6 +75,12 @@
             <button class="task-button xero-bill" data-route="trigger_update_xero_bill_line_item">XeroBill Line Item [UPDATE]</button>
             <button class="task-button xero-bill" data-route="trigger_delete_xero_bill_line_item">XeroBill Line Item [DELETE]</button>
         </div>
+
+                <!-- Input Field Section -->
+        <div class="input-section">
+            <input type="text" id="task_input" placeholder="Enter ID here">
+        </div>
+
     </div>
 
     <!-- Link to the JS file using Flask's url_for -->

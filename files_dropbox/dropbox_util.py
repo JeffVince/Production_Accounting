@@ -13,7 +13,7 @@ class DropboxUtil(metaclass=SingletonMeta):
     def __init__(self):
         if not hasattr(self, '_initialized'):
             self.logger = logging.getLogger('dropbox')
-            self.logger.info('[__init__] - Dropbox Util  initialized')
+            self.logger.info('Dropbox Util  initialized')
             self._initialized = True
 
     def parse_file_name(self, file_name: str) -> Dict[str, str]:

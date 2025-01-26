@@ -5,18 +5,18 @@ from server_celery.celery_tasks import (
     process_detail_item_update, process_detail_item_create, process_detail_item_delete,
     process_purchase_order_create, process_purchase_order_update, process_purchase_order_delete,
     process_contact_create, process_contact_update, process_contact_delete,
-    process_bill_line_item_create, process_bill_line_item_update, process_bill_line_item_delete,
+    process_xero_bill_line_item_create, process_xero_bill_line_item_update, process_xero_bill_line_item_delete,
     process_bank_transaction_create, process_bank_transaction_update, process_bank_transaction_delete,
     process_account_code_create, process_account_code_update, process_account_code_delete,
     process_receipt_create, process_receipt_update, process_receipt_delete,
     process_spend_money_create, process_spend_money_update, process_spend_money_delete,
     process_tax_account_create, process_tax_account_update, process_tax_account_delete,
     process_xero_bill_update, process_xero_bill_create, process_xero_bill_delete,
-    create_xero_bill_line_items, update_xero_bill_line_item, delete_xero_bill_line_item, process_po_log_create
+    create_xero_xero_bill_line_items, update_xero_xero_bill_line_item, delete_xero_xero_bill_line_item, process_po_log_create
 )
 
-def trigger_po_log_new(_):
-    process_po_log_create.delay()
+def trigger_po_log_new(po_log_id):
+    process_po_log_create.delay(int(po_log_id))
 
 def trigger_invoice_create(invoice_id):
     # Additional logic could go here
@@ -52,14 +52,14 @@ def trigger_contact_update(contact_id):
 def trigger_contact_delete(contact_id):
     process_contact_delete.delay(int(contact_id))
 
-def trigger_bill_line_item_create(bill_line_item_id):
-    process_bill_line_item_create.delay(int(bill_line_item_id))
+def trigger_xero_bill_line_item_create(xero_bill_line_item_id):
+    process_xero_bill_line_item_create.delay(int(xero_bill_line_item_id))
 
-def trigger_bill_line_item_update(bill_line_item_id):
-    process_bill_line_item_update.delay(int(bill_line_item_id))
+def trigger_xero_bill_line_item_update(xero_bill_line_item_id):
+    process_xero_bill_line_item_update.delay(int(xero_bill_line_item_id))
 
-def trigger_bill_line_item_delete(bill_line_item_id):
-    process_bill_line_item_delete.delay(int(bill_line_item_id))
+def trigger_xero_bill_line_item_delete(xero_bill_line_item_id):
+    process_xero_bill_line_item_delete.delay(int(xero_bill_line_item_id))
 
 def trigger_bank_transaction_create(bank_tx_id):
     process_bank_transaction_create.delay(int(bank_tx_id))
@@ -124,11 +124,11 @@ def trigger_xero_bill_create(bill_id):
 def trigger_xero_bill_delete(bill_id):
     process_xero_bill_delete.delay(int(bill_id))
 
-def trigger_create_xero_bill_line_items(bill_id):
-    create_xero_bill_line_items.delay(int(bill_id))
+def trigger_create_xero_xero_bill_line_items(bill_id):
+    create_xero_xero_bill_line_items.delay(int(bill_id))
 
-def trigger_update_xero_bill_line_item(line_item_id):
-    update_xero_bill_line_item.delay(int(line_item_id))
+def trigger_update_xero_xero_bill_line_item(line_item_id):
+    update_xero_xero_bill_line_item.delay(int(line_item_id))
 
-def trigger_delete_xero_bill_line_item(line_item_id):
-    delete_xero_bill_line_item.delay(int(line_item_id))
+def trigger_delete_xero_xero_bill_line_item(line_item_id):
+    delete_xero_xero_bill_line_item.delay(int(line_item_id))

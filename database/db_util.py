@@ -1,74 +1,45 @@
+# ===============================
+# 1) database/db_util.py
+# ===============================
 from contextlib import contextmanager
 from sqlalchemy import create_engine
-from sqlalchemy.orm import scoped_session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 from database.base import Base
 import logging
+
 logger = logging.getLogger('database_logger')
-session_factory = None
-local_session = None
+
+engine = None
+SessionLocal = None
 
 def initialize_database(connection_string):
-    """Initializes the database connection, session factory, and creates tables."""
-    global session_factory
-    engine = create_engine(connection_string, echo=False)
-    session_factory = scoped_session(sessionmaker(bind=engine))
+    """
+    Initializes the database engine, sessionmaker, and creates tables.
+    Implements:
+      - pool_pre_ping=True to avoid stale connections
+      - pool_recycle=3600 to recycle connections older than 1h
+    """
+    global engine, SessionLocal
+    engine = create_engine(
+        connection_string,
+        echo=False,
+        pool_pre_ping=True,
+        pool_recycle=3600
+    )
+    SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
     Base.metadata.create_all(engine)
-    logger.debug(f'Database connection string: {connection_string}')
+    logger.debug(f"Database initialized with connection string: {connection_string}")
 
 @contextmanager
 def get_db_session():
-    global session_factory
-    if session_factory is None:
-        raise RuntimeError('Session factory not initialized.')
-    session = session_factory
-    try:
-        yield session
-        session.commit()
-    except Exception:
-        session.rollback()
-        raise
-    finally:
-        session.remove()
-
-
-@contextmanager
-def batch_commit():
-    # session_factory might be a scoped_session or hold a reference to your engine
-    # If session_factory.bind is your engine:
-    engine = session_factory.bind
-    SessionLocal = sessionmaker(bind=engine)
-    session = SessionLocal()  # a brand-new Session object
-
-    try:
-        yield session
-        session.commit()
-    except Exception:
-        session.rollback()
-        raise
-    finally:
-        session.close()
-
-@contextmanager
-def make_local_session():
     """
-    Creates a new Session instance from the global 'session_factory' or engine.
-    Ensures each call yields a *real* Session object with .query(), .rollback(), etc.
+    A single, unified context manager for obtaining and releasing a DB session.
     """
-    global session_factory
-    if session_factory is None:
-        raise RuntimeError('Session factory not initialized.')
+    global SessionLocal
+    if not SessionLocal:
+        raise RuntimeError("SessionLocal not initialized. Call initialize_database first.")
 
-    # If session_factory is a scoped_session, get the engine from .bind
-    engine = session_factory.bind
-    if engine is None:
-        raise RuntimeError('Engine not found. The session_factory is not bound to an engine.')
-
-    # Create a brand-new Session class NOT scoped
-    SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
-
-    # Instantiate the actual Session object (parentheses)
     session = SessionLocal()
-
     try:
         yield session
         session.commit()
@@ -76,9 +47,4 @@ def make_local_session():
         session.rollback()
         raise
     finally:
-        # For a normal Session, we call .close() to release the connection
         session.close()
-
-def initialize_session_factory(session_factory_instance: scoped_session):
-    global session_factory
-    session_factory = session_factory_instance
