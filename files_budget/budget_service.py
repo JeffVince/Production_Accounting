@@ -1,15 +1,3 @@
-"""
-files_budget/budget_service.py
-
-Handles aggregator logic for PO logs (renamed from budget_service to budget_service),
-along with functions for summing detail items vs. invoice totals, checking aggregator
-status, setting items to RTP, and adjusting Xero bill dates.
-
-Integration Points:
-- db_ops (DatabaseOperations) from database.database_util
-- Possibly calls or other domain services (if needed).
-"""
-
 import logging
 import os
 from typing import Any
@@ -39,11 +27,11 @@ class BudgetService(metaclass=SingletonMeta):
             self.db_ops = DatabaseOperations()
             self.xero_services = xero_services
             self.dropbox_service = DropboxService()
+            self.monday_service = monday_service
             self.logger.info("🧩 BudgetService (aggregator logic) initialized!")
         except Exception as e:
             logging.exception("Error initializing BudgetService.", exc_info=True)
             raise
-
 
 
     #region🌹 CONTACT AGGREGATOR FUNCTIONS
@@ -71,10 +59,10 @@ class BudgetService(metaclass=SingletonMeta):
             #region 🤠 PHASE 1: Minimal contact creation + Xero/Monday Upsert
             ###########################################################
             try:
-                self.logger.info("🔎 [Contact Aggregator, PHASE 1] => Creating or updating DB contacts, then sending to Xero & Monday...")
+                self.logger.info("🔎 => Creating or updating DB contacts, then sending to Xero & Monday...")
 
                 with get_db_session() as session:
-                    self.logger.debug("🗄️ [Contact Aggregator, PHASE 1] => Opened a new DB session for batch commits.")
+                    self.logger.debug("🗄️ => Opened a new DB session for batch commits.")
                     try:
                         all_db_contacts = self.db_ops.search_contacts()
                     except Exception as e:
@@ -82,17 +70,17 @@ class BudgetService(metaclass=SingletonMeta):
                         all_db_contacts = []
 
                     if not all_db_contacts:
-                        self.logger.debug("📝 [Contact Aggregator, PHASE 1] => Found no existing contacts in DB. Starting fresh.")
+                        self.logger.debug("📝 => Found no existing contacts in DB. Starting fresh.")
                     else:
                         self.logger.debug(
-                            f"📝 [Contact Aggregator, PHASE 1] => Found {len(all_db_contacts)} existing contacts in DB for potential fuzzy matches.")
+                            f"📝 => Found {len(all_db_contacts)} existing contacts in DB for potential fuzzy matches.")
 
                     for contact_item in contacts_data:
                         try:
                             name = (contact_item.get('name') or '').strip()
-                            self.logger.debug(f"🌀 [Contact Aggregator, PHASE 1] => Processing contact => '{name}' data={contact_item}")
+                            self.logger.debug(f"🌀 => Processing contact => '{name}' data={contact_item}")
                             if not name:
-                                self.logger.warning("🚫 [Contact Aggregator, PHASE 1] => No 'name' in contact_item. Skipping this record.")
+                                self.logger.warning("🚫 => No 'name' in contact_item. Skipping this record.")
                                 continue
 
                             # region Fuzzy match or create
@@ -103,22 +91,22 @@ class BudgetService(metaclass=SingletonMeta):
                                     if fuzzy_matches:
                                         contact_id = fuzzy_matches[0]['id']
                                         self.logger.debug(
-                                            f"✅ [Contact Aggregator, PHASE 1] => Fuzzy matched contact => ID={contact_id} for name='{name}'")
+                                            f"✅ => Fuzzy matched contact => ID={contact_id} for name='{name}'")
                                 except Exception as e:
                                     self.logger.exception("Exception during fuzzy matching in contact aggregator.", exc_info=True)
 
                             if not contact_id:
-                                self.logger.info(f"🆕 [Contact Aggregator, PHASE 1] => Creating a new contact in DB for '{name}'")
+                                self.logger.info(f"🆕 => Creating a new contact in DB for '{name}'")
                                 try:
                                     new_ct = self.db_ops.create_contact(
                                         session=session,
                                         name=name,
                                     )
                                     if not new_ct:
-                                        self.logger.error(f"❌ [Contact Aggregator, PHASE 1] => Could not create new contact for '{name}'.")
+                                        self.logger.error(f"❌ => Could not create new contact for '{name}'.")
                                         continue
                                     contact_id = new_ct['id']
-                                    self.logger.info(f"🎉 [Contact Aggregator, PHASE 1] => Successfully created contact => ID={contact_id}")
+                                    self.logger.info(f"🎉 => Successfully created contact => ID={contact_id}")
                                 except Exception as e:
                                     self.logger.exception("Exception creating new contact in contact aggregator.", exc_info=True)
                                     continue
@@ -129,22 +117,31 @@ class BudgetService(metaclass=SingletonMeta):
                                 db_contact = self.db_ops.search_contacts(["id"], [contact_id], session=session)
                                 if isinstance(db_contact, list):
                                     db_contact = db_contact[0]
-                                self.logger.debug(f"🔍 [Contact Aggregator, PHASE 1] => DB contact => {db_contact}")
+                                self.logger.debug(f"🔍 => DB contact => {db_contact}")
                             except Exception as e:
                                 self.logger.exception("Exception retrieving fresh contact from DB in contact aggregator PHASE 1.", exc_info=True)
                                 continue
                             # endregion
+
+                            #region TODO Load Tax Form Data and Set Status
+                            # if tax_form_id empty search Tax Forms
+                                # if found AND not invalid
+                                    # add tax_form.ID to contact
+                            # if tax_form_id AND all fields completed set to APPROVED
+                            # if tax_form_id AND not completed set to "TO VERIFY"
+
+                            #endregion
 
                             # region Load XERO upserts into Batch Queue
                             try:
                                 xero_id = db_contact.get('xero_id')
                                 if xero_id:
                                     self.logger.debug(
-                                        f"🔗 [Contact Aggregator, PHASE 1] => Contact ID={contact_id} already has xero_id={xero_id}. Will do a batch update.")
+                                        f"🔗 => Contact ID={contact_id} already has xero_id={xero_id}. Will do a batch update.")
                                     self.xero_services.buffered_upsert_contact(db_contact)
                                 else:
                                     self.logger.info(
-                                        f"🆕 [Contact Aggregator, PHASE 1] => No xero_id for contact ID={contact_id}, buffering upsert as NEW in Xero.")
+                                        f"🆕 => No xero_id for contact ID={contact_id}, buffering upsert as NEW in Xero.")
                                     self.xero_services.buffered_upsert_contact(db_contact)
                             except Exception as e:
                                 self.logger.exception("Exception buffering Xero contact upsert.", exc_info=True)
@@ -155,12 +152,12 @@ class BudgetService(metaclass=SingletonMeta):
                                 pulse_id = db_contact.get('pulse_id')
                                 if pulse_id:
                                     self.logger.debug(
-                                        f"🔗 [Contact Aggregator, PHASE 1] => Contact ID={contact_id} already has pulse_id={pulse_id}. Buffering update in Monday.")
-                                    monday_service.buffered_upsert_contact(db_contact)
+                                        f"🔗 => Contact ID={contact_id} already has pulse_id={pulse_id}. Buffering update in Monday.")
+                                    self.monday_service.buffered_upsert_contact(db_contact)
                                 else:
                                     self.logger.info(
-                                        f"🆕 [Contact Aggregator, PHASE 1] => No pulse_id for contact ID={contact_id}, buffering upsert as NEW in Monday.")
-                                    monday_service.buffered_upsert_contact(db_contact)
+                                        f"🆕 => No pulse_id for contact ID={contact_id}, buffering upsert as NEW in Monday.")
+                                    self.monday_service.buffered_upsert_contact(db_contact)
                             except Exception as e:
                                 self.logger.exception("Exception buffering Monday contact upsert.", exc_info=True)
                             # endregion
@@ -170,10 +167,10 @@ class BudgetService(metaclass=SingletonMeta):
 
                     # region Final batch push to Xero & Monday
                     try:
-                        self.logger.info("📤 [Contact Aggregator, PHASE 1] => Executing update and create batches to Xero & Monday now.")
+                        self.logger.info("📤 => Executing update and create batches to Xero & Monday now.")
                         self.xero_services.execute_batch_upsert_contacts(self.xero_services.contact_upsert_queue)
-                        #onday_service.execute_batch_upsert_contacts(self.xero_services.contact_upsert_queue)
-                        self.logger.debug("📥 [Contact Aggregator, PHASE 1] => DONE => Xero & Monday upsert done. DB session commit on exit.")
+                        self.monday_service.execute_batch_upsert_contacts()
+                        self.logger.debug("📥 => DONE => Xero & Monday upsert done. DB session commit on exit.")
                     except Exception as e:
                         self.logger.exception("Exception executing batch upsert to Xero/Monday in contact aggregator.", exc_info=True)
                     # endregion
@@ -183,118 +180,11 @@ class BudgetService(metaclass=SingletonMeta):
                 raise
             #endregion
 
-            #region 🗺️ PHASE 2: Link TaxForms, finalize statuses
-            # ###########################################################
-            # try:
-            #     self.logger.info("📝 [Contact Aggregator, PHASE 2] => Linking tax forms, verifying data, final Xero/Monday updates...")
-            #
-            #     with get_db_session() as session:
-            #         self.logger.debug("🗄️ [Contact Aggregator, PHASE 2] => Opened a new DB session for final updates.")
-            #         try:
-            #             all_db_contacts_again = self.db_ops.search_contacts(session=session)
-            #         except Exception as e:
-            #             self.logger.exception("Exception searching contacts in PHASE 2 of contact aggregator.", exc_info=True)
-            #             all_db_contacts_again = []
-            #
-            #         self.logger.debug(
-            #             f"📝 [Contact Aggregator, PHASE 2] => Fetched {len(all_db_contacts_again) if all_db_contacts_again else 0} contacts from DB to cross-check tax forms.")
-            #
-            #         for contact_item in contacts_data:
-            #             try:
-            #                 name = (contact_item.get('name') or '').strip()
-            #                 self.logger.debug(
-            #                     f"🌀 [Contact Aggregator, PHASE 2] => Checking final tax form for '{name}' with item data: {contact_item}")
-            #                 if not name:
-            #                     self.logger.warning("🚫 [Contact Aggregator, PHASE 2] => Missing contact name in item, skipping.")
-            #                     continue
-            #
-            #                 # region Fuzzy match again
-            #                 contact_id = None
-            #                 if all_db_contacts_again:
-            #                     try:
-            #                         fuzzy2 = self.db_ops.find_contact_close_match(name, all_db_contacts_again)
-            #                         if fuzzy2:
-            #                             contact_id = fuzzy2[0]['id']
-            #                             self.logger.debug(
-            #                                 f"✅ [Contact Aggregator, PHASE 2] => Found contact ID={contact_id} for name='{name}' (fuzzy).")
-            #                     except Exception as e:
-            #                         self.logger.exception("Exception during second fuzzy match in PHASE 2 of contact aggregator.", exc_info=True)
-            #
-            #                 if not contact_id:
-            #                     self.logger.debug(
-            #                         f"🤷‍♂️ [Contact Aggregator, PHASE 2] => No contact found for '{name}'; skipping final tax form link.")
-            #                     continue
-            #                 # endregion
-            #
-            #                 # region Link or check tax form
-            #                 candidate_file = contact_item.get('tax_file_candidate')
-            #                 if candidate_file:
-            #                     self.logger.info(
-            #                         f"🗂 [Contact Aggregator, PHASE 2] => Attempting to attach tax form '{candidate_file}' to contact ID={contact_id}.")
-            #                     if "W9" in candidate_file.upper():
-            #                         form_type = "W9"
-            #                     else:
-            #                         form_type = "UNKNOWN"
-            #
-            #                     try:
-            #                         db_contact2 = self.db_ops.update_contact(
-            #                             contact_id, session=session,
-            #                             tax_file_link=candidate_file
-            #                         )
-            #                         self.logger.info(f"📎 [Contact Aggregator, PHASE 2] => Set contact's tax_file_link={candidate_file}")
-            #                     except Exception as e:
-            #                         self.logger.exception("Exception updating contact with tax file link in PHASE 2 of contact aggregator.", exc_info=True)
-            #                 # endregion
-            #
-            #                 # region finalize status
-            #                 try:
-            #                     db_contact3 = self.db_ops.search_contacts(["id"], [contact_id], session=session)
-            #                     if isinstance(db_contact3, list):
-            #                         db_contact3 = db_contact3[0]
-            #
-            #                     tf_link = db_contact3.get('tax_file_link')
-            #                     email_ok = bool(db_contact3.get('email'))
-            #                     phone_ok = bool(db_contact3.get('phone'))
-            #
-            #                     new_status = "PENDING"
-            #                     if tf_link:
-            #                         if email_ok and phone_ok:
-            #                             new_status = "Verified"
-            #                         else:
-            #                             new_status = "To Review"
-            #
-            #                     if db_contact3.get('vendor_status') != new_status:
-            #                         self.logger.debug(
-            #                             f"🖍 [Contact Aggregator, PHASE 2] => Updating vendor_status from '{db_contact3.get('vendor_status')}' to '{new_status}' for contact ID={contact_id}")
-            #                         self.db_ops.update_contact(contact_id, session=session, vendor_status=new_status)
-            #                 except Exception as e:
-            #                     self.logger.exception("Exception finalizing contact status in PHASE 2 of contact aggregator.", exc_info=True)
-            #                 # endregion
-            #
-            #             except Exception as e:
-            #                 self.logger.exception("Exception while looping over contact_item in PHASE 2 of contact aggregator.", exc_info=True)
-            #
-            #         # region Final batch push
-            #         try:
-            #             self.logger.info("📤 [Contact Aggregator, PHASE 2] => Doing final batch upsert to Xero & Monday for any updated contact records.")
-            #             self.xero_services.execute_batch_upsert_contacts()
-            #             monday_service.execute_batch_upsert_contacts()
-            #             self.logger.debug("📥 [Contact Aggregator, PHASE 2] => Final upsert done; DB commit upon exit.")
-            #         except Exception as e:
-            #             self.logger.exception("Exception executing final batch upsert to Xero/Monday in contact aggregator PHASE 2.", exc_info=True)
-            #         # endregion
-            #
-            #
-            #     self.logger.info("🏁 [Contact Aggregator] ALL DONE => contacts processed in multi-phase with extra logging.")
-            # except Exception as e:
-            #     self.logger.exception("Exception in PHASE 2 of contact aggregator.", exc_info=True)
-            #     raise
-            #endregion
-
         except Exception as e:
             self.logger.exception("Exception in process_contact_aggregator (entire method).", exc_info=True)
             raise
     #endregion
+
 
     # region 🌺 PURCHASE ORDERS AGGREGATOR
     ############################################################
@@ -330,6 +220,8 @@ class BudgetService(metaclass=SingletonMeta):
             ###################################################################
             po_records_info = []
             self.logger.info("📝 [PO Aggregator, PHASE 1] => Creating/Updating POs in DB.")
+            all_contacts = self.db_ops.search_contacts()
+
             with get_db_session() as session:
                 for item in po_data["main_items"]:
                     # Skip if empty
@@ -369,7 +261,7 @@ class BudgetService(metaclass=SingletonMeta):
                             project_number=project_number,
                             name=f"{project_number}_untitled",
                             status="Active",
-                            user_id = 1,
+                            user_id=1,
                             tax_ledger=14,  # example default
                             budget_map_id=1  # example default
                         )
@@ -390,13 +282,19 @@ class BudgetService(metaclass=SingletonMeta):
                     contact_id = None
                     if vendor_name:
                         # If your actual Contact table column is "name", do this:
-                        found_contact = self.db_ops.search_contacts(["name"], [vendor_name], session=session)
+                        found_contact = self.db_ops.search_contacts(["name"], [vendor_name])
                         if found_contact:
                             if isinstance(found_contact, list):
                                 found_contact = found_contact[0]
                             contact_id = found_contact.get("id")
                         else:
-                            self.logger.warning(f"⚠️ Contact '{vendor_name}' not found => leaving contact_id=None.")
+                            fuzzy_matches = self.db_ops.find_contact_close_match(vendor_name, all_contacts)
+                            if fuzzy_matches:
+                                best_match = fuzzy_matches[0]
+                                self.logger.warning(f"⚠️ Contact '{vendor_name}' fuzzy matched to => {best_match.get('name')}")
+                            else:
+                                self.logger.warning(f"⚠️ Contact '{vendor_name}' does not have an exact or fuzzy match")
+                            contact_id = best_match.get("id")
                     else:
                         self.logger.warning(f"⚠️ Contact '{vendor_name}' not provided => leaving contact data null")
                         vendor_name = "PO LOG Naming Error"
@@ -418,7 +316,7 @@ class BudgetService(metaclass=SingletonMeta):
                             po_type=po_type,
                             contact_id=contact_id,
                             project_id=project_id,
-                            vendor_name = vendor_name
+                            vendor_name=vendor_name
                         )
                         if new_po:
                             self.logger.info(f"✅ Created new PO => ID={new_po['id']}")
@@ -450,7 +348,7 @@ class BudgetService(metaclass=SingletonMeta):
                                 po_type=po_type,
                                 contact_id=contact_id,
                                 project_id=project_id,
-                                vendor_name = vendor_name
+                                vendor_name=vendor_name
                             )
                             if updated_po:
                                 self.logger.info(f"🔄 Updated PO => ID={updated_po['id']}")
@@ -458,25 +356,48 @@ class BudgetService(metaclass=SingletonMeta):
                             else:
                                 self.logger.warning("❌ Failed to update existing PO.")
                         else:
-                            self.logger.info(f"🏳️‍🌈 No changes to existing PO => ID={po_id}.")
+                            # Even if no changes to fields, check if there's no pulse_id
+                            if not existing.get("pulse_id"):
+                                self.logger.info(
+                                    f"🆕 Existing PO ID={po_id} has no pulse_id => we still need to upsert to Monday.")
+                                po_records_info.append(existing)
+                            else:
+                                self.logger.info(
+                                    f"🏳️‍🌈 No changes to existing PO => ID={po_id}. (Already has pulse_id)")
+
             self.logger.info("🏁 [PO Aggregator] [PHASE 1] => DONE => POs loaded into DB")
+
             ###################################################################
-            # PHASE 2: UPDATE MONDAY
+            # PHASE 2: Update Monday (now batched!)
             ###################################################################
-            self.logger.info("🔄 [PO Aggregator] [PHASE 2] => START => POs to Monday.")
-            # for po_record in po_records_info:
-            #     proj_num = po_record.get("project_number")
-            #     the_po_number = po_record.get("po_number")
-            #     found_po = self.db_ops.search_purchase_order_by_keys(proj_num, the_po_number, session=session)
-            #     if found_po and not isinstance(found_po, list):
-            #         monday_service.upsert_po_in_monday(found_po)
-            self.logger.info("🏁 [PO Aggregator] [PHASE 2] DONE => POs to Monday")
+            self.logger.info("🔄 [PO Aggregator] [PHASE 2] => START => Batching POs to Monday.")
+            with get_db_session() as session:
+                for po_record in po_records_info:
+                    proj_num = po_record.get("project_number")
+                    the_po_number = po_record.get("po_number")
+
+                    # Re-fetch from DB if needed
+                    found_po = self.db_ops.search_purchase_order_by_keys(proj_num, the_po_number, session=session)
+                    if not found_po:
+                        continue
+
+                    if isinstance(found_po, list):
+                        found_po = found_po[0]
+
+                    # Instead of immediate upsert, we buffer them
+                    self.monday_service.buffered_upsert_po(found_po)
+
+            # Execute the batch in one go!
+            self.monday_service.execute_batch_upsert_pos()
+
+            self.logger.info("🏁 [PO Aggregator] [PHASE 2] DONE => Batching POs to Monday complete.")
             self.logger.info("🏁 [PO Aggregator] [COMPLETED]")
 
         except Exception as e:
             self.logger.exception(f"Exception in process_aggregator_pos: {e}")
             raise
     #endregion
+
 
     # region 🌻 DETAIL ITEMS AGGREGATOR
     ############################################################
@@ -646,7 +567,6 @@ class BudgetService(metaclass=SingletonMeta):
                     # region INV/PROF => sum detail => if match => set RTP => create Xero bill
                     elif ptype in ["INV", "PROF"]:
                         self.logger.info(f"📑 Summation vs. invoice for detail_item ID={detail_id}.")
-                        # Suppose we have methods: sum_detail_items_and_compare_invoice, set_invoice_details_rtp, etc.
                         if self.sum_detail_items_and_compare_invoice(di):
                             self.logger.info(f"✅ Sums match => setting siblings to RTP for detail_item ID={detail_id}.")
                             self.set_invoice_details_rtp(di)
@@ -681,7 +601,9 @@ class BudgetService(metaclass=SingletonMeta):
             ###################################################################
             # PHASE 3: Update Monday
             ###################################################################
+            # (Currently skipped or can be turned into a batch approach similarly.)
             self.logger.info("🔄 [Detail Aggregator, PHASE 3] => Upserting changes to Monday. CURRENTLY SKIPPED")
+            # region Example (commented out)
             # with get_db_session() as session:
             #     for fdi in final_detail_items:
             #         pn = fdi.get("project_number")
@@ -697,14 +619,13 @@ class BudgetService(metaclass=SingletonMeta):
             #         di_rec = self.db_ops.search_detail_item_by_keys(pn, pno, dno, line_number=1, session=session)
             #         if di_rec and not isinstance(di_rec, list):
             #             monday_service.upsert_detail_subitem_in_monday(di_rec)
+            # endregion
 
             self.logger.info("🏁 [Detail Aggregator] DONE => detail items processed in multi-phase.")
         except Exception as e:
             self.logger.exception("Exception in process_aggregator_detail_items.")
             raise
-
-    # endregion 🌻 DETAIL ITEMS AGGREGATOR
-
+    # endregion
 
     # region 🪄 Aggregator Status Checks
     def is_aggregator_in_progress(self, record: dict) -> bool:
@@ -773,8 +694,6 @@ class BudgetService(metaclass=SingletonMeta):
         Gathers all detail items matching (project_number, po_number, detail_number),
         sums their sub_total, then compares with the matching invoice total.
         Returns True if they match within small threshold; else False.
-
-        :param detail_item: a dictionary with project_number, po_number, detail_number, etc.
         """
         try:
             project_number = detail_item.get('project_number')

@@ -24,6 +24,8 @@ class Orchestrator:
         self.logger.info('[start_background_tasks] - Starting background tasks...')
         current_dir = os.getcwd()
         self.logger.info(f'[start_background_tasks] - Current working directory: {current_dir}')
+        self.xero_services.populate_xero_contacts()
+
 
     def sync_monday_main_items(self):
         """
@@ -95,3 +97,5 @@ class Orchestrator:
         and process each invoice into the database.
         """
         self.logger.info(f'[scan_project_invoices] - 📂 Orchestrator: scanning invoice for project {project_number}.')
+
+orchestrator = Orchestrator()

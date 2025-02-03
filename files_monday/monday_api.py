@@ -53,6 +53,7 @@ class MondayAPI(metaclass=SingletonMeta):
         :return: Parsed JSON response from Monday API
         :raises: ConnectionError if MAX_RETRIES exceeded or any unhandled error occurs
         """
+        self.logger.debug(f"GraphQL to Monday:\n{query}")
         if 'complexity' not in query:
             insertion_index = query.find('{', query.find('query') if 'query' in query else query.find('mutation'))
             if insertion_index != -1:
@@ -61,7 +62,7 @@ class MondayAPI(metaclass=SingletonMeta):
         attempt = 0
         while attempt < MAX_RETRIES:
             try:
-                self.logger.debug(f'[_make_request] - 📡 Attempt {attempt + 1}/{MAX_RETRIES}: Sending request to Monday.com')
+                self.logger.debug(f'📡 Attempt {attempt + 1}/{MAX_RETRIES}: Sending request to Monday.com')
                 response = requests.post(self.api_url, json={'query': query, 'variables': variables}, headers=headers, timeout=200)
                 response.raise_for_status()
                 data = response.json()
@@ -70,22 +71,22 @@ class MondayAPI(metaclass=SingletonMeta):
                 self._log_complexity(data)
                 return data
             except requests.exceptions.ConnectionError as ce:
-                self.logger.warning(f'[_make_request] - ⚠️ Connection error: {ce}. Attempt {attempt + 1}/{MAX_RETRIES}. Retrying...')
+                self.logger.warning(f'⚠️ Connection error: {ce}. Attempt {attempt + 1}/{MAX_RETRIES}. Retrying...')
                 time.sleep(RETRY_BACKOFF_FACTOR ** (attempt + 1))
                 attempt += 1
             except requests.exceptions.HTTPError as he:
-                self.logger.error(f'[_make_request] - ❌ HTTP error encountered: {he}')
+                self.logger.error(f'❌ HTTP error encountered: {he}')
                 if response.status_code == 429:
                     retry_after = response.headers.get('Retry-After', 10)
-                    self.logger.warning(f'[_make_request] - 🔄 Rate limit (429) hit. Waiting {retry_after} seconds before retry.')
+                    self.logger.warning(f'🔄 Rate limit (429) hit. Waiting {retry_after} seconds before retry.')
                     time.sleep(int(retry_after))
                     attempt += 1
                 else:
                     raise
             except Exception as e:
-                self.logger.error(f'[_make_request] - ❌ Unexpected exception during request: {e}')
+                self.logger.error(f'❌ Unexpected exception during request: {e}')
                 raise
-        self.logger.error('[_make_request] - ❌ Max retries reached without success. Failing the request.')
+        self.logger.error('❌ Max retries reached without success. Failing the request.')
         raise ConnectionError('Failed to complete request after multiple retries.')
 
     def _handle_graphql_errors(self, errors):
@@ -570,56 +571,93 @@ class MondayAPI(metaclass=SingletonMeta):
 
     def batch_create_or_update_items(self, batch, project_id, create=True):
         """
-        🔁 Batch create or update multiple main items (PO items).
-        :param batch: List of dicts -> each has {"db_item": ..., "column_values": {...}, "monday_item_id": ...}
-        :param project_id: The project ID (for logging or grouping)
-        :param create: True -> create new items. False -> update existing.
-        :return: The updated batch with "monday_item_id" filled as needed.
+        Splits items into sub-batches and calls create_items_batch for each.
         """
-        self.logger.info(f"[batch_create_or_update_items] - ⚙️ Processing a batch of {len(batch)} items for project_id='{project_id}', create={create}...")
+        self.logger.info(
+            f"[batch_create_or_update_items] - Processing {len(batch)} items for project_id={project_id}, create={create}...")
 
-        def create_sub_batch(sub_batch):
-            """Create items in Monday from a sub-batch."""
-            return self.create_items_batch(sub_batch, project_id)
-        if create:
-            chunk_size = 10
-            sub_batches = [batch[i:i + chunk_size] for i in range(0, len(batch), chunk_size)]
-            self.logger.info(f'[batch_create_or_update_items] - Splitting batch into {len(sub_batches)} sub-batches of up to {chunk_size} items each.')
-            results = []
-            with ThreadPoolExecutor() as executor:
-                future_to_index = {}
-                for (idx, sub_batch) in enumerate(sub_batches):
-                    self.logger.debug(f'[batch_create_or_update_items] - Submitting sub-batch #{idx + 1} with {len(sub_batch)} items.')
-                    future = executor.submit(create_sub_batch, sub_batch)
-                    future_to_index[future] = idx
-                for future in as_completed(future_to_index):
-                    idx = future_to_index[future]
-                    try:
-                        sub_result = future.result()
-                        self.logger.debug(f'[batch_create_or_update_items] - Sub-batch #{idx + 1} completed.')
-                        results.extend(sub_result)
-                    except Exception as e:
-                        self.logger.exception(f'[batch_create_or_update_items] - ❌ Error creating sub-batch #{idx + 1}: {e}')
-                        raise
-            return results
-        else:
-            updated_batch = []
-            for itm in batch:
-                db_item = itm['db_item']
-                column_values = itm['column_values']
-                column_values_json = json.dumps(column_values)
-                item_id = itm['monday_item_id']
-                if not item_id:
-                    self.logger.warning(f'[batch_create_or_update_items] - ⚠️ No monday_item_id provided for update. Skipping item: {db_item}')
-                    continue
+        # Try smaller chunks. Even 5 might be too large if you have big text.
+        chunk_size = 5
+        sub_batches = [batch[i:i + chunk_size] for i in range(0, len(batch), chunk_size)]
+        self.logger.info(
+            f"[batch_create_or_update_items] - Splitting into {len(sub_batches)} sub-batches of size={chunk_size}.")
+
+        results = []
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        with ThreadPoolExecutor() as executor:
+            future_map = {}
+            for idx, sbatch in enumerate(sub_batches, start=1):
+                future = executor.submit(self.create_items_batch, sbatch, project_id)
+                future_map[future] = idx
+
+            for future in as_completed(future_map):
+                sbatch_num = future_map[future]
                 try:
-                    self.logger.debug(f'[batch_create_or_update_items] - 🔄 Updating item {item_id} with new column values...')
-                    self.update_item(item_id, column_values_json, type='main')
-                    updated_batch.append(itm)
+                    sub_result = future.result()
+                    results.extend(sub_result)
+                    self.logger.debug(f"[batch_create_or_update_items] - Sub-batch #{sbatch_num} done.")
                 except Exception as e:
-                    self.logger.exception(f'[batch_create_or_update_items] - ❌ Error updating item {item_id}: {e}')
+                    self.logger.exception(f"[batch_create_or_update_items] - Error in sub-batch #{sbatch_num}: {e}")
                     raise
-            return updated_batch
+
+        return results
+
+    def create_items_batch(self, batch, project_id):
+        """
+        Actually build the GraphQL mutation for each sub-batch, then call _make_request(query).
+        """
+        self.logger.info(f"[create_items_batch] - Creating {len(batch)} items in one request, project_id={project_id}.")
+        mutation_parts = []
+
+        for i, itm in enumerate(batch):
+            col_dict = itm['column_values'] or {}
+
+            # remove None or invalid columns
+            clean_cols = {}
+            for k, v in col_dict.items():
+                if v is not None:
+                    # optionally verify k is a known column ID
+                    clean_cols[k] = v
+
+            item_name = clean_cols.pop('name', None) or itm['db_item'].get('vendor_name') or "Unnamed"
+            if not isinstance(item_name, str):
+                item_name = str(item_name)
+
+            # Convert numbers to strings if the column is definitely numeric:
+            # (Because Monday might require e.g. {"numbers": "80"} or "80" not an int)
+            # if "numeric__1" in clean_cols:
+            #     clean_cols["numeric__1"] = str(clean_cols["numeric__1"])
+
+            col_vals = json.dumps(clean_cols)
+            col_vals_escaped = col_vals.replace('\\', '\\\\').replace('"', '\\"')
+            safe_item_name = item_name.replace('"', '\\"').replace("'", "\\'")
+
+            mutation_parts.append(
+                f'create{i}: create_item('
+                f'board_id: {self.PO_BOARD_ID}, '
+                # Maybe also specify group_id
+                f'item_name: "{safe_item_name}", '
+                f'column_values: "{col_vals_escaped}") '
+                '{ id }'
+            )
+
+        mutation_body = " ".join(mutation_parts)
+        query = f"mutation {{ {mutation_body} }}"
+
+        self.logger.debug(f"[create_items_batch] GraphQL:\n{query}")
+
+        response = self._make_request(query)
+
+        # Associate new IDs
+        for i, itm in enumerate(batch):
+            key = f'create{i}'
+            created_item = response.get('data', {}).get(key)
+            if created_item and 'id' in created_item:
+                itm['monday_item_id'] = created_item['id']
+            else:
+                self.logger.warning(f"[create_items_batch] - No item id in response for create{i}")
+
+        return batch
 
     def batch_create_or_update_subitems(self, subitems_batch, parent_item_id, create=True):
         """
@@ -662,35 +700,6 @@ class MondayAPI(metaclass=SingletonMeta):
                     self.logger.exception(f'[batch_create_or_update_subitems] - ❌ Error updating subitem {sub_id}: {e}')
                     raise
         return updated_batch
-
-    def create_items_batch(self, batch, project_id):
-        """
-        🎉 Bulk-create multiple items in a single GraphQL request.
-        Each item in 'batch' should have a dict: { 'db_item': ..., 'column_values': {...}, 'monday_item_id': None }
-        :param batch: Items to create
-        :param project_id: Project identifier for logging
-        :return: The batch updated with 'monday_item_id' for each newly created item.
-        """
-        self.logger.info(f"[create_items_batch] - 🔨 Bulk-creating {len(batch)} items for project_id='{project_id}' in one request...")
-        mutation_parts = []
-        for (i, itm) in enumerate(batch):
-            column_values = itm['column_values']
-            column_values_json = json.dumps(column_values)
-            item_name = column_values.get('name', 'Unnamed Item')
-            safe_item_name = json.dumps(item_name)
-            mutation_parts.append(f'create{i}: create_item(board_id: {self.PO_BOARD_ID}, item_name: {safe_item_name}, column_values: {json.dumps(column_values_json)}) {{ id }}')
-        mutation_body = ' '.join(mutation_parts)
-        query = f'mutation {{ {mutation_body} }}'
-        response = self._make_request(query)
-        for (i, itm) in enumerate(batch):
-            create_key = f'create{i}'
-            created_item = response.get('data', {}).get(create_key)
-            if created_item and 'id' in created_item:
-                itm['monday_item_id'] = created_item['id']
-                self.logger.debug(f"[create_items_batch] - ✅ Created item index {i} with new ID {itm['monday_item_id']}")
-            else:
-                self.logger.warning(f'[create_items_batch] - ⚠️ No ID returned for item index {i} in batch.')
-        return batch
 
     def find_or_create_item_in_monday(self, item, column_values):
         """
@@ -896,4 +905,5 @@ class MondayAPI(metaclass=SingletonMeta):
             self.logger.info(f"[update_monday_tax_form_link] - ✅ Updated tax_form_link for contact (pulse_id={pulse_id}) to '{new_link}'.")
         except Exception as e:
             self.logger.exception(f"[update_monday_tax_form_link] - ❌ Failed to update tax_form_link for pulse_id={pulse_id} with '{new_link}': {e}", exc_info=True)
+
 monday_api = MondayAPI()

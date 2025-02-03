@@ -254,12 +254,12 @@ class POLogProcessor(metaclass=SingletonMeta):
            - If item_id_raw is present -> detail_item_id=<parsed numeric>
            - We **auto-increment** line_number for each repeated (po_number, detail_item_id).
         """
-        self.logger.debug('[_assign_item_ids] - 🔖 Assigning detail_item_id and line_number to entries...')
+        self.logger.debug('🔖 Assigning detail_item_id and line_number to entries...')
         assigned_item_ids = defaultdict(set)
         for (key_for_ids, manual_ids) in manual_ids_by_po.items():
             for mid in manual_ids:
                 assigned_item_ids[key_for_ids].add(mid)
-                self.logger.debug(f"[_assign_item_ids] - 🔗 Manual ID='{mid}' recorded for key='{key_for_ids}'")
+                self.logger.debug(f"🔗 Manual ID='{mid}' recorded for key='{key_for_ids}'")
         line_number_counters = defaultdict(int)
         for entry in raw_entries:
             key_for_ids = (entry['po_number'], entry['envelope_number'])
@@ -292,7 +292,7 @@ class POLogProcessor(metaclass=SingletonMeta):
                 line_number = line_number_counters[line_number_key]
             entry['detail_item_id'] = detail_item_id
             entry['line_number'] = line_number
-            self.logger.debug(f"[_assign_item_ids] - 🆔 Assigned detail_item_id='{detail_item_id}', line_number='{line_number}' for PO='{entry['po_number']}', payment_type='{payment_type}'.")
+            self.logger.debug(f"🆔 Assigned detail_item_id='{detail_item_id}', line_number='{line_number}' for PO='{entry['po_number']}', payment_type='{payment_type}'.")
 
     def parse_showbiz_po_log(self, file_path: str):
         self.logger.info(f'[parse_showbiz_po_log] - 🚀 Starting parse_showbiz_po_log for file: {file_path}')

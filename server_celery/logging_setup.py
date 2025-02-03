@@ -42,8 +42,8 @@ class PaddedFormatter(logging.Formatter):
         record.funcName = self.pad_center(record.funcName,       self.COLUMN_WIDTHS["funcName"])
 
         # Truncate message if necessary
-        if len(record.msg) > self.max_length:
-            record.msg = record.msg[:self.max_length] + "..."
+        # if len(record.msg) > self.max_length:
+        #     record.msg = record.msg[:self.max_length] + "..."
         return super().format(record)
 
     def formatTime(self, record, datefmt=None):

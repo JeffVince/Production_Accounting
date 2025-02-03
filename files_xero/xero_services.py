@@ -23,6 +23,9 @@ class XeroServices(metaclass=SingletonMeta):
         self.db_ops = DatabaseOperations()  # if that's how you reference DB ops
         self.logger.info("XeroServices initialized.")
 
+    # ─────────────────────────────────────────────────────────────
+    #                SPEND MONEY METHODS
+    # ─────────────────────────────────────────────────────────────
     def handle_spend_money_create(self, spend_money_id:int):
         self.logger.info(f'handle_spend_money_create => spend_money_id={spend_money_id}')
         sm = self.db_ops.search_spend_money(["id"], [spend_money_id])
@@ -80,6 +83,9 @@ class XeroServices(metaclass=SingletonMeta):
         else:
             self.logger.warning("Could not update SPEND transaction in Xero.")
 
+    # ─────────────────────────────────────────────────────────────
+    #                XERO BILLS (CREATE/UPDATE/DELETE)
+    # ─────────────────────────────────────────────────────────────
     def create_xero_bill_in_xero(self, xero_bill: dict):
         bill_id = xero_bill["id"]
         self.logger.info(f'[create_xero_bill_in_xero] => BillID={bill_id}')
@@ -223,6 +229,9 @@ class XeroServices(metaclass=SingletonMeta):
         else:
             self.logger.warning("Could not set to DELETED.")
 
+    # ─────────────────────────────────────────────────────────────
+    #                  SPEND MONEY LOADING
+    # ─────────────────────────────────────────────────────────────
     def load_spend_money_transactions(self, project_id:int=None, po_number:int=None, detail_number:int=None):
         self.logger.info(f'load_spend_money_transactions => project={project_id}, po={po_number}, detail={detail_number}')
         self.logger.info('Retrieving SPEND transactions from Xero...')
@@ -244,6 +253,9 @@ class XeroServices(metaclass=SingletonMeta):
             self.logger.debug(f'existing_spend => {existing_spend}')
             # ... logic to create or update local spend record
 
+    # ─────────────────────────────────────────────────────────────
+    #             POPULATE LOCAL CONTACTS WITH XERO IDS
+    # ─────────────────────────────────────────────────────────────
     def populate_xero_contacts(self):
         self.logger.info('populate_xero_contacts => retrieving local DB and Xero contacts...')
         db_contacts = self.db_ops.search_contacts()
@@ -268,56 +280,52 @@ class XeroServices(metaclass=SingletonMeta):
                 self.db_ops.update_contact(db_contact['id'], xero_id=xero_id)
                 self.logger.info(f"Linked local contact '{contact_name}' => XeroID={xero_id}")
 
+    # ─────────────────────────────────────────────────────────────
+    #                CONTACT VALIDATION
+    # ─────────────────────────────────────────────────────────────
     def validate_xero_data(self, db_contact):
         self.logger.debug(f'Validating db_contact => {db_contact["name"]}')
         errors = []
 
-        # 1) Validate Name (Required)
+        # 1) Validate Name (still considered "required" in your system)
         name = db_contact.get('name', '').strip()
         if not name:
             errors.append('❗ Missing or empty name.')
 
-        # 2) Validate Address Line 1 (Optional, max 255 chars)
+        # 2) Validate Address Line 1 length
         address_line_1 = db_contact.get('address_line_1', '')
         if address_line_1 and len(address_line_1) > 255:
             errors.append('❗ address_line_1 exceeds char limit.')
 
-        # 3) Validate Email (Optional)
+        # 3) Validate Email format
         email = db_contact.get('email', '')
         if email and '@' not in email:
             errors.append('❗ Invalid email format.')
 
-        # 4) Validate Phone length (Optional)
+        # 4) Validate Phone length
         phone = db_contact.get('phone', '')
         if phone and len(phone) > 50:
             errors.append('❗ Phone number exceeds character limit.')
 
-        # 5) Validate xero_id as a proper GUID (Optional)
+        # 5) Validate xero_id as a proper GUID
         xero_id = (db_contact.get('xero_id') or '').strip()
         if xero_id:
-            # Remove any existing dashes
             guid_no_dashes = xero_id.replace('-', '')
-
-            # Check for 32 hex digits
             if len(guid_no_dashes) == 32 and re.match(r'^[0-9A-Fa-f]{32}$', guid_no_dashes):
                 # If original xero_id was missing dashes, auto-correct
                 if '-' not in xero_id:
-                    # Insert them into 8-4-4-4-12 format
                     corrected = (
-                            guid_no_dashes[0:8] + '-' +
-                            guid_no_dashes[8:12] + '-' +
-                            guid_no_dashes[12:16] + '-' +
-                            guid_no_dashes[16:20] + '-' +
-                            guid_no_dashes[20:]
+                        guid_no_dashes[0:8] + '-' +
+                        guid_no_dashes[8:12] + '-' +
+                        guid_no_dashes[12:16] + '-' +
+                        guid_no_dashes[16:20] + '-' +
+                        guid_no_dashes[20:]
                     )
-                    # Update the contact's xero_id in memory
                     db_contact['xero_id'] = corrected
                     self.logger.warning(
-                        f"Auto-corrected XeroID from '{xero_id}' to '{corrected}' "
-                        f"(missing dashes)."
+                        f"Auto-corrected XeroID from '{xero_id}' to '{corrected}' (missing dashes)."
                     )
             else:
-                # Not a valid 32-digit GUID
                 errors.append(
                     f"❗ Xero ID '{xero_id}' is invalid; must be 32 hex digits "
                     "with 4 dashes (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)."
@@ -325,6 +333,9 @@ class XeroServices(metaclass=SingletonMeta):
 
         return errors
 
+    # ─────────────────────────────────────────────────────────────
+    #            BUFFER + EXECUTE CONTACT UPSERTS
+    # ─────────────────────────────────────────────────────────────
     def buffered_upsert_contact(self, contact_record: dict):
         """
         Stage a single local 'contact_record' for eventual batch upsert in Xero.
@@ -339,13 +350,11 @@ class XeroServices(metaclass=SingletonMeta):
             self.logger.info("🌀 [COMPLETED] [STATUS=Fail]")
         else:
             self.logger.debug(f"🫸 - {contact_record['name']} with Xero ID - {contact_record['xero_id']}")
-
-        self.contact_upsert_queue.append(contact_record)
-        self.logger.debug(
-            f"🌀 Current queue size => {len(self.contact_upsert_queue)}. Added contact => {contact_record}"
-        )
-
-        self.logger.info("🌀 [COMPLETED] [STATUS=Success] Staged contact for upsert.")
+            self.contact_upsert_queue.append(contact_record)
+            self.logger.debug(
+                f"🌀 Current queue size => {len(self.contact_upsert_queue)}. Added contact => {contact_record}"
+            )
+            self.logger.info("🌀 [COMPLETED] [STATUS=Success] Staged contact for upsert.")
 
     def execute_batch_upsert_contacts(self, contacts: list[dict], chunk_size: int = 50) -> None:
         """
@@ -367,181 +376,155 @@ class XeroServices(metaclass=SingletonMeta):
         update_list = []
         for c in contacts:
             try:
-                # If a 'xero_id' is present, it implies an update
                 if c.get("xero_id"):
                     update_list.append(c)
                 else:
                     create_list.append(c)
-            except KeyError as e:
-                self.logger.error(f"⛔ Missing key in contact => {c}. Error: {e}")
-                # Decide if you want to skip or re-raise
             except Exception as e:
-                self.logger.error(f"⛔ Unexpected error categorizing contact => {c}. Error: {e}")
-                # Decide if you want to skip or re-raise
+                self.logger.error(f"⛔ Error sorting contact => {c}, Error: {e}")
 
-        # Summaries
-        total_create = len(create_list)
-        total_update = len(update_list)
         self.logger.info(
-            f"🌀 Split {total_contacts} staged contacts => "
-            f"create_list={total_create}, update_list={total_update}."
+            f"🌀 Split {total_contacts} staged contacts => create_list={len(create_list)}, update_list={len(update_list)}."
         )
 
         success_count = 0
         fail_count = 0
 
-
-        # ------------------
-        #  Handle CREATES
-        # ------------------
-        if total_create > 0:
-            # Optionally chunk your creates if you like (Xero has a 100 or 200 limit, or if you just prefer smaller batches)
-            for i in range(0, total_create, chunk_size):
+        # CREATE
+        if create_list:
+            for i in range(0, len(create_list), chunk_size):
                 subset = create_list[i : i + chunk_size]
                 chunk_success = self.process_chunk("create", subset)
                 success_count += chunk_success
-                # If partial fail: fail_count is the rest
-                fail_count += len(subset) - chunk_success
+                fail_count += (len(subset) - chunk_success)
         else:
             self.logger.info("🌀 No contacts to create in Xero.")
 
-        # ------------------
-        #  Handle UPDATES
-        # ------------------
-        if total_update > 0:
-            for i in range(0, total_update, chunk_size):
+        # UPDATE
+        if update_list:
+            for i in range(0, len(update_list), chunk_size):
                 subset = update_list[i : i + chunk_size]
                 chunk_success = self.process_chunk("update", subset)
                 success_count += chunk_success
-                fail_count += len(subset) - chunk_success
+                fail_count += (len(subset) - chunk_success)
         else:
             self.logger.info("🌀 No contacts to update in Xero.")
 
-        # Final summary
-        self.logger.info(
-            f"🌀 Upsert summary => success={success_count}, fails={fail_count}, "
-            f"total={total_contacts}"
-        )
+        # Summary
+        self.logger.info(f"🌀 Upsert summary => success={success_count}, fails={fail_count}, total={total_contacts}")
 
         status_str = "Success"
-        if fail_count > 0 and success_count > 0:
-            status_str = "PartialFail"
-        elif fail_count == total_contacts:
+        if fail_count == total_contacts:
             status_str = "Fail"
+        elif fail_count > 0:
+            status_str = "PartialFail"
 
         self.logger.info(
-            f"🌀 [COMPLETED] [STATUS={status_str}] "
-            "Done with batched contact upserts."
+            f"🌀 [COMPLETED] [STATUS={status_str}] Done with batched contact upserts."
         )
 
-    # ---------------------------------------------
-    #  NEW HELPER: Transform DB contact -> Xero contact
-    # ---------------------------------------------
+    # ─────────────────────────────────────────────────────────────
+    #       Convert DB Contact -> Xero Contact (Partial Logic)
+    # ─────────────────────────────────────────────────────────────
     def _convert_contact_to_xero_schema(self, db_contact: dict) -> dict:
         """
-        Convert our local DB dict into a Xero-style contact dict for the contacts.put call.
+        For new contacts (no xero_id): We supply a non-empty Name + a unique AccountNumber
+        For existing contacts (has xero_id): We omit Name + AccountNumber so we don't collide or rename.
         """
-        # Prepare the Xero contact payload
         xero_contact = {}
 
-        # If xero_id is present, let Xero know we are updating (ContactID).
-        # If absent, Xero will create a new contact.
-        xero_id = db_contact.get("xero_id")
-        if xero_id:
-            xero_contact["ContactID"] = xero_id
+        # Pull existing or missing Xero ID
+        x_id = (db_contact.get("xero_id") or "").strip()
+        if x_id:
+            xero_contact["ContactID"] = x_id
 
-        # Xero 'Name' is required. We'll use db_contact["name"].
-        # If you'd like first/last name, you can also set "FirstName" and "LastName".
-        xero_contact["Name"] = db_contact.get("name", "").strip()
+        # If no xero_id => This is a brand-new contact => must send Name (non-empty).
+        # Also ensure AccountNumber is unique if used.
+        if not x_id:
+            raw_name = (db_contact.get("name") or "").strip()
+            if not raw_name:
+                raw_name = "Unnamed Contact"
+            xero_contact["Name"] = raw_name
 
-        # Email goes to "EmailAddress"
-        if db_contact.get("email"):
-            xero_contact["EmailAddress"] = db_contact["email"].strip()
+            # If you still want to store something in AccountNumber, ensure it's unique
+            # so "Account number already exists" doesn't blow up your batch.
+            vendor_status = (db_contact.get("vendor_status") or "").strip()
+            vendor_type = (db_contact.get("vendor_type") or "").strip()
+            local_id = str(db_contact.get("id") or "")  # or "pulse_id"
+            if vendor_status or vendor_type or local_id:
+                # e.g. "VENDOR-PENDING-4611" => ensures uniqueness
+                xero_contact["AccountNumber"] = f"{vendor_type}-{vendor_status}-{local_id}"
 
-        # Convert phone to Xero's "Phones" array
-        # You can define different phone types e.g. "DEFAULT" / "MOBILE" / "FAX" / "DDI"
-        if db_contact.get("phone"):
+        # If xero_id is present => partial update => omit "Name" & "AccountNumber"
+        # So we avoid duplicate name or "Account number already exists."
+
+        # Fields that are safe to update whether new or existing:
+        email = (db_contact.get("email") or "").strip()
+        if email:
+            xero_contact["EmailAddress"] = email
+
+        phone = (db_contact.get("phone") or "").strip()
+        if phone:
             xero_contact["Phones"] = [
-                {
-                    "PhoneType": "DEFAULT",
-                    "PhoneNumber": db_contact["phone"].strip()
-                }
+                {"PhoneType": "DEFAULT", "PhoneNumber": phone}
             ]
 
-        # Convert address to Xero's "Addresses" array
-        # AddressType can be "POBOX", "STREET", etc. - choose whichever you prefer
-        addr_line_1 = db_contact.get("address_line_1", "").strip()
-        addr_line_2 = db_contact.get("address_line_2", "").strip()
-        city = db_contact.get("city", "").strip()
-        region = db_contact.get("region", "").strip()
-        zip_code = db_contact.get("zip", "").strip()
-        country = db_contact.get("country", "").strip()
+        # Minimal "Addresses" structure
+        xero_contact["Addresses"] = [{"AddressType": "STREET"}]
+        if db_contact.get("address_line_1"):
+            xero_contact["Addresses"][0]["AddressLine1"] = db_contact["address_line_1"].strip()
+        if db_contact.get("address_line_2"):
+            xero_contact["Addresses"][0]["AddressLine2"] = db_contact["address_line_2"].strip()
+        if db_contact.get("city"):
+            xero_contact["Addresses"][0]["City"] = db_contact["city"].strip()
+        if db_contact.get("region"):
+            xero_contact["Addresses"][0]["Region"] = db_contact["region"].strip()
+        if db_contact.get("zip"):
+            xero_contact["Addresses"][0]["PostalCode"] = db_contact["zip"].strip()
+        if db_contact.get("country"):
+            xero_contact["Addresses"][0]["Country"] = db_contact["country"].strip()
 
-        xero_contact["Addresses"] = [
-            {
-                "AddressType": "STREET",
-                "AddressLine1": addr_line_1,
-                "AddressLine2": addr_line_2,
-                "City": city,
-                "Region": region,
-                "PostalCode": zip_code,
-                "Country": country
-            }
-        ]
-
-        # If you need to store a tax number:
-        if db_contact.get("tax_number"):
-            xero_contact["TaxNumber"] = db_contact["tax_number"].strip()
-
-        # If you want to store extra meta info, you could place it in "AccountNumber"
-        # or "ContactStatus" or "TrackingCategory" in Xero.
-        # For example, vendor_status + vendor_type:
-        # (If you don't want this, just remove or modify as needed.)
-        vendor_status = db_contact.get("vendor_status", "")
-        vendor_type = db_contact.get("vendor_type", "")
-        if vendor_status or vendor_type:
-            xero_contact["AccountNumber"] = f"{vendor_type}-{vendor_status}"
+        # If needed, store a tax_number
+        tax_num = (db_contact.get("tax_number") or "").strip()
+        if tax_num:
+            xero_contact["TaxNumber"] = tax_num
 
         return xero_contact
 
-    # ---------------------------------------------
-    #  Updated process_chunk to transform the data
-    # ---------------------------------------------
     def process_chunk(self, mode: str, data_chunk: list[dict]) -> int:
         """
-        mode can be 'create' or 'update'
-        returns the number of successfully processed contacts in this chunk
+        mode='create' => xero.contacts.put(...) (requires Name, unique AccountNumber)
+        mode='update' => xero.contacts.save(...) partial update, skipping Name + AccountNumber
         """
-        # First transform each DB contact dict into Xero contact schema
-        xero_contacts = []
-        for contact in data_chunk:
-            # Convert from your local DB style to Xero's style
-            xero_contacts.append(self._convert_contact_to_xero_schema(contact))
+        # Transform each contact from your DB format -> Xero format
+        xero_contacts = [self._convert_contact_to_xero_schema(c) for c in data_chunk]
 
         chunk_success = 0
         self.logger.info(
             f"🌀 Sending {len(xero_contacts)} contacts to Xero in one '{mode}' batch call..."
         )
+
         try:
-            # The same put call can handle both new and existing contacts
-            # (existing contacts must have 'ContactID' set).
-            result = self.xero_api._retry_on_unauthorized(
-                self.xero_api.xero.contacts.put,
-                xero_contacts
-            )
+            if mode == "create":
+                result = self.xero_api._retry_on_unauthorized(
+                    self.xero_api.xero.contacts.put,
+                    xero_contacts
+                )
+            else:  # mode == 'update'
+                result = self.xero_api._retry_on_unauthorized(
+                    self.xero_api.xero.contacts.save,
+                    xero_contacts
+                )
 
             if result:
                 chunk_success = len(result)
                 self.logger.info(
-                    f"🌀 Successfully completed '{mode}' batch => {chunk_success} contacts upserted."
+                    f"🌀 Successfully completed '{mode}' => {chunk_success} upserted."
                 )
-        except KeyError as e:
-            self.logger.error(f"⛔ KeyError during '{mode}' batch => {e}")
         except Exception as e:
-            # You could catch specific Xero library exceptions here if needed
             self.logger.error(f"⛔ Exception during '{mode}' batch => {e}")
 
         return chunk_success
 
-
+# Singleton instance
 xero_services = XeroServices()

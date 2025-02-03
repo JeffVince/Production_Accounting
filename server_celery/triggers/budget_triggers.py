@@ -70,13 +70,13 @@ def handle_po_log_create(po_log_id: int) -> None:
         logger.info("😶 No aggregator data parsed => skipping.")
         return
 
-    #3) Load PO Log Data into the DB 1 section at a timea
+    #3) Load PO Log Data into the DB 1 section at a time
     with get_db_session() as session_1:
         budget_service.process_contact_aggregator(po_log_data["contacts"], session=session_1)
 
-    # with get_db_session() as session_2:
-    #     budget_service.process_aggregator_pos(po_log_data, session=session_2)
-    #
+    with get_db_session() as session_2:
+        budget_service.process_aggregator_pos(po_log_data, session=session_2)
+
     # with get_db_session() as session_3:
     #     budget_service.process_aggregator_detail_item(po_log_data, session=session_3)
 

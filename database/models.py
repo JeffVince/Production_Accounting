@@ -27,7 +27,7 @@ class Contact(Base):
         server_default='PENDING')
     payment_details = Column(String(255), nullable=False, server_default='PENDING')
     vendor_type = Column(
-        Enum('vendor', 'CC', 'PC', 'INDIVIDUAL', 'S-CORP', 'C-CORP'),
+        Enum('VENDOR', 'CC', 'PC', 'INDIVIDUAL', 'S-CORP', 'C-CORP'),
         nullable=True)
     email = Column(String(100), nullable=True)
     phone = Column(String(45), nullable=True)
@@ -39,9 +39,9 @@ class Contact(Base):
     country = Column(String(100), nullable=True)
     tax_type = Column(String(45), nullable=True, server_default='SSN')
     tax_number = Column(String(45), nullable=True)
-    tax_form_link = Column(String(255), nullable=True)
     pulse_id = Column(MYSQL_BIGINT, unique=True)
     xero_id = Column(String(255))
+    tax_form_id = Column(MYSQL_BIGINT(unsigned=True))
     created_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
     updated_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'))
 
@@ -68,7 +68,7 @@ class Contact(Base):
             'country': self.country,
             'tax_type': self.tax_type,
             'tax_number': self.tax_number,
-            'tax_form_link': self.tax_form_link,
+            'tax_form_id': self.tax_form_id,
             'pulse_id': self.pulse_id,
             'xero_id': self.xero_id,
             'created_at': self.created_at,
@@ -615,7 +615,7 @@ class SpendMoney(Base):
         }
 #endregion
 
-#region 🧮 SysTable (the table literally named "table")
+#region 🧮 SysTable (the table literally named "sys-table")
 class SysTable(Base):
     __tablename__ = 'sys_table'
     # Note: your SQL has it as "id int not null auto_increment" (now modified to BIGINT UNSIGNED)
@@ -643,4 +643,34 @@ class SysTable(Base):
             'created_at': self.created_at,
             'updated_at': self.updated_at
         }
+#endregion
+
+#region Tax Form
+class TaxForm(Base):
+    __tablename__ = 'tax_form'
+    id = Column(MYSQL_BIGINT(unsigned=True), primary_key=True, autoincrement=True)
+    type = Column(Enum('W9', 'W8-BEN', 'W8-BEN-E'))
+    status = Column(Enum('VERIFIED', 'INVALID', 'PENDING'), default='PENDING')
+    entity_name = Column(String(100), unique=True, nullable=False)
+    filename = Column(String(100))
+    db_path = Column(String(255))
+    tax_form_link = Column(String(255), nullable=True)
+    created_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
+    updated_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'contact_id': self.contact_id,
+            'status': self.status,
+            'type': self.type,
+            'entity_name': self.entity_name,
+            'filename': self.filename,
+            'db_path': self.db_path,
+            'tax_form_link': self.tax_form_link,
+            'created_at': self.created_at,
+            'updated_at': self.updated_at
+        }
+
+
 #endregion

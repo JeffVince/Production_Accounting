@@ -40,7 +40,7 @@ class MondayService(metaclass=SingletonMeta):
             self.contact_board_id = self.monday_util.CONTACT_BOARD_ID
             self.api_url = self.monday_util.MONDAY_API_URL
             # ✨ Our queue for buffered contact upserts:
-            self._contact_upsert_queue = []
+            self.contact_upsert_queue = []
             self._detail_upsert_queue = []
             self._po_upsert_queue = []
             self.db_ops = DatabaseOperations()
@@ -571,21 +571,33 @@ class MondayService(metaclass=SingletonMeta):
         We'll only do that if aggregator decided we have changes or new record.
         """
         col_vals = {}
+        contact_record = self.db_ops.search_contacts(["id"], [po_data.get("contact_id")])
         # Example fields from your DB => Monday columns:
         project_number = po_data.get('project_number')
         po_number = po_data.get('po_number')
         description = po_data.get('description')
         folder_link = po_data.get('folder_link')
+        contact_pulse_id=contact_record["pulse_id"],
+        name = po_data["vendor_name"]
 
         if project_number:
             col_vals[self.monday_util.PO_PROJECT_ID_COLUMN] = project_number
+        if name:
+            # Convert set to list if needed
+            col_vals["name"] = list(name) if isinstance(name, set) else name
         if po_number:
             col_vals[self.monday_util.PO_NUMBER_COLUMN] = po_number
         if description:
             col_vals[self.monday_util.PO_DESCRIPTION_COLUMN_ID] = description
+        if contact_pulse_id:
+            col_vals[self.monday_util.PO_CONTACT_CONNECTION_COLUMN_ID] = {
+                "linkedPulseIds": contact_pulse_id
+            }
         if folder_link:
-            col_vals[self.monday_util.PO_FOLDER_LINK_COLUMN_ID] = {'url': folder_link, 'text': '📂'}
-
+            col_vals[self.monday_util.PO_FOLDER_LINK_COLUMN_ID] = {
+                "url": folder_link,
+                "text": "📦",
+            }
         return col_vals
 
     # -------------------------------------------------------------------------
@@ -608,7 +620,7 @@ class MondayService(metaclass=SingletonMeta):
         # If no pulse_id => definitely new in Monday
         if not pulse_id:
             self.logger.info("🆕 Contact has no pulse_id => enqueuing for Monday create.")
-            self._contact_upsert_queue.append(contact_record)
+            self.contact_upsert_queue.append(contact_record)
         else:
             # Check if aggregator logic indicates changes
             has_changes = self.db_ops.contact_has_changes(
@@ -632,7 +644,7 @@ class MondayService(metaclass=SingletonMeta):
             )
             if has_changes:
                 self.logger.info(f"🌀 Contact {contact_id} => aggregator indicates changes => enqueueing update.")
-                self._contact_upsert_queue.append(contact_record)
+                self.contact_upsert_queue.append(contact_record)
             else:
                 self.logger.info("🌀 No contact changes => skipping Monday upsert.")
 
@@ -645,7 +657,7 @@ class MondayService(metaclass=SingletonMeta):
         """
         self.logger.info("🌀 [START] Performing batched Contact upserts in Monday...")
 
-        if not self._contact_upsert_queue:
+        if not self.contact_upsert_queue:
             self.logger.info("🌀 No contacts in queue => nothing to upsert.")
             self.logger.info("🌀 [COMPLETED] [STATUS=Success] None processed.")
             return
@@ -653,7 +665,7 @@ class MondayService(metaclass=SingletonMeta):
         items_to_create = []
         items_to_update = []
 
-        for ct_data in self._contact_upsert_queue:
+        for ct_data in self.contact_upsert_queue:
             pulse_id = ct_data.get('pulse_id')
             col_vals = self._build_contact_column_values(ct_data)
 
@@ -690,7 +702,7 @@ class MondayService(metaclass=SingletonMeta):
                 create=False
             )
 
-        self._contact_upsert_queue.clear()
+        self.contact_upsert_queue.clear()
         total = len(created_results) + len(updated_results)
         self.logger.info(f"🌀 [COMPLETED] [STATUS=Success] Contact batch => total={total} processed.")
 
@@ -728,6 +740,7 @@ class MondayService(metaclass=SingletonMeta):
             col_vals[self.monday_util.CONTACT_TAX_TYPE] = str(contact_data['tax_type'])
         if contact_data.get('tax_number'):
             col_vals[self.monday_util.CONTACT_TAX_NUMBER] = str(contact_data['tax_number'])
+           #TODO modify this for new tax form structure
         if contact_data.get('tax_form_link'):
             link_lower = contact_data['tax_form_link'].lower()
             if 'w9' in link_lower:
@@ -745,6 +758,10 @@ class MondayService(metaclass=SingletonMeta):
 
         if contact_data.get("xero_id"):
             pass #TODO need to add field to mnd
+
+
+
+        self.logger.debug(f"💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥{col_vals}")
 
         return col_vals
 
