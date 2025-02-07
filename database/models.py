@@ -674,3 +674,29 @@ class TaxForm(Base):
 
 
 #endregion
+
+
+#region Tax Form
+
+class Dropboxfolder(Base):
+    __tablename__ = 'dropbox_folder'
+
+    id = Column(MYSQL_BIGINT, primary_key=True, autoincrement=True)
+    project_number = Column(MYSQL_INTEGER(unsigned=True), nullable=True)
+    po_number = Column(MYSQL_INTEGER(unsigned=True), nullable=True)
+    vendor_name = Column(String(100), nullable=True)
+    dropbox_path = Column(String(255), nullable=True)
+    share_link = Column(String(255), nullable=True)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'project_number': self.project_number,
+            'po_number': self.po_number,
+            'vendor_name': self.vendor_name,
+            'dropbox_path': self.dropbox_path,
+            'share_link': self.share_link,
+        }
+
+
+#endregion

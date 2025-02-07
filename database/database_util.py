@@ -73,7 +73,6 @@ class DatabaseOperations:
             self.logger.debug(f"{prefix}🕵️ Searching all {model.__name__} records (no filters).")
             self.logger.info(f"{prefix}🔎 Fetching entire {model.__name__} table without filters.")
 
-        # If a session was provided, use it, else open a new one with get_db_session().
         if session is not None:
             try:
                 query = session.query(model)
@@ -84,7 +83,6 @@ class DatabaseOperations:
                             self.logger.warning(f"{prefix}😬 '{col_name}' invalid for {model.__name__}.")
                             return []
                         query = query.filter(column_attr == val)
-
                 records = query.all()
                 if not records:
                     self.logger.info(f"{prefix}🙅 No {model.__name__} records found.")
@@ -95,13 +93,10 @@ class DatabaseOperations:
                 else:
                     self.logger.info(f"{prefix}✅ Located {len(records)} {model.__name__} records.")
                     return [self._serialize_record(r) for r in records]
-
             except Exception as e:
                 self.logger.error(f"{prefix}❌ Error searching {model.__name__}: {e}", exc_info=True)
                 return []
-
         else:
-            # No session => open a new one
             with get_db_session() as new_session:
                 try:
                     query = new_session.query(model)
@@ -112,7 +107,6 @@ class DatabaseOperations:
                                 self.logger.warning(f"😬 '{col_name}' invalid for {model.__name__}.")
                                 return []
                             query = query.filter(column_attr == val)
-
                     records = query.all()
                     if not records:
                         self.logger.info(f"🙅 No {model.__name__} records found.")
@@ -123,25 +117,24 @@ class DatabaseOperations:
                     else:
                         self.logger.info(f"✅ Found {len(records)} matches for {model.__name__}.")
                         return [self._serialize_record(r) for r in records]
-
                 except Exception as e:
-                    new_session.rollback()
+                    # Let the context manager handle rollback automatically.
                     self.logger.error(f"❌ Error searching {model.__name__}: {e}", exc_info=True)
                     return []
     # endregion
 
     # region 🆕 Create Records
     def _create_record(
-        self,
-        model,
-        unique_lookup: dict = None,
-        session: Session = None,
-        **kwargs
+            self,
+            model,
+            unique_lookup: dict = None,
+            session: Session = None,
+            **kwargs
     ) -> Optional[Dict[str, Any]]:
         """
-        Creates a new record. Returns its dict form or None on error.
-        Flushes to get the ID. If IntegrityError and unique_lookup is set,
-        attempts concurrency fallback by re-querying.
+        Creates a new record in the DB. Returns its dict form or None on error.
+        If an IntegrityError occurs and unique_lookup is set, attempts concurrency
+        fallback by re-querying within a SAVEPOINT (nested transaction).
         """
         prefix = "[BATCH OPERATION] " if session else ""
         self.logger.debug(f"{prefix}🧑‍💻 Creating {model.__name__} with: {kwargs}")
@@ -149,39 +142,49 @@ class DatabaseOperations:
 
         if session is not None:
             try:
-                record = model(**kwargs)
-                session.add(record)
-                session.flush()
-                self.logger.debug(f"{prefix}🎉 Flushed new {model.__name__}, ID={getattr(record, 'id', 'N/A')}")
+                with session.begin_nested():
+                    record = model(**kwargs)
+                    session.add(record)
+                    session.flush()  # May raise IntegrityError
+                self.logger.debug(
+                    f"{prefix}🎉 Flushed new {model.__name__}, "
+                    f"ID={getattr(record, 'id', 'N/A')}"
+                )
                 return self._serialize_record(record)
-
-            except IntegrityError:
-                self.logger.debug(f"{prefix}❗ IntegrityError creating {model.__name__}")
-                session.rollback()
+            except IntegrityError as ie:
+                self.logger.debug(f"{prefix}❗ IntegrityError creating {model.__name__}: {ie}")
+                session.expire_all()  # Clear any stale state
                 if unique_lookup:
                     self.logger.warning(f"{prefix}🔎 Trying concurrency fallback re-query...")
-                    found = self._search_records(model, list(unique_lookup.keys()), list(unique_lookup.values()), session=session)
+                    found = self._search_records(
+                        model,
+                        list(unique_lookup.keys()),
+                        list(unique_lookup.values()),
+                        session=session
+                    )
                     if found:
-                        if isinstance(found, list):
-                            self.logger.info(f"{prefix}⚠️ Found {len(found)}; returning first.")
+                        if isinstance(found, list) and len(found) > 0:
+                            self.logger.info(
+                                f"{prefix}⚠️ Found {len(found)}; returning first fallback match."
+                            )
                             return found[0]
-                        else:
+                        elif isinstance(found, dict):
                             self.logger.info(f"{prefix}⚠️ Found existing record after fallback.")
                             return found
+                        else:
+                            self.logger.error(f"{prefix}❌ No record found after fallback. Returning None.")
+                            return None
                     else:
                         self.logger.error(f"{prefix}❌ No record found after fallback. Returning None.")
                         return None
                 else:
                     self.logger.error(f"{prefix}❌ No unique_lookup => cannot fallback. Returning None.")
-                return None
-
+                    return None
             except Exception as e:
                 session.rollback()
                 self.logger.error(f"{prefix}💥 Trouble creating {model.__name__}: {e}", exc_info=True)
                 return None
-
         else:
-            # No session => open a new one
             with get_db_session() as new_session:
                 try:
                     record = model(**kwargs)
@@ -190,27 +193,30 @@ class DatabaseOperations:
                     new_session.commit()
                     self.logger.debug(f"🎉 Created {model.__name__}, ID={getattr(record, 'id', 'N/A')}")
                     return self._serialize_record(record)
-
-                except IntegrityError:
-                    new_session.rollback()
-                    self.logger.debug("❗ IntegrityError on create.")
+                except IntegrityError as ie:
+                    new_session.rollback()  # In context managers, this rollback is optional.
+                    self.logger.debug(f"❗ IntegrityError on create: {ie}")
                     if unique_lookup:
                         self.logger.warning("🔎 Attempting concurrency fallback re-query...")
-                        found = self._search_records(model, list(unique_lookup.keys()), list(unique_lookup.values()), session=new_session)
+                        found = self._search_records(
+                            model,
+                            list(unique_lookup.keys()),
+                            list(unique_lookup.values()),
+                            session=new_session
+                        )
                         if found:
-                            if isinstance(found, list):
+                            if isinstance(found, list) and len(found) > 0:
                                 self.logger.info(f"⚠️ Found {len(found)} matching; returning first.")
                                 return found[0]
-                            else:
+                            elif isinstance(found, dict):
                                 self.logger.info("⚠️ Found exactly one after fallback.")
                                 return found
+                            else:
+                                self.logger.error("❌ Nothing found after fallback.")
+                                return None
                         else:
-                            self.logger.error("❌ Nothing found after fallback.")
+                            self.logger.error("❌ No unique_lookup => cannot fallback. Returning None.")
                             return None
-                    else:
-                        self.logger.error("❌ No unique_lookup => cannot fallback. Returning None.")
-                    return None
-
                 except Exception as e:
                     new_session.rollback()
                     self.logger.error(f"💥 Trouble creating {model.__name__}: {e}", exc_info=True)
@@ -250,7 +256,6 @@ class DatabaseOperations:
                 session.flush()
                 self.logger.debug(f"{prefix}🎉 Flushed updated {model.__name__}(id={record_id}).")
                 return self._serialize_record(record)
-
             except IntegrityError:
                 self.logger.warning(f"{prefix}❗ IntegrityError on update {model.__name__}(id={record_id})")
                 session.rollback()
@@ -270,12 +275,10 @@ class DatabaseOperations:
                 else:
                     self.logger.error(f"{prefix}❌ No unique_lookup => cannot fallback.")
                 return None
-
             except Exception as e:
                 session.rollback()
                 self.logger.error(f"{prefix}💥 Error updating {model.__name__}(id={record_id}): {e}", exc_info=True)
                 return None
-
         else:
             with get_db_session() as new_session:
                 try:
@@ -294,9 +297,8 @@ class DatabaseOperations:
                     new_session.commit()
                     self.logger.debug(f"🎉 Updated {model.__name__}(id={record_id}).")
                     return self._serialize_record(record)
-
                 except IntegrityError:
-                    new_session.rollback()
+                    # Let the context manager handle rollback.
                     self.logger.warning("❗ IntegrityError on update.")
                     if unique_lookup:
                         self.logger.warning("🔎 Attempting fallback re-query after update fail...")
@@ -314,9 +316,7 @@ class DatabaseOperations:
                     else:
                         self.logger.error("❌ No unique_lookup => cannot fallback. Returning None.")
                     return None
-
                 except Exception as e:
-                    new_session.rollback()
                     self.logger.error(f"💥 Error updating {model.__name__}(id={record_id}): {e}", exc_info=True)
                     return None
     # endregion
@@ -342,16 +342,13 @@ class DatabaseOperations:
                 if not record:
                     self.logger.info(f"{prefix}🙅 No {model.__name__}(id={record_id}) found to delete.")
                     return False
-
                 session.delete(record)
                 session.flush()
                 self.logger.debug(f"{prefix}🗑️ {model.__name__}(id={record_id}) removed (pending commit).")
-                return True  # caller can commit
-
+                return True
             except IntegrityError:
                 self.logger.warning(f"{prefix}❗ IntegrityError deleting {model.__name__}(id={record_id})")
                 session.rollback()
-
                 if unique_lookup:
                     self.logger.warning(f"{prefix}🔎 Attempting concurrency fallback re-query (post-delete).")
                     found = self._search_records(model, list(unique_lookup.keys()), list(unique_lookup.values()), session=session)
@@ -364,12 +361,9 @@ class DatabaseOperations:
                 else:
                     self.logger.error(f"{prefix}❌ No unique_lookup => can't re-check.")
                 return False
-
             except Exception as e:
-                session.rollback()
                 self.logger.error(f"{prefix}💥 Error deleting {model.__name__}(id={record_id}): {e}", exc_info=True)
                 return False
-
         else:
             with get_db_session() as new_session:
                 try:
@@ -377,31 +371,27 @@ class DatabaseOperations:
                     if not record:
                         self.logger.info(f"🙅 No {model.__name__}(id={record_id}) found to delete.")
                         return False
-
                     new_session.delete(record)
                     new_session.flush()
                     new_session.commit()
                     self.logger.debug(f"🗑️ Deleted {model.__name__}(id={record_id}).")
                     return True
-
                 except IntegrityError:
-                    new_session.rollback()
+                    # Let the context manager handle rollback.
                     self.logger.warning("❗ IntegrityError on delete.")
                     if unique_lookup:
                         self.logger.warning("🔎 Attempting fallback re-query (post-delete error).")
                         found = self._search_records(model, list(unique_lookup.keys()), list(unique_lookup.values()), session=new_session)
                         if found:
-                            self.logger.info(f"⚠️ Record still present => cannot delete.")
+                            self.logger.info("⚠️ Record still present => cannot delete.")
                             return False
                         else:
                             self.logger.error("❌ Not found after fallback => likely already deleted.")
                             return False
                     else:
                         self.logger.error("❌ No unique_lookup => no re-check. Returning False.")
-                    return False
-
+                        return False
                 except Exception as e:
-                    new_session.rollback()
                     self.logger.error(f"💥 Error deleting {model.__name__}(id={record_id}): {e}", exc_info=True)
                     return False
     # endregion
@@ -453,11 +443,10 @@ class DatabaseOperations:
 
         for field, new_val in kwargs.items():
             old_val = record_dict.get(field)
-            # if you want to unify state comparisons:
+            # For state comparisons:
             if field == 'state':
                 old_val = (old_val or '').upper()
                 new_val = (new_val or '').upper()
-
             if old_val != new_val:
                 return True
         return False
@@ -1300,7 +1289,6 @@ class DatabaseOperations:
     # endregion
 
     # region 🏷 XERO BILL
-
     def create_xero_bill(self, project_number, po_number, detail_number, session: Session = None, **kwargs):
         kwargs['project_number'] = project_number
         kwargs['po_number'] = po_number
@@ -1379,10 +1367,6 @@ class DatabaseOperations:
         if isinstance(bills, list):
             bills = bills[0]
         return self.update_xero_bill(bills['id'], session=session, **kwargs)
-
-
-
-
     # endregion
 
     # region 👤 USER
@@ -1591,4 +1575,126 @@ class DatabaseOperations:
         else:
             match = matches
         return self.update_po_log(match['id'], session=session, status=status, **kwargs)
+    # endregion
+
+    # region BULK/Batch Helper Methods
+    def batch_search_detail_items_by_keys(self, keys: List[dict], session: Session = None) -> List[Dict[str, Any]]:
+        """
+        Batch search for DetailItem records using a list of key dictionaries.
+        Each key dict should have: project_number, po_number, detail_number, and line_number.
+        Returns a list of matching DetailItem records as dicts.
+        """
+        from sqlalchemy import or_, and_
+        if not keys:
+            return []
+        conditions = []
+        for key in keys:
+            cond = and_(
+                DetailItem.project_number == key.get('project_number'),
+                DetailItem.po_number == key.get('po_number'),
+                DetailItem.detail_number == key.get('detail_number'),
+                DetailItem.line_number == key.get('line_number')
+            )
+            conditions.append(cond)
+        query = session.query(DetailItem).filter(or_(*conditions))
+        records = query.all()
+        return [self._serialize_record(r) for r in records]
+
+    def bulk_create_detail_items(self, items: List[dict], session: Session = None) -> List[Dict[str, Any]]:
+        """
+        Bulk create DetailItem records.
+        """
+        new_objects = [DetailItem(**item) for item in items]
+        session.add_all(new_objects)
+        session.flush()
+        return [self._serialize_record(obj) for obj in new_objects]
+
+    def bulk_update_detail_items(self, items: List[dict], session: Session = None) -> List[Dict[str, Any]]:
+        """
+        Bulk update DetailItem records.
+        Each item dict must contain the 'id' field and the fields to update.
+        """
+        updated_objects = []
+        for item in items:
+            record = session.query(DetailItem).get(item['id'])
+            if record:
+                for key, value in item.items():
+                    if key != 'id':
+                        setattr(record, key, value)
+                updated_objects.append(record)
+        session.flush()
+        return [self._serialize_record(obj) for obj in updated_objects]
+
+    def batch_search_receipts_by_keys(self, keys: List[tuple], session: Session = None) -> List[Dict[str, Any]]:
+        """
+        Batch search for Receipt records using a list of keys.
+        Each key is a tuple: (project_number, po_number, detail_number)
+        Returns a list of matching Receipt records as dicts.
+        """
+        from sqlalchemy import or_, and_
+        if not keys:
+            return []
+        conditions = []
+        for key in keys:
+            project_number, po_number, detail_number = key
+            cond = and_(
+                Receipt.project_number == project_number,
+                Receipt.po_number == po_number,
+                Receipt.detail_number == detail_number
+            )
+            conditions.append(cond)
+        query = session.query(Receipt).filter(or_(*conditions))
+        records = query.all()
+        return [self._serialize_record(r) for r in records]
+
+    def bulk_update_detail_items_state(self, detail_ids: List[int], new_state: str, session: Session = None) -> \
+    List[Dict[str, Any]]:
+        """
+        Bulk update the state of DetailItem records identified by detail_ids.
+        Returns the updated records as dicts.
+        """
+        session.query(DetailItem).filter(DetailItem.id.in_(detail_ids)).update({DetailItem.state: new_state},
+                                                                               synchronize_session='fetch')
+        session.flush()
+        updated_records = session.query(DetailItem).filter(DetailItem.id.in_(detail_ids)).all()
+        return [self._serialize_record(r) for r in updated_records]
+
+    def bulk_create_spend_money(self, items: List[dict], session: Session = None) -> List[Dict[str, Any]]:
+        """
+        Bulk create SpendMoney records.
+        """
+        new_objects = [SpendMoney(**item) for item in items]
+        session.add_all(new_objects)
+        session.flush()
+        return [self._serialize_record(obj) for obj in new_objects]
+
+    def batch_search_invoices_by_keys(self, keys: List[tuple], session: Session = None) -> List[Dict[str, Any]]:
+        """
+        Batch search for Invoice records using a list of keys.
+        Each key is a tuple: (project_number, po_number, invoice_number).
+        Returns a list of matching Invoice records as dicts.
+        """
+        from sqlalchemy import or_, and_
+
+        if not keys:
+            return []
+
+        conditions = []
+        for key in keys:
+            # key is (project_number, po_number, invoice_number)
+            project_number, po_number, invoice_number = key
+
+            # Build an AND condition for each tuple
+            cond = and_(
+                Invoice.project_number == project_number,
+                Invoice.po_number == po_number,
+                Invoice.invoice_number == invoice_number
+            )
+            conditions.append(cond)
+
+        # Combine with OR so any matching (proj, po, invoice) is returned
+        query = session.query(Invoice).filter(or_(*conditions))
+        records = query.all()
+
+        return [self._serialize_record(r) for r in records]
     # endregion

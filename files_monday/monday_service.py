@@ -142,189 +142,82 @@ class MondayService(metaclass=SingletonMeta):
 
     # region 🌐 Upsert PO
     def upsert_po_in_monday(self, po_record: dict):
-        """
-        🤝 Creates or updates a PO item in Monday.com based on the local 'po_record'.
-        This can involve:
-          1) Checking if there's an existing item by project_number & po_number.
-          2) If found, compare columns, possibly update.
-          3) If not found, create a new item.
-
-        :param po_record: Dict with keys like:
-            {
-              "project_number": ...,
-              "po_number": ...,
-              "description": ...,
-              "contact_pulse_id": ...,
-              "pulse_id": ... (optional),
-              ...
-            }
-        :return: None, but logs the outcome.
-        """
-        self.logger.info("🌐 [upsert_po_in_monday] - Handling upsert for PO record with local data:\n"
-                         f"    {po_record}")
-
+        self.logger.info(f"🌐 [upsert_po_in_monday] - Handling upsert for PO record:\n    {po_record}")
         project_number = po_record.get('project_number')
         po_number = po_record.get('po_number')
         pulse_id = po_record.get('pulse_id')
         description = po_record.get('description')
         contact_name = po_record.get("vendor_name")
 
+        # Prepare column values using the formatter function from monday_util.
+        column_values_dict = self._build_po_column_values(po_record)
+        column_values_str = json.dumps(column_values_dict)
 
-        # region 💼 Prepare column values
-        column_values_str = self.monday_util.po_column_values_formatter(
-            project_id=str(project_number),
-            po_number=str(po_number),
-            description=description,
-            contact_pulse_id=po_record.get('contact_pulse_id', ''),
-            folder_link=po_record.get('folder_link', ''),
-            producer_id=po_record.get('producer_id', ''),
-            name=contact_name
-        )
-        # endregion
-
-        # region 🔀 Decide create vs update
         if not pulse_id:
-            # We do a "find or create" approach by project_number + po_number
             self.logger.info("🔎 Checking if item already exists in Monday by project_number & po_number...")
-
-            search_resp = self.monday_api.fetch_item_by_po_and_project(
-                project_number,
-                po_number
-            )
+            search_resp = self.monday_api.fetch_item_by_po_and_project(project_number, po_number)
             items_found = search_resp['data']['items_page_by_column_values']['items']
 
             if len(items_found) == 1:
-                # We do an update
                 existing_item = items_found[0]
                 existing_id = existing_item['id']
-                self.logger.info(f"🔗 Found existing PO item => ID={existing_id}. We will update columns if needed.")
+                self.logger.info(f"🔗 Found existing PO item => ID={existing_id}. Updating columns.")
                 po_record['pulse_id'] = existing_id
-
-                # Convert to JSON object for update
-                self.logger.debug("🔄 Doing a multi-column update on the found item.")
                 self.monday_api.update_item(existing_id, column_values_str, type='main')
             else:
-                self.logger.info("🆕 No single existing item found => creating new one from scratch.")
-                group_id = 'topics'  # or logic to find group
+                self.logger.info("🆕 No matching item found => creating new one.")
+                group_id = 'topics'  # or however you choose the group
                 create_resp = self.monday_api.create_item(
                     board_id=self.board_id,
                     group_id=group_id,
-                    name=po_record.get('vendor_name') or f"PO#{po_number}",
+                    name=contact_name or f"PO#{po_number}",
                     column_values=column_values_str
                 )
-                # Extract newly created item ID
-                # => create_resp is the full GraphQL
-                # For your code, the structure might differ
-                # but typically: create_resp['data']['create_item']['id']
-                new_id = None
                 try:
                     new_id = create_resp['data']['create_item']['id']
                     po_record['pulse_id'] = new_id
-                    self.logger.info(f"🎉 Created a new PO item => ID={new_id} for PO#{po_number}")
+                    self.logger.info(f"🎉 Created new PO item => ID={new_id} for PO#{po_number}")
                 except Exception as ce:
                     self.logger.error(f"❌ Could not create PO item for po_number={po_number}: {ce}")
         else:
-            # We have pulse_id => just do an update
-            self.logger.info(f"ℹ️ We have an existing pulse_id={pulse_id} => updating columns.")
+            self.logger.info(f"ℹ️ Existing pulse_id={pulse_id} found => updating columns.")
             self.monday_api.update_item(pulse_id, column_values_str, type='main')
-        # endregion
 
-        self.logger.info("✅ [upsert_po_in_monday] - Finished upsert logic for PO record.\n")
-    # endregion
+        self.logger.info("✅ [upsert_po_in_monday] - Finished upsert logic for PO record.")
+        # endregion
 
     # region ⚙️ Upsert Detail Subitem
     def upsert_detail_subitem_in_monday(self, detail_item: dict):
-        """
-        🧱 Creates or updates a subitem (detail item) under the parent PO in Monday.com.
-
-        :param detail_item: Dict with keys like:
-          {
-            "project_number": ...,
-            "po_number": ...,
-            "detail_number": ...,
-            "line_number": ...,
-            "description": ...,
-            "rate": ...,
-            "quantity": ...,
-            "ot": ...,
-            "fringes": ...,
-            "file_link": ...,
-            "state": ...,
-            "transaction_date": ...,
-            "due_date": ...,
-            "account_code": ...,
-            "pulse_id": ... (optional, if known),
-            "parent_pulse_id": ... (the parent's item ID in Monday, if known)
-          }
-        :return: None, but logs the outcome
-        """
-        self.logger.info("🧱 [upsert_detail_subitem_in_monday] - Handling subitem upsert:\n"
-                         f"    {detail_item}")
-
-        # region 🏗️ Check we have parent
+        self.logger.info(f"🧱 [upsert_detail_subitem_in_monday] - Handling subitem upsert:\n    {detail_item}")
         parent_id = detail_item.get('parent_pulse_id')
         if not parent_id:
-            self.logger.warning("⚠️ No parent_pulse_id => we cannot create a subitem if parent is unknown. Exiting.")
+            self.logger.warning("⚠️ No parent_pulse_id; cannot create subitem. Exiting.")
             return
-        # endregion
 
-        # region 🎨 Build column values
-        column_values_json_str = self.monday_util.subitem_column_values_formatter(
-            project_id=detail_item.get('project_number'),
-            po_number=detail_item.get('po_number'),
-            detail_number=detail_item.get('detail_number'),
-            line_number=detail_item.get('line_number'),
-            description=detail_item.get('description'),
-            quantity=detail_item.get('quantity'),
-            rate=detail_item.get('rate'),
-            date=detail_item.get('transaction_date'),
-            due_date=detail_item.get('due_date'),
-            account_number=detail_item.get('account_code'),
-            link=detail_item.get('file_link'),
-            OT=detail_item.get('ot'),
-            fringes=detail_item.get('fringes'),
-            status=detail_item.get('state')  # If 'RTP' or 'REVIEWED' etc.
-        )
-        self.logger.debug(f"🖌️ Column values => {column_values_json_str}")
-        # endregion
+        column_values_dict = self._build_detail_subitem_values(detail_item)
+        column_values_json_str = json.dumps(column_values_dict)
+        self.logger.debug(f"🖌️ Column values for subitem: {column_values_json_str}")
 
-        # region 👶 Create/Update subitem
         subitem_id = detail_item.get('pulse_id')
         if subitem_id:
-            self.logger.info(f"🔄 Updating existing subitem => ID={subitem_id} ...")
-            # We'll call monday_api.update_item(...) with type='subitem'
+            self.logger.info(f"🔄 Updating existing subitem ID={subitem_id}...")
             self.monday_api.update_item(subitem_id, column_values_json_str, type='subitem')
-            self.logger.info(f"✅ Updated subitem {subitem_id} successfully.")
         else:
-            # We do a "search or create" approach if we want to avoid duplicates:
-            self.logger.info("🔎 Checking if subitem already exists (by detail_number + line_number) to avoid duplicates.")
-            existing_subitem = self.monday_api.fetch_subitem_by_po_receipt_line(
-                detail_item['po_number'],
-                detail_item.get('detail_number'),
-                detail_item.get('line_number')
+            self.logger.info("🔎 No existing subitem found; creating new one.")
+            create_resp = self.monday_api.create_subitem(
+                parent_item_id=parent_id,
+                subitem_name=detail_item.get('description') or f"Line {detail_item.get('line_number')}",
+                column_values=column_values_dict  # Pass the dict directly as variable
             )
-            if existing_subitem:
-                found_id = existing_subitem['id']
-                detail_item['pulse_id'] = found_id
-                self.logger.info(f"🤝 Found existing subitem => ID={found_id}. We'll do an update.")
-                self.monday_api.update_item(found_id, column_values_json_str, type='subitem')
+            if create_resp and create_resp['data']['create_subitem'].get('id'):
+                new_id = create_resp['data']['create_subitem']['id']
+                detail_item['pulse_id'] = new_id
+                self.logger.info(f"🎉 Created new subitem with ID={new_id}")
             else:
-                self.logger.info("🆕 No existing subitem => creating new subitem under parent.")
-                create_resp = self.monday_api.create_subitem(
-                    parent_item_id=parent_id,
-                    subitem_name=detail_item.get('description') or f"Line {detail_item.get('line_number')}",
-                    column_values=json.loads(column_values_json_str)
-                )
-                if create_resp and create_resp['data']['create_subitem'] and create_resp['data']['create_subitem'].get('id'):
-                    new_id = create_resp['data']['create_subitem']['id']
-                    detail_item['pulse_id'] = new_id
-                    self.logger.info(f"🎉 Created subitem => ID={new_id}")
-                else:
-                    self.logger.warning("❌ Could not create new subitem => no 'id' in response.")
-        # endregion
+                self.logger.warning("❌ Could not create new subitem; no 'id' in response.")
 
-        self.logger.info("🏁 [upsert_detail_subitem_in_monday] - Done with subitem upsert.")
-    # endregion
+        self.logger.info("🏁 [upsert_detail_subitem_in_monday] - Completed subitem upsert.")
+        # endregion
 
     # region 🎉 Sync from Monday -> DB
     def sync_main_items_from_monday_board(self):
@@ -520,19 +413,23 @@ class MondayService(metaclass=SingletonMeta):
         # Build batch data for each queued PO
         for po_data in self._po_upsert_queue:
             pulse_id = po_data.get('pulse_id')
-            col_vals = self._build_po_column_values(po_data)
+
+            contact_record = self.db_ops.search_contacts(["id"], [po_data["contact_id"]])
+            if isinstance(contact_record, list):
+                contact_record = contact_record[0]
+            contact_pulse_id = contact_record['pulse_id']
 
             if not pulse_id:
                 items_to_create.append({
                     'db_item': po_data,
-                    'column_values': col_vals,
-                    'monday_item_id': None
+                    'monday_item_id': None,
+                    'monday_contact_id': contact_pulse_id
                 })
             else:
                 items_to_update.append({
                     'db_item': po_data,
-                    'column_values': col_vals,
-                    'monday_item_id': pulse_id
+                    'monday_item_id': pulse_id,
+                    "monday_contact_id": contact_pulse_id
                 })
 
         self.logger.info(f"🌀 Upserting POs => create={len(items_to_create)}, update={len(items_to_update)}")
@@ -565,40 +462,9 @@ class MondayService(metaclass=SingletonMeta):
         total_processed = len(created_results) + len(updated_results)
         self.logger.info(f"🌀 [COMPLETED] [STATUS=Success] PO batch upsert => total={total_processed} processed.")
 
-    def _build_po_column_values(self, po_data: dict) -> dict:
-        """
-        Construct the column_values for a PurchaseOrder record.
-        We'll only do that if aggregator decided we have changes or new record.
-        """
-        col_vals = {}
-        contact_record = self.db_ops.search_contacts(["id"], [po_data.get("contact_id")])
-        # Example fields from your DB => Monday columns:
-        project_number = po_data.get('project_number')
-        po_number = po_data.get('po_number')
-        description = po_data.get('description')
-        folder_link = po_data.get('folder_link')
-        contact_pulse_id=contact_record["pulse_id"],
-        name = po_data["vendor_name"]
-
-        if project_number:
-            col_vals[self.monday_util.PO_PROJECT_ID_COLUMN] = project_number
-        if name:
-            # Convert set to list if needed
-            col_vals["name"] = list(name) if isinstance(name, set) else name
-        if po_number:
-            col_vals[self.monday_util.PO_NUMBER_COLUMN] = po_number
-        if description:
-            col_vals[self.monday_util.PO_DESCRIPTION_COLUMN_ID] = description
-        if contact_pulse_id:
-            col_vals[self.monday_util.PO_CONTACT_CONNECTION_COLUMN_ID] = {
-                "linkedPulseIds": contact_pulse_id
-            }
-        if folder_link:
-            col_vals[self.monday_util.PO_FOLDER_LINK_COLUMN_ID] = {
-                "url": folder_link,
-                "text": "📦",
-            }
-        return col_vals
+        #Return the created results
+        return created_results
+        self.logger.info(f"🛟 Saved {len(created_results)}  Pulse IDs to DB")
 
     # -------------------------------------------------------------------------
     #                         CONTACT AGGREGATOR
@@ -778,7 +644,6 @@ class MondayService(metaclass=SingletonMeta):
         For subitems, we might store 'parent_pulse_id' for the main item
         and 'pulse_id' for the subitem itself.
         """
-        self.logger.info("🌀 [START] Attempting to stage a DetailItem for subitem upsert in Monday...")
         if not detail_record:
             self.logger.warning("🌀 No detail_item record => skipping.")
             self.logger.info("🌀 [COMPLETED] [STATUS=Fail]")
@@ -795,9 +660,19 @@ class MondayService(metaclass=SingletonMeta):
             po_number=detail_record.get('po_number'),
             detail_number=detail_record.get('detail_number'),
             line_number=detail_record.get('line_number'),
-            # plus any updated fields
             state=detail_record.get('state'),
-            description=detail_record.get('description')
+            description=detail_record.get('description'),
+            transaction=detail_record.get('transaction_date'),
+            due_date=detail_record.get('due_date'),
+            rate=detail_record.get('rate'),
+            quantity=detail_record.get('quantity'),
+            ot=detail_record.get('ot'),
+            fringes=detail_record.get('fringes'),
+            receipt_id=detail_record.get('receipt_id'),
+            invoid_id=detail_record.get('invoid_id'),
+            pulse_id=detail_record.get('pulse_id'),
+            parent_pulse_id=detail_record.get('parent_pulse_id'),
+            payment_type=detail_record.get('payment_type')
         )
 
         if not subitem_id and not has_changes:
@@ -868,15 +743,12 @@ class MondayService(metaclass=SingletonMeta):
             self.logger.info("🌀 Creating subitems in Monday...")
             created_results = self.monday_api.batch_create_or_update_subitems(
                 subitems_batch=items_to_create,
-                parent_item_id=None,
-                # Each item in subitems_batch might have different 'parent_id'; you can adapt or loop
                 create=True
             )
         if items_to_update:
             self.logger.info("🌀 Updating subitems in Monday...")
             updated_results = self.monday_api.batch_create_or_update_subitems(
                 subitems_batch=items_to_update,
-                parent_item_id=None,  # same note above
                 create=False
             )
 
@@ -886,22 +758,24 @@ class MondayService(metaclass=SingletonMeta):
 
     def _build_detail_subitem_values(self, detail_item: dict) -> dict:
         """
-        Construct the column_values for a detail item subitem in Monday.
-        E.g., state => 'label', description => 'text', quantity => 'numbers', etc.
+        Constructs the column values for a detail item subitem using the formatter
+        function from monday_util.
         """
-        col_vals = {}
-        # Some examples:
-        if detail_item.get('state'):
-            col_vals[self.monday_util.SUBITEM_STATUS_COLUMN_ID] = {'label': detail_item['state']}
-        if detail_item.get('description'):
-            col_vals[self.monday_util.SUBITEM_DESCRIPTION_COLUMN_ID] = detail_item['description']
-        if detail_item.get('quantity'):
-            try:
-                col_vals[self.monday_util.SUBITEM_QUANTITY_COLUMN_ID] = float(detail_item['quantity'])
-            except ValueError:
-                pass
-        # etc. for rate, due_date, link, etc.
-        return col_vals
-
+        formatted_json_str = self.monday_util.subitem_column_values_formatter(
+            project_id=detail_item.get('project_number'),
+            po_number=detail_item.get('po_number'),
+            detail_number=detail_item.get('detail_number'),
+            line_number=detail_item.get('line_number'),
+            description=detail_item.get('description'),
+            quantity=detail_item.get('quantity'),
+            rate=detail_item.get('rate'),
+            date=detail_item.get('transaction_date'),
+            due_date=detail_item.get('due_date'),
+            account_number=detail_item.get('account_code'),
+            link=detail_item.get('file_link'),
+            OT=detail_item.get('ot'),
+            fringes=detail_item.get('fringes')
+        )
+        return json.loads(formatted_json_str)
 
 monday_service = MondayService()

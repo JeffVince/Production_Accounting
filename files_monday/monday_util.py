@@ -68,14 +68,15 @@ class MondayUtil(metaclass=SingletonMeta):
     CONTACT_TAX_FORM_LINK = "link__1"
 
     MAIN_ITEM_COLUMN_ID_TO_DB_FIELD = {
+        "name": "vendor_name",
         "id": "pulse_id",
         PO_PROJECT_ID_COLUMN: "project_id",
         PO_NUMBER_COLUMN: "po_number",
         PO_TAX_COLUMN_ID: "tax_form_link",
         PO_DESCRIPTION_COLUMN_ID: "description",
-        PO_CONTACT_CONNECTION_COLUMN_ID: "contact_id",
+        PO_CONTACT_CONNECTION_COLUMN_ID: "contact_pulse_id",
         PO_FOLDER_LINK_COLUMN_ID: "folder_link",
-        PO_PRODUCER_COLUMN_ID: "producer",
+        PO_PRODUCER_COLUMN_ID: "producer_id",
     }
 
     SUB_ITEM_COLUMN_ID_TO_DB_FIELD = {
@@ -458,9 +459,9 @@ class MondayUtil(metaclass=SingletonMeta):
         if description:
             column_values[self.PO_DESCRIPTION_COLUMN_ID] = description
         if contact_pulse_id:
-            # Ensure the linkedPulseIds are strings
+            # Correctly structure the linkedPulseIds as a list of objects with a pulseId key
             column_values[self.PO_CONTACT_CONNECTION_COLUMN_ID] = {
-                "linkedPulseIds": [str(contact_pulse_id)]
+                 "linkedPulseIds": [{"linkedPulseId": contact_pulse_id}]
             }
         if folder_link:
             column_values[self.PO_FOLDER_LINK_COLUMN_ID] = {
@@ -473,7 +474,7 @@ class MondayUtil(metaclass=SingletonMeta):
             }
 
         # Convert any set values to lists (if necessary)
-        for (key, value) in column_values.items():
+        for key, value in column_values.items():
             if isinstance(value, set):
                 column_values[key] = list(value)
 

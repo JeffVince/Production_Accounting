@@ -17,10 +17,11 @@ import logging
 # region 🔧 Imports
 from database.db_util import get_db_session
 from database.database_util import DatabaseOperations
-from files_xero.xero_services import xero_services   # for Xero calls
-from files_dropbox.dropbox_service import DropboxService  #for links and files
-from files_monday.monday_service import monday_service    # for Monday upserts
+from files_xero.xero_services import xero_services  # for Xero calls
+from files_dropbox.dropbox_service import DropboxService  # for links and files
+from files_monday.monday_service import monday_service  # for Monday upserts
 from files_budget.budget_service import budget_service  # aggregator checks + date-range updates
+
 # endregion
 
 # region 🏗️ Setup
@@ -28,8 +29,9 @@ db_ops = DatabaseOperations()
 logger = logging.getLogger('budget_logger')
 dropbox_service = DropboxService()
 use_control_panel = True
-# endregion
 
+
+# endregion
 
 
 # region 📄 PO LOG TRIGGERS
@@ -51,36 +53,46 @@ def handle_po_log_create(po_log_id: int) -> None:
     """
     logger.info("🚀 Running aggregator flow => 'po_log_new_trigger'!")
 
-
-
+    # region CONTROL PANEL TOGGLE
     if use_control_panel:
-        db_ops.update_po_log(po_log_id, status = "STARTED")
+        db_ops.update_po_log(po_log_id, status="STARTED")
         logger.info("🚀 CONTROL PANEL SET PO LOG STATUS TO - STARTED")
+    # endregion
 
-    # 1) Find po_log rows with status='STARTED'
+    # region 1) Find po_log rows with status='STARTED'
     po_log = db_ops.search_po_logs(['id'], [po_log_id])
     if not po_log or not po_log["status"] == "STARTED":
         logger.info("🤷 No po_logs with status=STARTED found. Nothing to do.")
         return
+    # endregion
 
-
-    # 2) Parse aggregator data from a the text file or source
+    # region 2) Parse aggregator data from a the text file or source
     po_log_data = budget_service.parse_po_log_data(po_log)
     if not po_log_data:
         logger.info("😶 No aggregator data parsed => skipping.")
         return
+    # endregion
 
-    #3) Load PO Log Data into the DB 1 section at a time
+    # region 3) Load PO Log Data into the DB by section
+
+    # region CONTACT AGGREGATOR
     with get_db_session() as session_1:
         budget_service.process_contact_aggregator(po_log_data["contacts"], session=session_1)
+    # endregion
 
+    # region PO AGGREGATOR
     with get_db_session() as session_2:
         budget_service.process_aggregator_pos(po_log_data, session=session_2)
+    # endregion
 
-    # with get_db_session() as session_3:
-    #     budget_service.process_aggregator_detail_item(po_log_data, session=session_3)
+    # region DETAIL ITEM AGGREGATOR
+    with get_db_session() as session_3:
+        budget_service.process_aggregator_detail_items(po_log_data, session=session_3)
+    # endregion
 
-    # 4) Once we’ve processed everything, set po_log.status='COMPLETED'
+    # endregion
+
+    # region 4) Once we’ve processed everything, set po_log.status='COMPLETED'
     updated = db_ops.update_po_log(
         po_log_id=po_log_id,
         status='COMPLETED'
@@ -89,8 +101,11 @@ def handle_po_log_create(po_log_id: int) -> None:
         logger.info(f"🏁 PO log (ID={po_log_id}) => status='COMPLETED'!")
     else:
         logger.warning(f"⚠️ Could not update PO log ID={po_log_id} => COMPLETED.")
+    # endregion
+
     logger.info("🏁 Done aggregator logic for all 'STARTED' logs.")
-    
+
+
 # endregion
 
 # region 📝 PURCHASE ORDER TRIGGERS
@@ -180,6 +195,8 @@ def handle_purchase_order_delete(po_number: int) -> None:
     logger.info("🔎 Checking aggregator for partial skip if needed!")
     # Possibly skip or do final logic
     logger.info("🗑️ PurchaseOrder DELETE done. 🏁")
+
+
 # endregion
 
 # region 🧱 DETAIL ITEM TRIGGERS
@@ -190,6 +207,7 @@ def handle_detail_item_create(detail_item_id: int) -> None:
     """
     logger.info("🧱 DetailItem CREATE trigger fired!")
     handle_detail_item_create_logic(detail_item_id)
+
 
 def handle_detail_item_create_logic(detail_item_id: int) -> None:
     """
@@ -257,6 +275,7 @@ def handle_detail_item_create_logic(detail_item_id: int) -> None:
     logger.info("🎉 Done processing detail_item_create_logic for aggregator=done scenario.")
     # endregion
 
+
 def handle_detail_item_update(detail_item_id: int) -> None:
     """
     Triggered when a DetailItem is updated. We do aggregator checks, then final logic:
@@ -273,6 +292,7 @@ def handle_detail_item_update(detail_item_id: int) -> None:
         logger.info("⏳ Aggregator=STARTED => partial skip for detail_item UPDATE.")
         return
     logger.info("✅ Aggregator=COMPLETED => let's do the single logic for detail_item update!")
+
     # endregion
 
     def handle_detail_item_update(detail_item_id: int) -> None:
@@ -329,9 +349,9 @@ def handle_detail_item_update(detail_item_id: int) -> None:
                     unit_amount=detail_item_data.get('sub_total'),
                     description=detail_item_data.get('description', ''),
                     quantity=detail_item_data.get('qty', 1),
-                    transaction_date = detail_item_data.get('transaction_date'),
-                    due_date = detail_item_data.get('due_date'),
-                    account_code= _get_tax_from_detail(detail_item_data)
+                    transaction_date=detail_item_data.get('transaction_date'),
+                    due_date=detail_item_data.get('due_date'),
+                    account_code=_get_tax_from_detail(detail_item_data)
                 )
                 return created_line['id'] if created_line else 0
 
@@ -436,8 +456,8 @@ def handle_detail_item_update(detail_item_id: int) -> None:
                     detail_number=detail_item['detail_number'],
                     line_number=detail_item.get('line_number', 0),
                     amount=detail_item.get('sub_total', 0.0),
-                    state = "DRAFT",
-                    tax_code = _get_tax_from_detail(detail_item)
+                    state="DRAFT",
+                    tax_code=_get_tax_from_detail(detail_item)
                 )
                 spend_money_id = new_sm['id'] if new_sm else 0
             else:
@@ -466,6 +486,7 @@ def handle_detail_item_update(detail_item_id: int) -> None:
         # endregion
     #   #endregion
 
+
 def handle_detail_item_delete(detail_item_id: int) -> None:
     """
     Triggered when a DetailItem is deleted.
@@ -473,26 +494,31 @@ def handle_detail_item_delete(detail_item_id: int) -> None:
     logger.info("🧱 DetailItem DELETE trigger fired!")
     # aggregator check? Possibly skip
     logger.info("🗑️  Completed detail item DELETE logic, if any. 🏁")
-#endregion
 
-#region 🪻PROJECT TRIGGERS
+
+# endregion
+
+# region 🪻PROJECT TRIGGERS
 def handle_project_update():
     return None
+
 
 def handle_project_create():
     return None
 
+
 def handle_project_delete():
     return None
-#endregion
 
 
+# endregion
 
-#region HELPER FUNCTIONS
+
+# region HELPER FUNCTIONS
 def _get_tax_from_detail(detail_item: dict) -> int:
     account_code = detail_item["account_code"]
     budget_map_id = db_ops.search_projects(["project_number"], detail_item["project_number"])["budget_map_id"]
-    tax_code_id = db_ops.search_tax_accounts(["budget_map_id", "code"], [budget_map_id, account_code] )["tax_id"]
+    tax_code_id = db_ops.search_tax_accounts(["budget_map_id", "code"], [budget_map_id, account_code])["tax_id"]
     tax_code = db_ops.search_tax_accounts(['id'], tax_code_id)
     return tax_code
-#endregion
+# endregion

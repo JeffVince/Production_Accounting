@@ -163,3 +163,9 @@ class Config:
         else:
             # Normal mode
             return Config.WEBHOOK_MAIN_PORT
+
+    def set_breakpoint(self):
+        # Connect the worker to Pycharm's Debugger
+        if 'pydevd' in sys.modules:
+            import pydevd
+            pydevd.settrace('localhost ', port=12345, stdoutToServer=True, stderrToServer=True)

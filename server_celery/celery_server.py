@@ -30,7 +30,7 @@ celery_app = Celery(
 # 4. Update Celery configuration and prevent it from hijacking the root logger
 celery_app.conf.update(
     worker_prefetch_multiplier=0,
-    worker_concurrency=10,
+    worker_concurrency=4,
     broker_transport_options={'visibility_timeout': 3600},
     worker_hijack_root_logger=False,  # Prevent Celery from overriding your loggers
 )
