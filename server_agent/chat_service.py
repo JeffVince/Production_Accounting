@@ -3,16 +3,24 @@ from typing import Dict, Any
 from utilities.config import Config
 from database.database_util import DatabaseOperations
 from db_util import initialize_database
-from codegen_service import apply_sql_script, update_sqlalchemy_models, update_database_util_files, update_database_trigger_file, update_celery_tasks_file
+from codegen_service import (
+    apply_sql_script,
+    update_sqlalchemy_models,
+    update_database_util_files,
+    update_database_trigger_file,
+    update_celery_tasks_file
+)
+
 
 class ChatService:
     """
-    Encapsulates all DB and code actions, plus fallback for best-practices queries.
+    Encapsulates all DB and code actions, plus fallback for best-practices queries and data insights.
     """
 
     def __init__(self):
         self.logger = logging.getLogger('agent_logger')
         self.db_ops = DatabaseOperations()
+        # Initialize the database here so that SessionLocal is set before any DB operations.
         config = Config()
         db_settings = config.get_database_settings(config.USE_LOCAL)
         initialize_database(db_settings['url'])
@@ -102,13 +110,64 @@ class ChatService:
         self.logger.info(f'[answer_general_question] - answer_general_question -> {user_input}')
         print("AI Agent: You asked for best practices or general advice. I'm here to help!")
 
+    def describe_data(self, table_name: str) -> str:
+        """
+        Provides metadata and basic statistics about the specified table.
+        Returns a formatted string with details.
+        """
+        self.logger.info(f'[describe_data] - describe_data -> {table_name}')
+        try:
+            # Query metadata using MySQL SHOW COLUMNS
+            metadata_query = f"SHOW COLUMNS FROM `{table_name}`;"
+            metadata_results = self.db_ops._execute_query(metadata_query)
+            # Query basic statistics: total row count
+            stats_query = f"SELECT COUNT(*) as total_rows FROM `{table_name}`;"
+            stats_results = self.db_ops._execute_query(stats_query)
+        except Exception as e:
+            self.logger.error(f'[describe_data] - Error retrieving description for table {table_name}: {e}',
+                              exc_info=True)
+            return f"Error retrieving description for table {table_name}: {e}"
+
+        result_text = f"Table: {table_name}\nMetadata:\n"
+        for row in metadata_results:
+            field = row.get('Field', 'N/A')
+            type_ = row.get('Type', 'N/A')
+            null = row.get('Null', 'N/A')
+            key = row.get('Key', 'N/A')
+            default = row.get('Default', 'N/A')
+            extra = row.get('Extra', 'N/A')
+            result_text += f" - {field}: {type_} (Null: {null}, Key: {key}, Default: {default}, Extra: {extra})\n"
+
+        total_rows = stats_results[0].get('total_rows', 'N/A') if stats_results else 'N/A'
+        result_text += f"\nStatistics:\n - Total Rows: {total_rows}\n"
+        self.logger.info(f'[describe_data] - Completed describing data for {table_name}')
+        return result_text
+
     def _resolve_model(self, table_name: str):
         """
-        Basic approach: map table_name to actual SQLAlchemy model.
-        If synonyms or variations (e.g. "purchase orders"), handle them here or in GPT prompt.
+        Maps table_name to the actual SQLAlchemy model.
         """
-        from database.models import Project, Contact, PurchaseOrder, DetailItem, Invoice, AuditLog, XeroBill, BankTransaction, AccountCode, TaxAccount, Receipt, SpendMoney, User, TaxLedger, BudgetMap
-        table_map = {'project': Project, 'contact': Contact, 'purchase_order': PurchaseOrder, 'detail_item': DetailItem, 'invoice': Invoice, 'audit_log': AuditLog, 'xero_bill': XeroBill, 'bank_transaction': BankTransaction, 'account_code': AccountCode, 'tax_account': TaxAccount, 'receipt': Receipt, 'spend_money': SpendMoney, 'users': User, 'tax_ledger': TaxLedger, 'budget_map': BudgetMap}
+        from database.models import (
+            Project, Contact, PurchaseOrder, DetailItem, Invoice, AuditLog, XeroBill,
+            BankTransaction, AccountCode, TaxAccount, Receipt, SpendMoney, User, TaxLedger, BudgetMap
+        )
+        table_map = {
+            'project': Project,
+            'contact': Contact,
+            'purchase_order': PurchaseOrder,
+            'detail_item': DetailItem,
+            'invoice': Invoice,
+            'audit_log': AuditLog,
+            'xero_bill': XeroBill,
+            'bank_transaction': BankTransaction,
+            'account_code': AccountCode,
+            'tax_account': TaxAccount,
+            'receipt': Receipt,
+            'spend_money': SpendMoney,
+            'users': User,
+            'tax_ledger': TaxLedger,
+            'budget_map': BudgetMap
+        }
         return table_map.get(table_name.lower())
 
     def _build_create_table_sql(self, table_name: str, columns: list) -> str:
@@ -117,7 +176,7 @@ class ChatService:
 
     def _build_alter_sql(self, table_name: str, updates: Dict[str, Any]) -> str:
         """
-        Extend for foreign key logic if needed. For now, we detect 'FOREIGN KEY' substring.
+        Builds an ALTER TABLE SQL command for the given updates.
         """
         stmts = []
         add_cols = updates.get('add_columns', [])

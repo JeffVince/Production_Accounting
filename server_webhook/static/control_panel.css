@@ -156,3 +156,51 @@ h1 {
         width: 150px;
     }
 }
+/* Existing styles for trigger buttons and layout remain unchanged */
+
+/* Sync Grid Styling */
+.sync-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+.sync-button {
+    padding: 15px;
+    font-size: 14px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    background-color: #28a745; /* Green for active sync functions */
+    color: #ffffff;
+    transition: background-color 0.3s, transform 0.2s, box-shadow 0.3s;
+}
+
+.sync-button.disabled {
+    background-color: #6c757d; /* Greyed out */
+    cursor: not-allowed;
+}
+
+.sync-button:hover:not(.disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.sync-button:active:not(.disabled) {
+    transform: translateY(0);
+    box-shadow: none;
+}
+
+.sync-button.active {
+    filter: brightness(1.3);
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.6);
+}
+
+/* Optional: Style for section headers */
+h2 {
+    text-align: center;
+    color: #d5d5d5;
+    margin: 20px 0 10px 0;
+}

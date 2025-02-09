@@ -755,7 +755,7 @@ class MondayService(metaclass=SingletonMeta):
         self._detail_upsert_queue.clear()
         total_proc = len(created_results) + len(updated_results)
         self.logger.info(f"🌀 [COMPLETED] [STATUS=Success] subitem upsert => total={total_proc} processed.")
-
+        return created_results, updated_results
     def _build_detail_subitem_values(self, detail_item: dict) -> dict:
         """
         Constructs the column values for a detail item subitem using the formatter

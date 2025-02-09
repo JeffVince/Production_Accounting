@@ -45,19 +45,19 @@ class DatabaseOperations:
 
     # region 🔎 Search Records
     def _search_records(
-        self,
-        model,
-        column_names: Optional[List[str]] = None,
-        values: Optional[List[Any]] = None,
-        session: Session = None
+            self,
+            model,
+            column_names: Optional[List[str]] = None,
+            values: Optional[List[Any]] = None,
+            session: Session = None
     ) -> Union[None, Dict[str, Any], List[Dict[str, Any]]]:
         """
         Searches for records of a given model based on multiple column filters.
         Returns:
-          - None if no records
-          - A single dict if exactly one found
-          - A list if multiple found
-          - [] if mismatch or error
+          - None if no records,
+          - A single dict if exactly one found,
+          - A list if multiple found,
+          - [] if mismatch or error.
         """
         prefix = "[BATCH OPERATION] " if session else ""
         column_names = column_names or []
@@ -65,7 +65,8 @@ class DatabaseOperations:
 
         if column_names and values:
             self.logger.debug(f"{prefix}🕵️ Searching {model.__name__} with filters: {list(zip(column_names, values))}")
-            self.logger.info(f"{prefix}🔎 Checking {model.__name__} for columns/values: {list(zip(column_names, values))}")
+            self.logger.info(
+                f"{prefix}🔎 Checking {model.__name__} for columns/values: {list(zip(column_names, values))}")
             if len(column_names) != len(values):
                 self.logger.warning(f"{prefix}⚠️ Mismatch: columns vs. values. Returning empty list.")
                 return []
@@ -73,6 +74,7 @@ class DatabaseOperations:
             self.logger.debug(f"{prefix}🕵️ Searching all {model.__name__} records (no filters).")
             self.logger.info(f"{prefix}🔎 Fetching entire {model.__name__} table without filters.")
 
+        # When a session is provided, use it directly.
         if session is not None:
             try:
                 query = session.query(model)
@@ -82,7 +84,11 @@ class DatabaseOperations:
                         if column_attr is None:
                             self.logger.warning(f"{prefix}😬 '{col_name}' invalid for {model.__name__}.")
                             return []
-                        query = query.filter(column_attr == val)
+                        # Use .in_ if the value is a list or tuple.
+                        if isinstance(val, (list, tuple)):
+                            query = query.filter(column_attr.in_(val))
+                        else:
+                            query = query.filter(column_attr == val)
                 records = query.all()
                 if not records:
                     self.logger.info(f"{prefix}🙅 No {model.__name__} records found.")
@@ -96,6 +102,7 @@ class DatabaseOperations:
             except Exception as e:
                 self.logger.error(f"{prefix}❌ Error searching {model.__name__}: {e}", exc_info=True)
                 return []
+        # When no session is provided, use the get_db_session context manager.
         else:
             with get_db_session() as new_session:
                 try:
@@ -106,7 +113,11 @@ class DatabaseOperations:
                             if column_attr is None:
                                 self.logger.warning(f"😬 '{col_name}' invalid for {model.__name__}.")
                                 return []
-                            query = query.filter(column_attr == val)
+                            # Use .in_ if the value is a list or tuple.
+                            if isinstance(val, (list, tuple)):
+                                query = query.filter(column_attr.in_(val))
+                            else:
+                                query = query.filter(column_attr == val)
                     records = query.all()
                     if not records:
                         self.logger.info(f"🙅 No {model.__name__} records found.")
@@ -118,8 +129,7 @@ class DatabaseOperations:
                         self.logger.info(f"✅ Found {len(records)} matches for {model.__name__}.")
                         return [self._serialize_record(r) for r in records]
                 except Exception as e:
-                    # Let the context manager handle rollback automatically.
-                    self.logger.error(f"❌ Error searching {model.__name__}: {e}", exc_info=True)
+                    self.logger.error(f"💥 Error searching {model.__name__}: {e}", exc_info=True)
                     return []
     # endregion
 
@@ -439,7 +449,7 @@ class DatabaseOperations:
 
         if not record_dict:
             self.logger.debug(f"{prefix}🙅 No single {model.__name__} found => no changes.")
-            return False
+            return True
 
         for field, new_val in kwargs.items():
             old_val = record_dict.get(field)
@@ -1308,6 +1318,70 @@ class DatabaseOperations:
 
     def delete_xero_bill(self, xero_bill_id, session: Session = None, **kwargs) -> bool:
         return self._delete_record(XeroBill, xero_bill_id, unique_lookup=None, session=session)
+
+    def bulk_create_xero_bill_line_items(self, bill_id: int, items: List[dict], session: Session = None) -> List[
+        Dict[str, Any]]:
+        """
+        Bulk create XeroBillLineItem records for a given XeroBill, skipping any
+        that already exist either in the database or within the provided items list.
+
+        Parameters:
+          bill_id (int): The ID of the parent XeroBill record.
+          items (List[dict]): A list of dictionaries, each containing the fields for a new XeroBillLineItem.
+          session (Session, optional): A SQLAlchemy session to use for the operation.
+
+        Returns:
+          List[Dict[str, Any]]: A list of dictionaries representing the newly created XeroBillLineItem records.
+        """
+        created_records = []
+        new_objects = []
+        seen_keys = set()  # Track keys within the provided items
+
+        for item in items:
+            # Ensure the parent reference is set
+            item["parent_id"] = bill_id
+
+            # Define the unique key tuple using the fields that form the unique constraint.
+            # Adjust these fields if your unique constraint differs.
+            key = (
+                item.get("project_number"),
+                item.get("po_number"),
+                item.get("detail_number"),
+                item.get("line_number")
+            )
+
+            # Check for duplicates within the provided items.
+            if key in seen_keys:
+                self.logger.info(
+                    f"Skipping duplicate in input set for project={key[0]}, po={key[1]}, detail={key[2]}, line={key[3]}."
+                )
+                continue
+            seen_keys.add(key)
+
+            # Check if a record with this unique key already exists in the database.
+            existing = self.search_xero_bill_line_items(
+                ["project_number", "po_number", "detail_number", "line_number"],
+                [key[0], key[1], key[2], key[3]],
+                session=session
+            )
+
+            if existing:
+                self.logger.info(
+                    f"Skipping duplicate XeroBillLineItem for project={key[0]}, po={key[1]}, detail={key[2]}, line={key[3]} as it already exists in the DB."
+                )
+                continue
+
+            # If no duplicate found, instantiate the XeroBillLineItem object.
+            new_obj = XeroBillLineItem(**item)
+            new_objects.append(new_obj)
+
+        # Add all new objects to the session and flush in one batch.
+        if new_objects:
+            session.add_all(new_objects)
+            session.flush()
+            created_records = [self._serialize_record(obj) for obj in new_objects]
+
+        return created_records
 
     def xero_bill_has_changes(
             self,

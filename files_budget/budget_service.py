@@ -21,6 +21,7 @@ class BudgetService(metaclass=SingletonMeta):
       - Updating XeroBill date ranges
       - Searching aggregator logs (po_logs)
     """
+
     def __init__(self):
         try:
             self.logger = logging.getLogger('budget_logger')
@@ -33,9 +34,7 @@ class BudgetService(metaclass=SingletonMeta):
             logging.exception("Error initializing BudgetService.", exc_info=True)
             raise
 
-
-
-    #region🌹 CONTACT AGGREGATOR FUNCTIONS
+    # region🌹 CONTACT AGGREGATOR FUNCTIONS
     def process_contact_aggregator(self, contacts_data: list[dict], session):
         """
         Aggregator for CONTACTS with:
@@ -55,7 +54,8 @@ class BudgetService(metaclass=SingletonMeta):
                 try:
                     all_db_contacts = self.db_ops.search_contacts(session=session)
                 except Exception as e:
-                    self.logger.exception("Exception searching all contacts in PHASE 1 of contact aggregator.", exc_info=True)
+                    self.logger.exception("Exception searching all contacts in PHASE 1 of contact aggregator.",
+                                          exc_info=True)
                     all_db_contacts = []
 
                 if not all_db_contacts:
@@ -82,7 +82,8 @@ class BudgetService(metaclass=SingletonMeta):
                                     self.logger.debug(
                                         f"✅ => Fuzzy matched contact => ID={contact_id} for name='{name}'")
                             except Exception as e:
-                                self.logger.exception("Exception during fuzzy matching in contact aggregator.", exc_info=True)
+                                self.logger.exception("Exception during fuzzy matching in contact aggregator.",
+                                                      exc_info=True)
 
                         # If no fuzzy match, create a new contact in DB
                         if not contact_id:
@@ -117,7 +118,8 @@ class BudgetService(metaclass=SingletonMeta):
                             self.logger.exception("Exception buffering Monday contact upsert.", exc_info=True)
 
                     except Exception as e:
-                        self.logger.exception("Exception in loop while processing each contact_item in PHASE 1.", exc_info=True)
+                        self.logger.exception("Exception in loop while processing each contact_item in PHASE 1.",
+                                              exc_info=True)
 
                 # -- 3) Final batch push to Xero & Monday
                 try:
@@ -125,7 +127,8 @@ class BudgetService(metaclass=SingletonMeta):
                     self.xero_services.execute_batch_upsert_contacts(self.xero_services.contact_upsert_queue)
                     self.monday_service.execute_batch_upsert_contacts()
                 except Exception as e:
-                    self.logger.exception("Exception executing batch upsert to Xero/Monday in contact aggregator.", exc_info=True)
+                    self.logger.exception("Exception executing batch upsert to Xero/Monday in contact aggregator.",
+                                          exc_info=True)
 
             except Exception as e:
                 self.logger.exception("Exception in PHASE 1 of contact aggregator.", exc_info=True)
@@ -134,7 +137,8 @@ class BudgetService(metaclass=SingletonMeta):
         except Exception as e:
             self.logger.exception("Exception in contact aggregator logic.", exc_info=True)
             raise
-    #endregion
+
+    # endregion
 
     # region 🌺 PURCHASE ORDERS AGGREGATOR
     def process_aggregator_pos(self, po_data: dict, session):
@@ -212,7 +216,8 @@ class BudgetService(metaclass=SingletonMeta):
                         best_match = None
                         if fuzzy_matches:
                             best_match = fuzzy_matches[0]
-                            self.logger.warning(f"⚠️ Contact '{vendor_name}' fuzzy matched to => {best_match.get('name')}")
+                            self.logger.warning(
+                                f"⚠️ Contact '{vendor_name}' fuzzy matched to => {best_match.get('name')}")
                             contact_id = best_match.get("id")
                 else:
                     self.logger.warning(f"⚠️ No contact_name => leaving contact data null.")
@@ -303,9 +308,11 @@ class BudgetService(metaclass=SingletonMeta):
             self.logger.error(f"❌=> Error => {str(e)}")
             session.rollback()
             raise
-    #endregion
+
+    # endregion
 
     # region 🌺 DETAIL ITEM AGGREGATOR
+
     def process_aggregator_detail_items(self, po_log_data: dict, session, chunk_size: int = 500):
         """
         Aggregator for DETAIL ITEMS, with minimal DB queries and in-memory logic.
@@ -339,7 +346,6 @@ class BudgetService(metaclass=SingletonMeta):
                 project_number = d_item.get("project_number")
                 po_number = d_item.get("po_number")
 
-                # If detail_item_id is not None, cast to int (or skip if you always expect it)
                 raw_detail_number = d_item.get("detail_item_id")
                 if raw_detail_number is None:
                     self.logger.warning("❌ detail_item_id missing, skipping this item.")
@@ -414,6 +420,25 @@ class BudgetService(metaclass=SingletonMeta):
                     invoice_map[k] = inv
 
             # =========================
+            # PHASE 2.5: BULK FETCH POs (to get pulse IDs)
+            # =========================
+            unique_po_keys = {
+                (di["project_number"], di["po_number"])
+                for di in detail_items_input
+                if di.get("project_number") and di.get("po_number")
+            }
+            po_map = {}
+            if unique_po_keys:
+                # We'll fetch all relevant POs once, store them in a dict => {(proj, po): PO_record}
+                unique_po_keys_list = list(unique_po_keys)
+                project_number = int(unique_po_keys_list[0][0])
+                po_list = self.db_ops.search_purchase_order_by_keys(project_number= project_number, session=session)
+                if po_list:
+                    for p in po_list:
+                        po_map[(p["project_number"], p["po_number"])] = p
+                self.logger.info(f"✅ Bulk-fetched {len(po_map)} POs for pulse IDs.")
+
+            # =========================
             # PHASE 3: IN-MEMORY LOGIC
             # =========================
 
@@ -432,22 +457,31 @@ class BudgetService(metaclass=SingletonMeta):
                     if abs(receipt_total - sub_total) < 0.0001:
                         self.logger.info(f"✅ Receipt matches detail => {key}, marking as REVIEWED.")
                         d_item["state"] = "REVIEWED"
+
+                        # Build SpendMoney structure:
+                        #  - amount = the detail item’s total
+                        #  - quantity = 1
+                        #  - tax_code = derived from detail item’s account_code
+                        #  - contact_Id = the contact on the CC/PC transaction (from the receipt)
                         d_item["_spend_money"] = {
                             "project_number": int(d_item["project_number"]),
                             "po_number": int(d_item["po_number"]),
                             "detail_number": int(d_item["detail_item_id"]),
-                            "line_number": 1,
+                            "line_number": 1,  # or use your logic for line numbering
                             "state": "DRAFT",
-                            "amount": receipt_total
+                            "quantity": 1,  # Always 1
+                            "amount": sub_total,  # detail item total
+                            "contact_Id": receipt_map[key].get("contact_Id"),  # from the transaction, not CC itself
+                            "tax_code": self.get_tax_code_from_account_code(d_item.get("account_code")),
                         }
                     else:
                         self.logger.info(
-                            f"🔻 Mismatch for detail => {key}, sub_total={sub_total}, receipt={receipt_total}")
+                            f"🔻 Mismatch for detail => {key}, sub_total={sub_total}, receipt={receipt_total}"
+                        )
                 else:
                     self.logger.info(f"ℹ️ No receipt found for detail => {key}.")
 
             # 3b) INV/PROF => sum up detail sub_totals vs. invoice
-
             xero_bill_groups = {}
             for d_item in detail_items_input:
                 if d_item["payment_type"] not in ["INV", "PROF"]:
@@ -464,8 +498,8 @@ class BudgetService(metaclass=SingletonMeta):
                 siblings = [
                     x for x in detail_items_input
                     if x.get("project_number") == project_number
-                       and x.get("po_number") == po_number
-                       and x.get("detail_item_id") == invoice_num
+                    and x.get("po_number") == po_number
+                    and x.get("detail_item_id") == invoice_num
                 ]
                 total_of_siblings = sum(float(x.get("total") or 0.0) for x in siblings)
 
@@ -477,7 +511,6 @@ class BudgetService(metaclass=SingletonMeta):
 
                 invoice_total = float(invoice_row.get("total") or 0.0)
                 if abs(total_of_siblings - invoice_total) < 0.0001:
-
                     self.logger.info(f"✅ Sums match => setting all detail lines={invoice_num} to RTP.")
                     for sibling in siblings:
                         sibling["state"] = "RTP"
@@ -496,6 +529,10 @@ class BudgetService(metaclass=SingletonMeta):
                     d_item.get("detail_item_id"),
                     d_item.get("line_number")
                 )
+                # Get the parent PO’s pulse_id (if it exists)
+                parent_po = po_map.get((int(d_item.get("project_number")), int(d_item.get("po_number"))))
+                parent_pulse_id = parent_po.get("pulse_id") if parent_po else None
+
                 common_data = {
                     "project_number": d_item.get("project_number"),
                     "po_number": d_item.get("po_number"),
@@ -511,7 +548,9 @@ class BudgetService(metaclass=SingletonMeta):
                     "account_code": d_item.get("account"),
                     "payment_type": d_item.get("payment_type"),
                     "ot": d_item.get("ot"),
-                    "fringes": d_item.get("fringes")
+                    "fringes": d_item.get("fringes"),
+                    "parent_pulse_id": parent_pulse_id
+
                 }
                 if key in existing_map:
                     # It's an update
@@ -522,7 +561,8 @@ class BudgetService(metaclass=SingletonMeta):
                     items_to_create.append(common_data)
 
             self.logger.info(
-                f"[Detail Aggregator] {len(items_to_create)} items to create, {len(items_to_update)} to update.")
+                f"[Detail Aggregator] {len(items_to_create)} items to create, {len(items_to_update)} to update."
+            )
 
             # 4a) Bulk Create
             created_items = []
@@ -555,60 +595,192 @@ class BudgetService(metaclass=SingletonMeta):
             for d_item in detail_items_input:
                 if d_item.get("payment_type") in ["CC", "PC"] and d_item.get("_spend_money"):
                     sm_key = (
-                        d_item.get("project_number"),
-                        d_item.get("po_number"),
-                        d_item.get("detail_item_id")
+                        int(d_item.get("project_number")),
+                        int(d_item.get("po_number")),
+                        int(d_item.get("detail_item_id"))
                     )
                     if sm_key in detail_item_id_map:
-                        spend_money_items.append(d_item["_spend_money"])
+                        # Format the spend money record using only the allowed model fields.
+                        formatted_sm = {
+                            "project_number": int(d_item["project_number"]),
+                            "po_number": int(d_item["po_number"]),
+                            "detail_number": int(d_item["detail_item_id"]),
+                            "line_number": 1,  # Hard-coded to 1; adjust if needed.
+                            "state": "DRAFT",
+                            "amount": float(d_item.get("total") or 0.0),  # Use the detail item's total.
+                            "contact_Id": receipt_map[sm_key].get("contact_Id"),  # From the CC/PC transaction.
+                            "tax_code": self.get_tax_code_from_account_code(d_item.get("account_code")),
+                            "description": d_item.get("description", "")
+                        }
+                        spend_money_items.append(formatted_sm)
 
             if spend_money_items:
                 self.logger.info(f"💳 Creating {len(spend_money_items)} SpendMoney records.")
                 for chunk in self.chunk_list(spend_money_items, chunk_size):
                     new_sm_items = self.db_ops.bulk_create_spend_money(chunk, session=session)
                     session.flush()
-                    for sm in new_sm_items:
-                        self.logger.info(f"💸 Created SpendMoney => ID={sm['id']}, calling Xero handle.")
-                        self.xero_services.handle_spend_money_create(sm["id"])
+                    self.logger.info(f"💸 Created SpendMoney => {len(new_sm_items)} records.")
+                    self.xero_services.handle_spend_money_create_bulk(new_sm_items, session=session)
 
             # 5b) Xero Bill creation for INV/PROF items that are all RTP
             xero_bill_todo = []
             for inv_key, siblings in xero_bill_groups.items():
-                # If all siblings are RTP, create a XeroBill
+                # Only process groups where all siblings are RTP
                 all_rtp = all((sib.get("state") or "").upper() == "RTP" for sib in siblings)
                 if all_rtp:
-                    xero_bill_todo.append(inv_key)
+                    # Compute the earliest transaction date and latest due date from the associated detail items.
+                    transaction_dates = [sib.get("date") for sib in siblings if sib.get("date")]
+                    due_dates = [sib.get("due date") for sib in siblings if sib.get("due date")]
+                    earliest_date = min(transaction_dates) if transaction_dates else None
+                    latest_due = max(due_dates) if due_dates else None
+
+                    # Build Xero Bill Line Items based on the detail items.
+                    line_items = []
+                    for sib in siblings:
+                        # get tax code from account code
+                        account_code = sib.get("account")
+                        tax_code = self.get_tax_code_from_account_code(account_code)
+                        sib["tax_code"] = tax_code
+                        line_item = {
+                            "project_number": sib.get("project_number"),  # Add project number
+                            "po_number": sib.get("po_number"),  # Add PO number
+                            "detail_number": sib.get("detail_item_id"),  # Add detail item (or detail number)
+                            "line_number": sib.get("line_number", 1),
+                            "description": sib.get("description", ""),
+                            "quantity": 1,
+                            "unit_amount": float(sib.get("total", 0.0)),
+                            "line_amount": float(sib.get("total", 0.0)),  # or compute as needed
+                            "account_code": sib["tax_code"],
+                            "transaction_date": sib.get("date"),    # optional if available
+                            "due_date": sib.get("due date")           # optional if available
+                        }
+                        line_items.append(line_item)
+
+                    # inv_key is a tuple: (project_number, po_number, detail_number)
+                    prj, po, dt = inv_key
+                    # Append all required info for later creation.
+                    xero_bill_todo.append((prj, po, dt, earliest_date, latest_due, line_items))
 
             if xero_bill_todo:
                 self.logger.info(f"🧾 Creating XeroBills for {len(xero_bill_todo)} invoice groups.")
+                new_bills = []
+                # Process the groups in chunks.
                 for chunk in self.chunk_list(xero_bill_todo, chunk_size):
-                    for (prj, po, dt) in chunk:
+                    for bill_info in chunk:
+                        prj, po, dt, earliest_date, latest_due, line_items = bill_info
+                        # Create the XeroBill record in the DB
                         new_bill = self.db_ops.create_xero_bill_by_keys(
                             project_number=prj,
                             po_number=po,
                             detail_number=dt,
                             state="DRAFT",
+                            transaction_date=earliest_date,
+                            due_date=latest_due,
                             session=session
                         )
                         session.flush()
                         if new_bill:
-                            self.logger.info(f"🆕 Created XeroBill => ID={new_bill['id']}, pushing to Xero.")
-                            self.xero_services.create_xero_bill_in_xero(new_bill)
+                            bill_id = new_bill["id"]
+                            self.logger.info(f"🆕 Created XeroBill => ID={bill_id}")
+                            # Create the associated Xero Bill Line Items in the DB
+                            self.db_ops.bulk_create_xero_bill_line_items(bill_id, line_items, session=session)
+                            session.flush()
+                            self.logger.info(f"🆕 Created {len(line_items)} line items for XeroBill ID={bill_id}")
+                            new_bills.append(new_bill)
+                if new_bills:
+                    self.logger.info(f"🆕 Pushing {len(new_bills)} new XeroBills to Xero in bulk.")
+                    self.xero_services.create_xero_bills_in_xero_bulk(new_bills, session=session)
 
-            # =============================
-            # PHASE 6: UPDATE MONDAY (OPTIONAL)
-            # =============================
-            self.logger.info("[Detail Aggregator, PHASE 6] => Upserting changes to Monday (SKIPPED).")
-            # if needed, do chunked upserts to Monday here
+                # =============================
+                # PHASE 6: UPDATE MONDAY (OPTIONAL)
+                # =============================
+                try:
+                    self.logger.info("[Detail Aggregator, PHASE 6] => Upserting changes to Monday.")
+                    # Prepare a list for Monday upsert items by combining created and updated detail items.
+                    # For updated items, if 'pulse_id' is missing, they are treated as new creation.
+                    monday_items = []
 
-            self.logger.info("[Detail Aggregator] DONE => Will commit once aggregator completes.")
-            # The final commit happens outside (with the `session` context).
+                    # Process created items (always new creations in Monday)
+                    for di in created_items:
+                        detail_dict = {
+                            'id': di.get('id'),
+                            'parent_pulse_id': di.get('parent_pulse_id'),
+                            'pulse_id': di.get('pulse_id'),  # None indicates new creation
+                            'project_number': di.get('project_number'),
+                            'po_number': di.get('po_number'),
+                            'detail_number': di.get('detail_number'),
+                            'line_number': di.get('line_number'),
+                            'description': di.get('description'),
+                            'quantity': di.get('quantity'),
+                            'rate': di.get('rate'),
+                            'transaction_date': di.get('transaction_date'),
+                            'due_date': di.get('due_date'),
+                            'account_code': di.get('account_code'),
+                            'file_link': None,  # set if you have a receipt file
+                            'ot': di.get('ot'),
+                            'fringes': di.get('fringes'),
+                            'state': di.get('state')
+                        }
+                        monday_items.append(detail_dict)
+
+                    # Process updated items: if pulse_id exists, they are updates; otherwise, treat as new creations.
+                    for di in updated_items:
+                        detail_dict = {
+                            'id': di.get('id'),
+                            'parent_pulse_id': di.get('parent_pulse_id'),
+                            'pulse_id': di.get('pulse_id'),  # if missing, Monday will create new record
+                            'project_number': di.get('project_number'),
+                            'po_number': di.get('po_number'),
+                            'detail_number': di.get('detail_number'),
+                            'line_number': di.get('line_number'),
+                            'description': di.get('description'),
+                            'quantity': di.get('quantity'),
+                            'vendor': di.get('vendor'),
+                            'rate': di.get('rate'),
+                            'transaction_date': di.get('transaction_date'),
+                            'due_date': di.get('due_date'),
+                            'account_code': di.get('account_code'),
+                            'file_link': None,
+                            'ot': di.get('ot'),
+                            'fringes': di.get('fringes'),
+                            'state': di.get('state')
+                        }
+                        monday_items.append(detail_dict)
+
+                    # Process the combined Monday items in chunks of 20
+                    for chunk in self.chunk_list(monday_items, 25):
+                        # Enqueue each detail item in the chunk for upsert
+                        for detail_dict in chunk:
+                            self.monday_service.buffered_upsert_detail_item(detail_dict)
+
+                        # Execute the batch upsert for the current chunk
+                        created_subitems, updated_items = self.monday_service.execute_batch_upsert_detail_items()
+
+                        # Update the DB with new pulse_id for each detail item returned from Monday
+                        if created_subitems:
+                            for subitem_obj in created_subitems:
+                                # Expected structure: {"db_sub_item": {...}, "monday_item_id": "..."}
+                                db_sub_item = subitem_obj.get("db_sub_item")
+                                monday_sub_id = subitem_obj.get("monday_item_id")
+                                if db_sub_item and db_sub_item.get("id") and monday_sub_id:
+                                    self.db_ops.update_detail_item(
+                                        db_sub_item["id"],
+                                        pulse_id=monday_sub_id,
+                                        session=session
+                                    )
+
+                except Exception as e:
+                    self.logger.exception("Error in PHASE 6 subitem logic.", exc_info=True)
+
+                self.logger.info("[Detail Aggregator] DONE => Will commit once aggregator completes.")
+
+                # endregion
+
 
         except Exception as e:
             self.logger.exception("Exception in process_aggregator_detail_items.")
             raise
-
-    #endregion
+    # endregion
 
     # region 🪄 Aggregator Status Checks
     def is_aggregator_in_progress(self, record: dict) -> bool:
@@ -624,7 +796,8 @@ class BudgetService(metaclass=SingletonMeta):
             if not project_number:
                 return False  # no aggregator concept if missing project_number
 
-            self.logger.info(f"🔎 Checking aggregator logs for project_number={project_number} to see if status=STARTED.")
+            self.logger.info(
+                f"🔎 Checking aggregator logs for project_number={project_number} to see if status=STARTED.")
             po_logs = self.db_ops.search_po_logs(['project_number'], [project_number])
             if not po_logs:
                 return False
@@ -653,7 +826,8 @@ class BudgetService(metaclass=SingletonMeta):
             if not project_number:
                 return True  # if no aggregator concept => assume done
 
-            self.logger.info(f"🔎 Checking aggregator logs for project_number={project_number} to see if status=COMPLETED.")
+            self.logger.info(
+                f"🔎 Checking aggregator logs for project_number={project_number} to see if status=COMPLETED.")
             po_logs = self.db_ops.search_po_logs(['project_number'], [project_number])
             if not po_logs:
                 return True
@@ -669,6 +843,7 @@ class BudgetService(metaclass=SingletonMeta):
         except Exception as e:
             self.logger.exception("Exception in is_aggregator_done.", exc_info=True)
             raise
+
     # endregion
 
     # region 📝 Summation and State Changes for Invoices & Details
@@ -872,6 +1047,7 @@ class BudgetService(metaclass=SingletonMeta):
         except Exception as e:
             self.logger.exception("Exception in update_xero_bill_dates_from_detail_item.", exc_info=True)
             raise
+
     # endregion
 
     # region 🏗️ HELPER METHODS
@@ -914,11 +1090,55 @@ class BudgetService(metaclass=SingletonMeta):
         """
         for i in range(0, len(items), chunk_size):
             yield items[i:i + chunk_size]
-    #endregion
+
+    def get_tax_code_from_account_code(self, account_code: str) -> int:
+        """
+        Helper method that looks up the tax code for a given account code by referencing
+        the AccountCode and TaxAccount tables in the database.
+
+        Args:
+            account_code (str): The account code to look up.
+
+        Returns:
+            str: The matching tax code if found; otherwise, returns 0
+        """
+        try:
+            # Search for the AccountCode record with the provided account_code.
+            account_result = self.db_ops.search_account_codes(['code'], [account_code])
+            if not account_result:
+                self.logger.warning(f"No AccountCode found for code '{account_code}'. Returning default tax code.")
+                return 0
+            # If multiple records are returned, take the first one.
+            account_record = account_result[0] if isinstance(account_result, list) else account_result
+
+            # Ensure that the AccountCode record has a tax_id.
+            tax_id = account_record.get("tax_id")
+            if not tax_id:
+                self.logger.warning(
+                    f"AccountCode record for code '{account_code}' has no tax_id. Returning default tax code.")
+                return 0
+
+            # Look up the TaxAccount record using the tax_id.
+            tax_result = self.db_ops.search_tax_accounts(['id'], [tax_id])
+            if not tax_result:
+                self.logger.warning(
+                    f"No TaxAccount found for tax_id '{tax_id}' associated with account code '{account_code}'. Returning default tax code.")
+                return 0
+            tax_record = tax_result[0] if isinstance(tax_result, list) else tax_result
+
+            # Extract the tax_code from the TaxAccount record.
+            tax_code = tax_record.get("tax_code")
+            if not tax_code:
+                self.logger.warning(
+                    f"TaxAccount record for tax_id '{tax_id}' has no tax_code. Returning default tax code.")
+                return 0
+
+            self.logger.debug(f"Found tax code '{tax_code}' for account code '{account_code}'.")
+            return tax_code
+        except Exception as e:
+            self.logger.exception(f"Exception while looking up tax code for account code '{account_code}': {e}")
+            return 0
+    # endregion
 
 
 budget_service = BudgetService()
-
-
-
-

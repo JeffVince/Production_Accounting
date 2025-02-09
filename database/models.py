@@ -582,6 +582,10 @@ class SpendMoney(Base):
     po_number = Column(MYSQL_BIGINT(unsigned=True), nullable=True)
     detail_number = Column(MYSQL_INTEGER(unsigned=True), nullable=True)
     line_number = Column(MYSQL_INTEGER(unsigned=True), nullable=True)
+    description = Column(String(255), nullable=True)
+    contact_id = Column(MYSQL_BIGINT(unsigned=True), nullable=True)
+    date = Column(DateTime, nullable=True)
+    xero_spend_money_id = Column(String(100), nullable=True)
     xero_spend_money_reference_number = Column(
         String(50),
         Computed(
@@ -596,6 +600,7 @@ class SpendMoney(Base):
     )
     xero_link = Column(String(255), nullable=True)
     amount = Column(MYSQL_DECIMAL(), nullable=False)
+    tax_code = Column(MYSQL_INTEGER, nullable=True)
     state = Column(String(45), nullable=False, server_default='Draft')
     created_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
     updated_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'))
@@ -607,9 +612,14 @@ class SpendMoney(Base):
             'po_number': self.po_number,
             'detail_number': self.detail_number,
             'line_number': self.line_number,
+            'xero_spend_mondey_id': self.xero_spend_money_id,
             'xero_spend_money_reference_number': self.xero_spend_money_reference_number,
             'xero_link': self.xero_link,
+            'date': self.date,
             'state': self.state,
+            'contact_Id': self.contact_Id,
+            'description': self.description,
+            'tax_code': self.tax_code,
             'created_at': self.created_at,
             'updated_at': self.updated_at
         }

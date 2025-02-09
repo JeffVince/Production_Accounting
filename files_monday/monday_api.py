@@ -1430,15 +1430,13 @@ class MondayAPI(metaclass=SingletonMeta):
         """
         self.logger.info(f"Creating {len(sbatch)} subitems in one request.")
         mutation_parts = []
-
         for i, subdict in enumerate(sbatch):
             db_sub_item = subdict["db_sub_item"]
             column_values = subdict["column_values"]
+            parent_pulse_id = subdict.get("parent_id")
             column_values_json = json.dumps(column_values).replace('"', '\\"')
 
-            # If a parent_id is on the subitem, use that; else fallback to default_parent_id
-            parent_id = subdict.get("parent_pulse_id") or default_parent_id
-            if not parent_id:
+            if not parent_pulse_id:
                 raise ValueError(f"No parent_item_id provided for subitem: {db_sub_item}")
 
             subitem_name = db_sub_item.get('name') or db_sub_item.get('vendor') or 'Subitem'
@@ -1446,7 +1444,7 @@ class MondayAPI(metaclass=SingletonMeta):
 
             mutation_parts.append(
                 f'createSub{i}: create_subitem('
-                f'parent_item_id: {parent_id}, '
+                f'parent_item_id: {parent_pulse_id}, '
                 f'item_name: "{subitem_name_safe}", '
                 f'column_values: "{column_values_json}"'
                 f') {{ id }}'

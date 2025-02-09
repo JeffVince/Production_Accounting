@@ -2,6 +2,8 @@
 import logging
 logger = logging.getLogger("admin_logger")
 
+from server_agent.agent_app import ChatAgent
+agent = ChatAgent(model="gpt-3.5-turbo")
 import requests
 
 try:
@@ -22,6 +24,7 @@ try:
     from server_webhook.models.account_tax_model import AccountTaxModel
     from routes.account_tax_routes import account_tax_bp
     from server_webhook.routes.control_panel_routes import control_panel_bp
+    from server_webhook.routes.agent_routes import agent_bp
 except Exception as e:
     logger.error(f"Error importing into webhook main: {e}")
 
@@ -45,6 +48,9 @@ logger.debug("🧩 control_panel_bp registered with default prefix '/'")
 
 webhook_main_bp.register_blueprint(account_tax_bp)
 logger.debug("🧩 account_tax_bp registered with default prefix '/'")
+
+webhook_main_bp.register_blueprint(agent_bp)
+logger.debug("🧩 agent_bp registered with default prefix '/'")
 
 # Load config
 logger.debug("🔧 Loading configuration from Config()...")
@@ -101,11 +107,7 @@ def bulk_update_account_tax():
         logger.error(f"💥 [ /bulk_update_account_tax ] - Error during bulk update: {e}", exc_info=True)
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
-@webhook_main_bp.route('/health', methods=['GET'])
-def index():
-    logger.debug("🔎 [ /health ] - Health check requested.")
-    logger.info("💚 [ /health ] - Returning status: Webhook listener is running.")
-    return jsonify({'message': 'Webhook listener is running.'}), 200
+
 
 
 @webhook_main_bp.route('/po_html/<string:project_ID>', methods=['GET'])
@@ -116,6 +118,8 @@ def po_html(project_ID):
     json_result = result.get_json()
     logger.debug("✅ [ /po_html ] - Result converted to JSON successfully. Rendering template.")
     return render_template('po_template.html', data=json_result)
+
+
 
 @webhook_main_bp.route('/control_panel', methods=['GET'])
 def control_panel():

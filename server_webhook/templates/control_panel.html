@@ -9,11 +9,10 @@
 <body>
     <div class="container">
 
-
-
-        <!-- Grid of Buttons -->
+        <!-- Trigger Buttons Section -->
+        <h2>Task Triggers</h2>
         <div class="button-grid">
-
+            <!-- Existing trigger buttons -->
             <!-- Detail Item Tasks -->
             <button class="task-button detail-item" data-route="trigger_detail_item_create">Detail Item [CREATE]</button>
             <button class="task-button detail-item" data-route="trigger_detail_item_update">Detail Item [UPDATE]</button>
@@ -44,19 +43,16 @@
             <button class="task-button account-code" data-route="trigger_account_code_update">Account Code [UPDATE]</button>
             <button class="task-button account-code" data-route="trigger_account_code_delete">Account Code [DELETE]</button>
 
-
-
-
             <!-- Receipt Tasks -->
             <button class="task-button receipt" data-route="trigger_receipt_create">Receipt [CREATE]</button>
             <button class="task-button receipt" data-route="trigger_receipt_update">Receipt [UPDATE]</button>
             <button class="task-button receipt" data-route="trigger_receipt_delete">Receipt [DELETE]</button>
-                        <!-- New PO Log [NEW] Button -->
-            <button class="task-button po-log-new" data-route="trigger_po_log_new">PO Log [NEW]</button>
 
-            <!-- Invoice Tasks -->
+            <!-- PO Log and Invoice Tasks -->
+            <button class="task-button po-log-new" data-route="trigger_po_log_new">PO Log [NEW]</button>
             <button class="task-button invoice" data-route="trigger_invoice_create">Invoice [CREATE]</button>
             <button class="task-button invoice" data-route="trigger_invoice_delete">Invoice [DELETE]</button>
+
             <!-- SpendMoney Tasks -->
             <button class="task-button spend-money" data-route="trigger_spend_money_create">SpendMoney [CREATE]</button>
             <button class="task-button spend-money" data-route="trigger_spend_money_update">SpendMoney [UPDATE]</button>
@@ -75,10 +71,18 @@
             <button class="task-button xero-bill" data-route="trigger_update_xero_bill_line_item">XeroBill Line Item [UPDATE]</button>
             <button class="task-button xero-bill" data-route="trigger_delete_xero_bill_line_item">XeroBill Line Item [DELETE]</button>
         </div>
-
-                <!-- Input Field Section -->
         <div class="input-section">
             <input type="text" id="task_input" placeholder="Enter ID here">
+        </div>
+
+        <!-- Sync Functions Section -->
+        <h2>Sync Functions</h2>
+        <div class="sync-grid">
+            <button class="sync-button" data-route="sync_spend_money_items">Sync Spend Money Items</button>
+            <button class="sync-button" data-route="sync_xero_bills">Sync Xero Bills</button>
+            <!-- Placeholder buttons for future functions -->
+            <button class="sync-button disabled" data-route="sync_future1">Sync Future 1 (Coming Soon)</button>
+            <button class="sync-button disabled" data-route="sync_future2">Sync Future 2 (Coming Soon)</button>
         </div>
 
     </div>

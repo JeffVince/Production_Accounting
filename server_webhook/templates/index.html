@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Agent Chat</title>
+  <style>
+    /*
+      --------------------------------------------
+      BASIC RESETS AND LAYOUT
+      --------------------------------------------
+    */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+      background-color: #343541; /* ChatGPT-like background */
+      color: #d1d5da;
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /*
+      --------------------------------------------
+      LEFT SIDEBAR
+      --------------------------------------------
+    */
+    .sidebar {
+      background-color: #202123;
+      width: 250px;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid #2f3031;
+    }
+
+    .sidebar-header {
+      padding: 1rem;
+      border-bottom: 1px solid #2f3031;
+      font-weight: bold;
+      font-size: 1.1rem;
+      color: #fff;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .new-chat-btn {
+      background-color: #3f51b5;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      font-size: 0.9rem;
+      padding: 0.3rem 0.6rem;
+      cursor: pointer;
+    }
+
+    .new-chat-btn:hover {
+      background-color: #36449e;
+    }
+
+    .sidebar-section {
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    .sidebar-section h4 {
+      padding: 0.75rem 1rem;
+      font-size: 0.9rem;
+      color: #a9a9a9;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 0.5rem;
+    }
+
+    .chat-item {
+      padding: 0.5rem 1rem;
+      cursor: pointer;
+      color: #d1d5da;
+      transition: background-color 0.2s ease;
+      font-size: 0.95rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .chat-item:hover {
+      background-color: #2f3031;
+    }
+
+    .delete-btn {
+      background: none;
+      border: none;
+      color: #d1d5da;
+      font-weight: bold;
+      cursor: pointer;
+      padding: 0;
+      margin-left: 10px;
+    }
+
+    .delete-btn:hover {
+      color: #ff6666;
+    }
+
+    .sidebar-footer {
+      border-top: 1px solid #2f3031;
+      padding: 0.75rem 1rem;
+      font-size: 0.9rem;
+      color: #a9a9a9;
+    }
+
+    /*
+      --------------------------------------------
+      MAIN CONTENT AREA
+      --------------------------------------------
+    */
+    .main-content {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      background-color: #343541;
+    }
+
+    .top-bar {
+      display: flex;
+      align-items: center;
+      height: 50px;
+      border-bottom: 1px solid #2f3031;
+      padding: 0 1rem;
+      color: #fff;
+      font-weight: 500;
+    }
+
+    .chat-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      scroll-behavior: smooth;
+    }
+
+    .chat-message {
+      padding: 1rem;
+      max-width: 75%;
+      margin: 0.5rem 1rem;
+      border-radius: 4px;
+      line-height: 1.4;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      font-size: 0.95rem;
+    }
+
+    /*
+      Distinguish user vs. assistant messages
+    */
+    .message-user {
+      align-self: flex-end;
+      background-color: #2f8cff;
+      color: #f9f9f9;
+    }
+
+    .message-assistant {
+      align-self: flex-start;
+      background-color: #444654;
+      color: #d1d5da;
+    }
+
+    /*
+      Bottom input area
+    */
+    .input-area {
+      border-top: 1px solid #2f3031;
+      padding: 1rem;
+      display: flex;
+      background-color: #40414f;
+    }
+
+    .input-field {
+      flex: 1;
+      background-color: #2a2b32;
+      color: #d1d5da;
+      font-size: 1rem;
+      border: 1px solid #565869;
+      border-radius: 4px;
+      padding: 0.5rem;
+      outline: none;
+    }
+
+    .input-field:focus {
+      border-color: #6d6e80;
+    }
+
+    .send-button {
+      background-color: #3f51b5;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      font-size: 1rem;
+      padding: 0 1rem;
+      margin-left: 0.5rem;
+      cursor: pointer;
+      transition: background-color 0.2s ease;
+    }
+
+    .send-button:hover {
+      background-color: #36449e;
+    }
+
+    /* Scrollbar styling (optional) */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background-color: #4e5057;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <!-- Left Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <span>Agent Chat</span>
+      <button class="new-chat-btn" id="newChatBtn">New</button>
+    </div>
+
+    <div class="sidebar-section">
+      <h4>My Chats</h4>
+      <div id="chatList">
+        <!-- Chat items will be injected here -->
+      </div>
+    </div>
+
+    <div class="sidebar-footer">
+      © 2025 Ophelia & Company
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="main-content">
+    <!-- Top Bar -->
+    <div class="top-bar">
+      <span id="activeChatTitle">No chat selected</span>
+    </div>
+
+    <!-- Chat Container -->
+    <div id="chatContainer" class="chat-container">
+      <!-- Messages will be appended here via JS -->
+    </div>
+
+    <!-- Input Area -->
+    <div class="input-area">
+      <input
+        type="text"
+        id="userInput"
+        class="input-field"
+        placeholder="Message the agent..."
+        autocomplete="off"
+      />
+      <button id="sendBtn" class="send-button">Send</button>
+    </div>
+  </div>
+
+  <script>
+    let currentChatId = null;
+
+    const chatList = document.getElementById('chatList');
+    const newChatBtn = document.getElementById('newChatBtn');
+    const activeChatTitle = document.getElementById('activeChatTitle');
+    const chatContainer = document.getElementById('chatContainer');
+    const userInput = document.getElementById('userInput');
+    const sendBtn = document.getElementById('sendBtn');
+
+    /*
+      ---------------------------------------
+      CHAT LIST / SIDEBAR FUNCTIONS
+      ---------------------------------------
+    */
+    async function loadChats() {
+      try {
+        const res = await fetch('/api/chats');
+        if (!res.ok) throw new Error('Failed to load chats');
+        const data = await res.json();
+        // Clear existing
+        chatList.innerHTML = '';
+        // Populate
+        data.forEach(chat => {
+          const chatDiv = document.createElement('div');
+          chatDiv.classList.add('chat-item');
+          chatDiv.dataset.id = chat.chat_id;
+          chatDiv.textContent = chat.title;
+          // Add a small delete button
+          const delBtn = document.createElement('button');
+          delBtn.classList.add('delete-btn');
+          delBtn.textContent = '×';
+          delBtn.onclick = (e) => {
+            e.stopPropagation(); // Don’t trigger the chat selection
+            deleteChat(chat.chat_id);
+          };
+          chatDiv.appendChild(delBtn);
+
+          chatDiv.onclick = () => {
+            // Switch to this chat
+            switchChat(chat.chat_id, chat.title);
+          };
+
+          chatList.appendChild(chatDiv);
+        });
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    async function createNewChat() {
+      try {
+        const res = await fetch('/api/chats', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: 'New Chat' })
+        });
+        if (!res.ok) throw new Error('Failed to create chat');
+        const data = await res.json();
+        currentChatId = data.chat_id;
+        activeChatTitle.textContent = data.title;
+        // Reload chat list
+        await loadChats();
+        // Load messages for this new chat (none yet)
+        clearChatWindow();
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    async function deleteChat(chatId) {
+      if (!confirm('Delete this chat?')) return;
+      try {
+        const res = await fetch(`/api/chats/${chatId}`, {
+          method: 'DELETE'
+        });
+        if (!res.ok) throw new Error('Failed to delete chat');
+        // If we just deleted the current chat, reset
+        if (currentChatId === chatId) {
+          currentChatId = null;
+          activeChatTitle.textContent = 'No chat selected';
+          clearChatWindow();
+        }
+        // Refresh the list
+        await loadChats();
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    /*
+      ---------------------------------------
+      MESSAGE / MAIN AREA FUNCTIONS
+      ---------------------------------------
+    */
+    function clearChatWindow() {
+      chatContainer.innerHTML = '';
+    }
+
+    // Renders an array of messages (user + assistant) in the main container
+    function renderMessages(messages) {
+      clearChatWindow();
+      messages.forEach(msg => {
+        const msgDiv = document.createElement('div');
+        msgDiv.classList.add('chat-message');
+        if (msg.role === 'user') {
+          msgDiv.classList.add('message-user');
+        } else {
+          // assistant
+          msgDiv.classList.add('message-assistant');
+        }
+        msgDiv.textContent = msg.content;
+        chatContainer.appendChild(msgDiv);
+      });
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    // Switch to a different chat, load its messages
+    async function switchChat(chatId, title) {
+      currentChatId = chatId;
+      activeChatTitle.textContent = title;
+      try {
+        const res = await fetch(`/api/chats/${chatId}/messages`);
+        if (!res.ok) throw new Error('Failed to get chat messages');
+        const data = await res.json();
+        renderMessages(data.messages);
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    // Send a message
+    async function sendMessage() {
+      if (!currentChatId) {
+        alert('Please select or create a chat first.');
+        return;
+      }
+      const text = userInput.value.trim();
+      if (!text) return;
+      userInput.value = '';  // Clear the input
+
+      // Display user's message immediately
+      addMessage(text, true);
+
+      try {
+        const response = await fetch(`/api/chats/${currentChatId}/message`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text })
+        });
+        if (!response.ok) throw new Error('Message send failed');
+        const data = await response.json();
+        // data.reply is the assistant's response
+        addMessage(data.reply, false);
+      } catch (error) {
+        console.error(error);
+        addMessage('Error: ' + error.message, false);
+      }
+    }
+
+    // Helper to add a message bubble to the current conversation
+    function addMessage(content, isUser) {
+      const msgDiv = document.createElement('div');
+      msgDiv.classList.add('chat-message');
+      msgDiv.classList.add(isUser ? 'message-user' : 'message-assistant');
+      msgDiv.textContent = content;
+      chatContainer.appendChild(msgDiv);
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    /*
+      ---------------------------------------
+      EVENT LISTENERS
+      ---------------------------------------
+    */
+    newChatBtn.addEventListener('click', createNewChat);
+    sendBtn.addEventListener('click', sendMessage);
+    userInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        sendMessage();
+      }
+    });
+
+    /*
+      ---------------------------------------
+      ON LOAD: FETCH CHAT LIST
+      ---------------------------------------
+    */
+    loadChats();
+  </script>
+</body>
+</html>
