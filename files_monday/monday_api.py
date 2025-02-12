@@ -2,6 +2,7 @@
 import json
 import logging
 import time
+import concurrent.futures
 from dotenv import load_dotenv
 import requests
 
@@ -13,8 +14,6 @@ from files_monday.monday_util import monday_util
 load_dotenv('../.env')
 MAX_RETRIES = 3
 RETRY_BACKOFF_FACTOR = 2
-
-
 # endregion
 
 # region 2: Helper Functions
@@ -35,8 +34,6 @@ def _parse_subitem_mutation_response(response_data: dict, subitems_batch: list, 
             "mutation_type": "create" if create else "update",
         })
     return results
-
-
 # endregion
 
 # region 3: MondayAPI Class Definition
@@ -46,8 +43,8 @@ class MondayAPI(metaclass=SingletonMeta):
     """
 
     # Define thresholds for complexity-based rate limiting.
-    MINIMUM_COMPLEXITY_THRESHOLD = 50
-    WAIT_TIME_FOR_COMPLEXITY_RESET = 60  # seconds
+    MINIMUM_COMPLEXITY_THRESHOLD = int(100000)
+    WAIT_TIME_FOR_COMPLEXITY_RESET = 20  # seconds
 
     # region 3.1: Initialization
     def __init__(self):
@@ -70,13 +67,15 @@ class MondayAPI(metaclass=SingletonMeta):
                 self.project_id_column = self.monday_util.PO_PROJECT_ID_COLUMN
                 self.po_number_column = self.monday_util.PO_NUMBER_COLUMN
                 self.logger.info('✅ Monday API initialized successfully 🏗️')
-                self.remaining_complexity = None
 
-                # Batching parameters.
-                self.subitem_batch_size = 5
+                # Dynamic parameters:
+                self.remaining_complexity = None
+                self.dynamic_retry_backoff_factor = RETRY_BACKOFF_FACTOR
+                self.consecutive_rate_limit_errors = 0
+                self.max_concurrent_requests = 20  # maximum concurrent HTTP requests
+                self.subitem_batch_size = 5         # initial subitem batch size
                 self.subitem_rate_limit_window = 12
                 self.last_batch_time = 0
-
                 self.po_batch_size = 5
                 self.po_rate_limit_window = 12
                 self.last_po_batch_time = 0
@@ -85,14 +84,19 @@ class MondayAPI(metaclass=SingletonMeta):
             except Exception as init_ex:
                 self.logger.exception(f'❌ Error during MondayAPI initialization: {init_ex}')
                 raise init_ex
-
     # endregion
 
     # region 3.2: Internal Request Method
+    def _calculate_retry_sleep_time(self, attempt):
+        """
+        Calculates the sleep time for retries based on the dynamic backoff factor.
+        """
+        return self.dynamic_retry_backoff_factor ** (attempt + 1)
+
     def _make_request(self, query: str, variables: dict = None) -> dict:
         """
         Executes a GraphQL request against Monday.com, with retries, rate limiting,
-        and now a check against complexity tokens to prevent exhausting them too quickly.
+        and a check against complexity tokens to prevent exhausting them too quickly.
         """
         # Before constructing the query, check if our remaining complexity is low.
         if self.remaining_complexity is not None and self.remaining_complexity < self.MINIMUM_COMPLEXITY_THRESHOLD:
@@ -105,12 +109,12 @@ class MondayAPI(metaclass=SingletonMeta):
         if 'complexity' not in query:
             insertion_index = query.find('{', query.find('query') if 'query' in query else query.find('mutation'))
             if insertion_index != -1:
-                query = query[:insertion_index + 1] + ' complexity { query before after } ' + query[
-                                                                                              insertion_index + 1:]
+                query = query[:insertion_index + 1] + ' complexity { query before after } ' + query[insertion_index + 1:]
         headers = {'Authorization': self.api_token}
         attempt = 0
         response = None
         while attempt < MAX_RETRIES:
+            start_time = time.time()
             try:
                 self.logger.debug(f'📡 Attempt {attempt + 1}/{MAX_RETRIES}: Sending GraphQL request.')
                 response = requests.post(
@@ -120,40 +124,72 @@ class MondayAPI(metaclass=SingletonMeta):
                     timeout=200
                 )
                 response.raise_for_status()
+                end_time = time.time()
+                elapsed = end_time - start_time
+
+                # Dynamic adjustment for subitem batch queries based on response time.
+                if ("create_subitem" in query or "change_multiple_column_values" in query) and "subitem" in query:
+                    if elapsed > 5 and self.subitem_batch_size > 1:
+                        self.logger.info("High response time detected; reducing subitem batch size.")
+                        self.subitem_batch_size = max(1, self.subitem_batch_size - 1)
+                    elif elapsed < 2 and self.subitem_batch_size < 10:
+                        self.logger.info("Low response time detected; increasing subitem batch size.")
+                        self.subitem_batch_size = min(10, self.subitem_batch_size + 1)
+
                 data = response.json()
                 if 'errors' in data:
                     self._handle_graphql_errors(data['errors'])
                 self._log_complexity(data)
+
+                # On a successful request, gradually bring the retry backoff factor back towards the base.
+                self.dynamic_retry_backoff_factor = max(RETRY_BACKOFF_FACTOR, self.dynamic_retry_backoff_factor * 0.95)
+                # Reset consecutive rate limit errors on success.
+                self.consecutive_rate_limit_errors = 0
                 return data
             except requests.exceptions.ConnectionError as ce:
                 self.logger.warning(f'⚠️ Connection error: {ce}. Retrying...')
-                time.sleep(RETRY_BACKOFF_FACTOR ** (attempt + 1))
+                time.sleep(self._calculate_retry_sleep_time(attempt))
                 attempt += 1
             except requests.exceptions.HTTPError as he:
                 self.logger.error(f'❌ HTTP error: {he}')
                 if response and response.status_code == 429:
+                    self.consecutive_rate_limit_errors += 1
+                    # Increase backoff factor on rate limit errors.
+                    self.dynamic_retry_backoff_factor = min(self.dynamic_retry_backoff_factor * 1.1, 10)
                     retry_after = int(response.headers.get('Retry-After', 10))
                     self.logger.warning(f'🔄 Rate limit hit. Retrying after {retry_after} seconds.')
+                    # Dynamically adjust max concurrent requests if too many 429 errors occur.
+                    if self.consecutive_rate_limit_errors >= 2:
+                        self.max_concurrent_requests = max(1, self.max_concurrent_requests - 1)
+                        self.logger.warning(f"Reducing max concurrent requests to {self.max_concurrent_requests}")
+                        self.consecutive_rate_limit_errors = 0
                     time.sleep(retry_after)
                     attempt += 1
                 else:
                     raise
             except Exception as e:
                 self.logger.error(f'❌ Unexpected error: {e}')
+                self._handle_graphql_errors([e])
                 raise
         self.logger.error('❌ Max retries reached. Request failed.')
         raise ConnectionError('Request failed after maximum retries.')
-
     # endregion
 
     # region 3.3: Error and Complexity Handlers
     def _handle_graphql_errors(self, errors):
         """
         Processes GraphQL errors and raises exceptions.
+        For errors indicating a failure to acquire a lock, it pauses briefly to allow the lock to be released,
+        then raises an exception so that the outer retry mechanism can reattempt the request.
         """
         for error in errors:
             message = error.get('message', '')
-            if 'ComplexityException' in message:
+            if 'failed to acquire lock' in message:
+                self.logger.warning(f"Lock error encountered: {message}. Retrying after a short delay.")
+                # You can adjust the delay as needed (e.g., 2 seconds)
+                time.sleep(2)
+                raise Exception(message)
+            elif 'ComplexityException' in message:
                 self.logger.error(' 💥 ComplexityException encountered.')
                 raise Exception('ComplexityException')
             elif 'DAILY_LIMIT_EXCEEDED' in message:
@@ -177,10 +213,11 @@ class MondayAPI(metaclass=SingletonMeta):
         if complexity:
             before = complexity.get('before')
             after = complexity.get('after')
+            # Set remaining complexity to 80% of the "after" value.
             self.remaining_complexity = int(after * 0.8) if after is not None else None
             self.logger.debug(
-                f"[_log_complexity] Complexity: before={before}, after={after}, remaining={self.remaining_complexity}")
-
+                f"[_log_complexity] Complexity: before={before}, after={after}, remaining={self.remaining_complexity}"
+            )
     # endregion
 
     # region 3.4: Item Methods
@@ -238,7 +275,6 @@ class MondayAPI(metaclass=SingletonMeta):
             board_id = self.PO_BOARD_ID
         variables = {'board_id': str(board_id), 'item_id': str(item_id), 'column_values': column_values}
         return self._make_request(query, variables)
-
     # endregion
 
     # region 3.5: Batch Mutation Methods
@@ -246,14 +282,14 @@ class MondayAPI(metaclass=SingletonMeta):
         """
         Batch creates or updates items (e.g. POs) using multithreading.
         """
-        import concurrent.futures
-
         self.logger.info(
-            f"[batch_create_or_update_items] Processing {len(batch)} items for project {project_id}, create={create}")
+            f"[batch_create_or_update_items] Processing {len(batch)} items for project {project_id}, create={create}"
+        )
         results = []
         futures = []
         idx = 0
-        with concurrent.futures.ThreadPoolExecutor() as executor:
+        # Use the dynamic max_concurrent_requests here.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_concurrent_requests) as executor:
             while idx < len(batch):
                 chunk = batch[idx: idx + self.po_batch_size]
                 query = self._build_batch_item_mutation(chunk, create)
@@ -327,25 +363,25 @@ class MondayAPI(metaclass=SingletonMeta):
         Batch creates or updates subitems (i.e. detail items) on the Subitem board.
         Uses a similar pattern to batch_create_or_update_items but for subitems.
         """
-        import concurrent.futures
-
         self.logger.info(
-            f"[batch_create_or_update_subitems] Processing {len(subitems_batch)} subitems, create={create}")
+            f"[batch_create_or_update_subitems] Processing {len(subitems_batch)} subitems, create={create}"
+        )
         results = []
         futures = []
         idx = 0
-        while idx < len(subitems_batch):
-            chunk = subitems_batch[idx: idx + self.subitem_batch_size]
-            query = self._build_batch_subitem_mutation(chunk, create)
-            futures.append(concurrent.futures.ThreadPoolExecutor().submit(self._make_request, query, None))
-            idx += self.subitem_batch_size
-
-        for future in concurrent.futures.as_completed(futures):
-            resp = future.result()
-            data = resp.get("data", {})
-            # The keys should be the mutation aliases (e.g. mutation_0, mutation_1, etc.)
-            for key in sorted(data.keys()):
-                results.append(data[key])
+        # Use the dynamic max_concurrent_requests here.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_concurrent_requests) as executor:
+            while idx < len(subitems_batch):
+                chunk = subitems_batch[idx: idx + self.subitem_batch_size]
+                query = self._build_batch_subitem_mutation(chunk, create)
+                futures.append(executor.submit(self._make_request, query, None))
+                idx += self.subitem_batch_size
+            for future in concurrent.futures.as_completed(futures):
+                resp = future.result()
+                data = resp.get("data", {})
+                # The keys should be the mutation aliases (e.g. mutation_0, mutation_1, etc.)
+                for key in sorted(data.keys()):
+                    results.append(data[key])
         self.logger.info(f"[batch_create_or_update_subitems] Completed with {len(results)} submutations.")
         return results
 
@@ -402,7 +438,6 @@ class MondayAPI(metaclass=SingletonMeta):
                 '''
             mutations.append(mutation.strip())
         return "mutation {" + " ".join(mutations) + "}"
-
     # endregion
 
     # region 3.6: Fetch Methods
@@ -480,7 +515,8 @@ class MondayAPI(metaclass=SingletonMeta):
         Fetches all subitems from the subitem board.
         """
         self.logger.debug(
-            f"[fetch_all_sub_items] Fetching subitems from board {self.SUBITEM_BOARD_ID} with limit {limit}")
+            f"[fetch_all_sub_items] Fetching subitems from board {self.SUBITEM_BOARD_ID} with limit {limit}"
+        )
         all_items = []
         cursor = None
         while True:
@@ -562,7 +598,8 @@ class MondayAPI(metaclass=SingletonMeta):
         column_id = self.monday_util.SUBITEM_PROJECT_ID_COLUMN_ID
         limit = 200
         self.logger.info(
-            f"[get_subitems_in_board] Fetching subitems from board {board_id} with project_number={project_number}")
+            f"[get_subitems_in_board] Fetching subitems from board {board_id} with project_number={project_number}"
+        )
         all_items = []
         cursor = None
         if project_number is None:
@@ -820,7 +857,6 @@ class MondayAPI(metaclass=SingletonMeta):
         except Exception as e:
             self.logger.error(f"[fetch_item_by_ID] Error: {e}")
             raise
-
     # endregion
 
     # region 3.7: Build Subitem Column Values
@@ -847,7 +883,6 @@ class MondayAPI(metaclass=SingletonMeta):
         )
         return json.loads(formatted)
     # endregion
-
 
 # endregion
 
