@@ -142,18 +142,6 @@ def handle_purchase_order_create(po_id: int) -> None:
             logger.info("👤 Found/created contact, updating DB!")
             db_ops.update_purchase_order(purchase_order['id'], contact_id=new_contact_id)
 
-    # # Possibly find dropbox folder link TODO
-    # if not purchase_order.get('folder_link'):
-    #     logger.info("🔗 Checking for dropbox folder link for this PO!")
-    #     folder_link = dropbox_service.find_po_folder_link(purchase_order)
-    #     if folder_link:
-    #         logger.info(f"🌐 Found folder link: {folder_link}, updating DB!")
-    #         db_ops.update_purchase_order(purchase_order['id'], folder_link=folder_link)
-    #
-    # # Upsert to Monday board
-    # logger.info("🔄 Sending to Monday board to reflect this new PO!")
-    # monday_service.upsert_po_in_monday(purchase_order)
-
     logger.info("🎉 PurchaseOrder CREATE trigger finished final logic.")
     # endregion
 
@@ -310,9 +298,8 @@ def handle_detail_item_update(detail_item_id: int) -> None:
 
         # region 🎛️ Aggregator Check
         if budget_service.is_aggregator_in_progress(detail_item):
-            logger.info("⏳ Aggregator=STARTED => partial skip for detail_item UPDATE.")
+            logger.info("⏳ Aggregator=STARTED => SKIPPING")
             return
-        logger.info("✅ Aggregator=COMPLETED => let's do the single logic for detail_item update!")
 
         # endregion
 

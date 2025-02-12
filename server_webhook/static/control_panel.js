@@ -1,5 +1,3 @@
-/* control_panel.js */
-
 document.addEventListener('DOMContentLoaded', () => {
     // Handle Trigger Buttons (require input)
     const buttons = document.querySelectorAll('.task-button');

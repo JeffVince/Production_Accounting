@@ -1,10 +1,10 @@
+# region 1: Imports
 import json
 import logging
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from dotenv import load_dotenv
 import requests
-from utilities.helper_functions import list_to_dict
+
 from utilities.singleton import SingletonMeta
 from utilities.config import Config
 from monday import MondayClient
@@ -15,12 +15,44 @@ MAX_RETRIES = 3
 RETRY_BACKOFF_FACTOR = 2
 
 
-class MondayAPI(metaclass=SingletonMeta):
+# endregion
 
+# region 2: Helper Functions
+def _parse_subitem_mutation_response(response_data: dict, subitems_batch: list, create: bool) -> list:
+    """
+    Parses the GraphQL response after a batch subitem mutation and re-associates
+    each result with the original subitem dict.
+    """
+    results = []
+    data = response_data.get("data", {})
+    keys_sorted = sorted(data.keys())
+    for i, key in enumerate(keys_sorted):
+        sub_result = data[key]
+        original = subitems_batch[i]
+        results.append({
+            "db_sub_item": original["db_sub_item"],
+            "monday_item_id": sub_result.get("id"),
+            "mutation_type": "create" if create else "update",
+        })
+    return results
+
+
+# endregion
+
+# region 3: MondayAPI Class Definition
+class MondayAPI(metaclass=SingletonMeta):
+    """
+    MondayAPI singleton for interacting with the Monday.com GraphQL API.
+    """
+
+    # Define thresholds for complexity-based rate limiting.
+    MINIMUM_COMPLEXITY_THRESHOLD = 50
+    WAIT_TIME_FOR_COMPLEXITY_RESET = 60  # seconds
+
+    # region 3.1: Initialization
     def __init__(self):
         """
-        🏗️ Sets up the Monday API singleton with proper logging, token initialization,
-        and references to critical board and column IDs.
+        Initializes logging, sets up API token, board IDs, and batching parameters.
         """
         if not hasattr(self, '_initialized'):
             try:
@@ -28,7 +60,7 @@ class MondayAPI(metaclass=SingletonMeta):
                 self.logger.debug('Initializing MondayAPI singleton... ⚙️')
                 self.api_token = Config.MONDAY_API_TOKEN
                 if not self.api_token:
-                    self.logger.warning('⚠️ MONDAY_API_TOKEN is not set. Check .env or your configuration.')
+                    self.logger.warning('⚠️ MONDAY_API_TOKEN is not set. Check your configuration.')
                 self.api_url = 'https://api.monday.com/v2/'
                 self.client = MondayClient(self.api_token)
                 self.monday_util = monday_util
@@ -38,24 +70,38 @@ class MondayAPI(metaclass=SingletonMeta):
                 self.project_id_column = self.monday_util.PO_PROJECT_ID_COLUMN
                 self.po_number_column = self.monday_util.PO_NUMBER_COLUMN
                 self.logger.info('✅ Monday API initialized successfully 🏗️')
+                self.remaining_complexity = None
+
+                # Batching parameters.
+                self.subitem_batch_size = 5
+                self.subitem_rate_limit_window = 12
+                self.last_batch_time = 0
+
+                self.po_batch_size = 5
+                self.po_rate_limit_window = 12
+                self.last_po_batch_time = 0
+
                 self._initialized = True
             except Exception as init_ex:
                 self.logger.exception(f'❌ Error during MondayAPI initialization: {init_ex}')
                 raise init_ex
 
-    def _make_request(self, query: str, variables: dict = None):
-        """
-        🔒 Private Method: Executes a GraphQL request against the Monday.com API with:
-          - Complexity query insertion
-          - Retry logic for transient failures (e.g., connection errors)
-          - Handling of 429 (rate-limit) responses
+    # endregion
 
-        :param query: GraphQL query string
-        :param variables: Optional variables dict
-        :return: Parsed JSON response from Monday API
-        :raises: ConnectionError if MAX_RETRIES exceeded or any unhandled error occurs
+    # region 3.2: Internal Request Method
+    def _make_request(self, query: str, variables: dict = None) -> dict:
         """
-        self.logger.debug(f"GraphQL to Monday:\n{query}")
+        Executes a GraphQL request against Monday.com, with retries, rate limiting,
+        and now a check against complexity tokens to prevent exhausting them too quickly.
+        """
+        # Before constructing the query, check if our remaining complexity is low.
+        if self.remaining_complexity is not None and self.remaining_complexity < self.MINIMUM_COMPLEXITY_THRESHOLD:
+            self.logger.info(
+                f"Remaining complexity ({self.remaining_complexity}) is below threshold ({self.MINIMUM_COMPLEXITY_THRESHOLD}). "
+                f"Pausing for {self.WAIT_TIME_FOR_COMPLEXITY_RESET} seconds to allow token recovery.")
+            time.sleep(self.WAIT_TIME_FOR_COMPLEXITY_RESET)
+
+        # Ensure the query includes complexity metrics if not already present.
         if 'complexity' not in query:
             insertion_index = query.find('{', query.find('query') if 'query' in query else query.find('mutation'))
             if insertion_index != -1:
@@ -63,11 +109,16 @@ class MondayAPI(metaclass=SingletonMeta):
                                                                                               insertion_index + 1:]
         headers = {'Authorization': self.api_token}
         attempt = 0
+        response = None
         while attempt < MAX_RETRIES:
             try:
-                self.logger.debug(f'📡 Attempt {attempt + 1}/{MAX_RETRIES}: Sending request to Monday.com')
-                response = requests.post(self.api_url, json={'query': query, 'variables': variables}, headers=headers,
-                                         timeout=200)
+                self.logger.debug(f'📡 Attempt {attempt + 1}/{MAX_RETRIES}: Sending GraphQL request.')
+                response = requests.post(
+                    self.api_url,
+                    json={'query': query, 'variables': variables},
+                    headers=headers,
+                    timeout=200
+                )
                 response.raise_for_status()
                 data = response.json()
                 if 'errors' in data:
@@ -75,71 +126,69 @@ class MondayAPI(metaclass=SingletonMeta):
                 self._log_complexity(data)
                 return data
             except requests.exceptions.ConnectionError as ce:
-                self.logger.warning(f'⚠️ Connection error: {ce}. Attempt {attempt + 1}/{MAX_RETRIES}. Retrying...')
+                self.logger.warning(f'⚠️ Connection error: {ce}. Retrying...')
                 time.sleep(RETRY_BACKOFF_FACTOR ** (attempt + 1))
                 attempt += 1
             except requests.exceptions.HTTPError as he:
-                self.logger.error(f'❌ HTTP error encountered: {he}')
-                if response.status_code == 429:
-                    retry_after = response.headers.get('Retry-After', 10)
-                    self.logger.warning(f'🔄 Rate limit (429) hit. Waiting {retry_after} seconds before retry.')
-                    time.sleep(int(retry_after))
+                self.logger.error(f'❌ HTTP error: {he}')
+                if response and response.status_code == 429:
+                    retry_after = int(response.headers.get('Retry-After', 10))
+                    self.logger.warning(f'🔄 Rate limit hit. Retrying after {retry_after} seconds.')
+                    time.sleep(retry_after)
                     attempt += 1
                 else:
                     raise
             except Exception as e:
-                self.logger.error(f'❌ Unexpected exception during request: {e}')
+                self.logger.error(f'❌ Unexpected error: {e}')
                 raise
-        self.logger.error('❌ Max retries reached without success. Failing the request.')
-        raise ConnectionError('Failed to complete request after multiple retries.')
+        self.logger.error('❌ Max retries reached. Request failed.')
+        raise ConnectionError('Request failed after maximum retries.')
 
+    # endregion
+
+    # region 3.3: Error and Complexity Handlers
     def _handle_graphql_errors(self, errors):
         """
-        🔒 Private Method: Handles GraphQL-level errors returned by Monday.com.
-        Raises specific exceptions based on error messages for clarity.
+        Processes GraphQL errors and raises exceptions.
         """
         for error in errors:
             message = error.get('message', '')
             if 'ComplexityException' in message:
-                self.logger.error('[_handle_graphql_errors] - 💥 Complexity limit reached!')
+                self.logger.error(' 💥 ComplexityException encountered.')
                 raise Exception('ComplexityException')
             elif 'DAILY_LIMIT_EXCEEDED' in message:
-                self.logger.error('[_handle_graphql_errors] - 💥 Daily limit exceeded!')
+                self.logger.error(' 💥 DAILY_LIMIT_EXCEEDED encountered.')
                 raise Exception('DAILY_LIMIT_EXCEEDED')
             elif 'Minute limit rate exceeded' in message:
-                self.logger.warning(
-                    '[_handle_graphql_errors] - ⌛ Minute limit exceeded! Consider waiting and retrying.')
+                self.logger.warning(' ⌛ Minute limit exceeded.')
                 raise Exception('Minute limit exceeded')
             elif 'Concurrency limit exceeded' in message:
-                self.logger.warning('[_handle_graphql_errors] - 🕑 Concurrency limit exceeded! Throttling requests.')
+                self.logger.warning(' 🕑 Concurrency limit exceeded.')
                 raise Exception('Concurrency limit exceeded')
             else:
-                self.logger.error(f'[_handle_graphql_errors] - 💥 GraphQL error: {message}')
+                self.logger.error(f' 💥 GraphQL error: {message}')
                 raise Exception(message)
 
     def _log_complexity(self, data):
         """
-        🔒 Private Method: Logs complexity usage if available in the API response data.
-        Helps track usage and avoid hitting Monday API limits.
+        Logs API complexity information from the response.
         """
-        complexity_info = data.get('data', {}).get('complexity', {})
-        if complexity_info:
-            query_complexity = complexity_info.get('query')
-            before = complexity_info.get('before')
-            after = complexity_info.get('after')
+        complexity = data.get('data', {}).get('complexity', {})
+        if complexity:
+            before = complexity.get('before')
+            after = complexity.get('after')
+            self.remaining_complexity = int(after * 0.8) if after is not None else None
             self.logger.debug(
-                f'[_log_complexity] - 🔎 Complexity: query={query_complexity}, before={before}, after={after}')
+                f"[_log_complexity] Complexity: before={before}, after={after}, remaining={self.remaining_complexity}")
 
-    def create_item(self, board_id: int, group_id: str, name: str, column_values: dict):
+    # endregion
+
+    # region 3.4: Item Methods
+    def create_item(self, board_id: int, group_id: str, name: str, column_values: dict) -> dict:
         """
-        🎨 Create a new item on a board.
-        :param board_id: Board ID where the item will be created
-        :param group_id: The group_id to place the item in
-        :param name: Name of the new item
-        :param column_values: Column values in JSON or dict format
-        :return: GraphQL response
+        Creates a new item on a board.
         """
-        self.logger.debug(f"[create_item] - 🆕 Creating item on board {board_id}, name='{name}'...")
+        self.logger.debug(f"[create_item] Creating item on board {board_id} with name '{name}'")
         query = '''
         mutation ($board_id: ID!, $group_id: String, $item_name: String!, $column_values: JSON) {
             create_item(board_id: $board_id, group_id: $group_id, item_name: $item_name, column_values: $column_values) {
@@ -147,21 +196,16 @@ class MondayAPI(metaclass=SingletonMeta):
             }
         }
         '''
-        variables = {'board_id': int(board_id), 'item_name': name, 'column_values': column_values}
+        variables = {'board_id': board_id, 'item_name': name, 'column_values': column_values}
         if group_id:
             variables['group_id'] = group_id
         return self._make_request(query, variables)
 
-    def create_subitem(self, parent_item_id: int, subitem_name: str, column_values: dict):
+    def create_subitem(self, parent_item_id: int, subitem_name: str, column_values: dict) -> dict:
         """
-        🧩 Create a subitem (child item) under a given parent item.
-        :param parent_item_id: The parent item's ID
-        :param subitem_name: Subitem name
-        :param column_values: Column values in JSON or dict format
-        :return: GraphQL response
+        Creates a subitem under a parent item.
         """
-        self.logger.debug(
-            f"[create_subitem] - 🆕 Creating subitem under parent {parent_item_id} with name='{subitem_name}'...")
+        self.logger.debug(f"[create_subitem] Creating subitem under parent {parent_item_id}")
         query = '''
         mutation ($parent_item_id: ID!, $subitem_name: String!, $column_values: JSON!) {
             create_subitem(parent_item_id: $parent_item_id, item_name: $subitem_name, column_values: $column_values) {
@@ -172,33 +216,11 @@ class MondayAPI(metaclass=SingletonMeta):
         variables = {'parent_item_id': parent_item_id, 'subitem_name': subitem_name, 'column_values': column_values}
         return self._make_request(query, variables)
 
-    def create_contact(self, name):
+    def update_item(self, item_id: str, column_values, item_type: str = 'main') -> dict:
         """
-        🗂️ Create a new contact in the 'Contacts' board.
-        :param name: Contact Name
-        :return: GraphQL response with ID and name
+        Updates an existing item, subitem, or contact.
         """
-        self.logger.debug(f"[create_contact] - 🆕 Creating contact with name='{name}'...")
-        query = '''
-        mutation ($board_id: ID!, $item_name: String!) {
-            create_item(board_id: $board_id, item_name: $item_name) {
-                id,
-                name
-            }
-        }
-        '''
-        variables = {'board_id': int(self.CONTACT_BOARD_ID), 'item_name': name}
-        return self._make_request(query, variables)
-
-    def update_item(self, item_id: str, column_values, type='main'):
-        """
-        🔧 Updates an existing item, subitem, or contact.
-        :param item_id: Pulse (item) ID to update
-        :param column_values: Dict/JSON of column values to update
-        :param type: 'main', 'subitem', or 'contact' to determine board
-        :return: GraphQL response
-        """
-        self.logger.debug(f"[update_item] - ⚙️ Updating item {item_id} on type='{type}' board...")
+        self.logger.debug(f"[update_item] Updating item {item_id} on board item_type '{item_type}'")
         query = '''
         mutation ($board_id: ID!, $item_id: ID!, $column_values: JSON!) {
             change_multiple_column_values(board_id: $board_id, item_id: $item_id, column_values: $column_values) {
@@ -206,25 +228,189 @@ class MondayAPI(metaclass=SingletonMeta):
             }
         }
         '''
-        if type == 'main':
+        if item_type == 'main':
             board_id = self.PO_BOARD_ID
-        elif type == 'subitem':
+        elif item_type == 'subitem':
             board_id = self.SUBITEM_BOARD_ID
-        elif type == 'contact':
+        elif item_type == 'contact':
             board_id = self.CONTACT_BOARD_ID
         else:
             board_id = self.PO_BOARD_ID
         variables = {'board_id': str(board_id), 'item_id': str(item_id), 'column_values': column_values}
         return self._make_request(query, variables)
 
-    def fetch_all_items(self, board_id, limit=200):
+    # endregion
+
+    # region 3.5: Batch Mutation Methods
+    def batch_create_or_update_items(self, batch: list, project_id: str, create: bool = True) -> list:
         """
-        🔎 Fetches all items from a given board using cursor-based pagination.
-        :param board_id: Board ID to fetch items from
-        :param limit: # of items to fetch per query
-        :return: List of item dicts as returned by Monday
+        Batch creates or updates items (e.g. POs) using multithreading.
         """
-        self.logger.debug(f'[fetch_all_items] - 📥 Fetching all items from board {board_id} with limit={limit}...')
+        import concurrent.futures
+
+        self.logger.info(
+            f"[batch_create_or_update_items] Processing {len(batch)} items for project {project_id}, create={create}")
+        results = []
+        futures = []
+        idx = 0
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            while idx < len(batch):
+                chunk = batch[idx: idx + self.po_batch_size]
+                query = self._build_batch_item_mutation(chunk, create)
+                futures.append(executor.submit(self._make_request, query, None))
+                idx += self.po_batch_size
+            for future in concurrent.futures.as_completed(futures):
+                resp = future.result()
+                data = resp.get("data", {})
+                for key in sorted(data.keys()):
+                    results.append(data[key])
+        self.logger.info(f"[batch_create_or_update_items] Completed with {len(results)} submutations.")
+        return results
+
+    def _build_batch_item_mutation(self, batch: list, create: bool) -> str:
+        """
+        Constructs a single GraphQL mutation string for a batch of items.
+        """
+        mutations = []
+        board_id = self.PO_BOARD_ID
+        for i, item in enumerate(batch):
+            db_item = item.get("db_item", {})
+            raw_values = self.monday_util.po_column_values_formatter(
+                project_id=db_item.get("project_number"),
+                po_number=db_item.get("po_number"),
+                tax_id=db_item.get("tax_id"),
+                description=db_item.get("description"),
+                contact_pulse_id=item.get("monday_contact_id"),
+                folder_link=db_item.get("folder_link"),
+                status=db_item.get("status"),
+                producer_id=db_item.get("producer_id")
+            )
+            escaped_values = raw_values.replace('"', '\\"')
+            column_values_arg = f"\"{escaped_values}\""
+            if create:
+                item_name = db_item.get("vendor_name", "Unnamed")
+                mutation = f'''
+                mutation_{i}: create_item(
+                    board_id: {board_id},
+                    item_name: "{item_name}",
+                    column_values: {column_values_arg}
+                ) {{
+                    id
+                    name
+                    column_values {{
+                        id
+                        text
+                    }}
+                }}
+                '''
+            else:
+                monday_item_id = item.get("monday_item_id")
+                mutation = f'''
+                mutation_{i}: change_multiple_column_values(
+                    board_id: {board_id},
+                    item_id: {monday_item_id},
+                    column_values: {column_values_arg}
+                ) {{
+                    id
+                    name
+                    column_values {{
+                        id
+                        text
+                    }}
+                }}
+                '''
+            mutations.append(mutation.strip())
+        return "mutation {" + " ".join(mutations) + "}"
+
+    def batch_create_or_update_subitems(self, subitems_batch: list, create: bool = True) -> list:
+        """
+        Batch creates or updates subitems (i.e. detail items) on the Subitem board.
+        Uses a similar pattern to batch_create_or_update_items but for subitems.
+        """
+        import concurrent.futures
+
+        self.logger.info(
+            f"[batch_create_or_update_subitems] Processing {len(subitems_batch)} subitems, create={create}")
+        results = []
+        futures = []
+        idx = 0
+        while idx < len(subitems_batch):
+            chunk = subitems_batch[idx: idx + self.subitem_batch_size]
+            query = self._build_batch_subitem_mutation(chunk, create)
+            futures.append(concurrent.futures.ThreadPoolExecutor().submit(self._make_request, query, None))
+            idx += self.subitem_batch_size
+
+        for future in concurrent.futures.as_completed(futures):
+            resp = future.result()
+            data = resp.get("data", {})
+            # The keys should be the mutation aliases (e.g. mutation_0, mutation_1, etc.)
+            for key in sorted(data.keys()):
+                results.append(data[key])
+        self.logger.info(f"[batch_create_or_update_subitems] Completed with {len(results)} submutations.")
+        return results
+
+    def _build_batch_subitem_mutation(self, subitems_batch: list, create: bool) -> str:
+        """
+        Constructs a GraphQL mutation string for a batch of subitems.
+        This method uses the subitem-specific fields and mutation calls.
+        """
+        mutations = []
+        board_id = self.SUBITEM_BOARD_ID
+        for i, subitem in enumerate(subitems_batch):
+            db_sub_item = subitem.get("db_sub_item", {})
+            column_values = self.monday_util.subitem_column_values_formatter(
+                project_id=db_sub_item.get("project_number"),
+                po_number=db_sub_item.get("po_number"),
+                detail_number=db_sub_item.get("detail_number"),
+                line_number=db_sub_item.get("line_number"),
+                description=db_sub_item.get("description"),
+                quantity=db_sub_item.get("quantity"),
+                rate=db_sub_item.get("rate"),
+                date=db_sub_item.get("transaction_date"),
+                due_date=db_sub_item.get("due_date"),
+                account_number=db_sub_item.get("account_code"),
+                link=db_sub_item.get("file_link"),
+                OT=db_sub_item.get("ot"),
+                fringes=db_sub_item.get("fringes"),
+                xero_link=db_sub_item.get("xero_link"),
+                status=db_sub_item.get("state")
+            )
+            escaped_values = column_values.replace('"', '\\"')
+            column_values_arg = f"\"{escaped_values}\""
+            if create:
+                parent_id = subitem.get("parent_id")
+                subitem_name = db_sub_item.get("description") or f"Subitem {i}"
+                mutation = f'''
+                mutation_{i}: create_subitem(
+                    parent_item_id: {parent_id},
+                    item_name: "{subitem_name}",
+                    column_values: {column_values_arg}
+                ) {{
+                    id
+                }}
+                '''
+            else:
+                monday_item_id = subitem.get("monday_item_id")
+                mutation = f'''
+                mutation_{i}: change_multiple_column_values(
+                    board_id: {board_id},
+                    item_id: {monday_item_id},
+                    column_values: {column_values_arg}
+                ) {{
+                    id
+                }}
+                '''
+            mutations.append(mutation.strip())
+        return "mutation {" + " ".join(mutations) + "}"
+
+    # endregion
+
+    # region 3.6: Fetch Methods
+    def fetch_all_items(self, board_id, limit=200) -> list:
+        """
+        Fetches all items from the specified board using cursor-based pagination.
+        """
+        self.logger.debug(f"[fetch_all_items] Fetching items from board {board_id} with limit {limit}")
         all_items = []
         cursor = None
         while True:
@@ -271,34 +457,30 @@ class MondayAPI(metaclass=SingletonMeta):
             try:
                 response = self._make_request(query, variables)
             except Exception as e:
-                self.logger.error(f'[fetch_all_items] - ❌ Error fetching items: {e}')
+                self.logger.error(f"[fetch_all_items] Error: {e}")
                 break
             if cursor:
                 items_data = response.get('data', {}).get('next_items_page', {})
             else:
                 boards_data = response.get('data', {}).get('boards', [])
                 if not boards_data:
-                    self.logger.warning(
-                        f'[fetch_all_items] - ⚠️ No boards found for board_id {board_id}. Check your permissions or ID.')
+                    self.logger.warning(f"[fetch_all_items] No boards found for board_id {board_id}")
                     break
                 items_data = boards_data[0].get('items_page', {})
             items = items_data.get('items', [])
             all_items.extend(items)
             cursor = items_data.get('cursor')
             if not cursor:
-                self.logger.debug('[fetch_all_items] - ✅ No more pages left to fetch for this board.')
+                self.logger.debug("[fetch_all_items] No more pages to fetch.")
                 break
-            self.logger.info(
-                f'[fetch_all_items] - 📄 Fetched {len(items)} items from board {board_id}. Continuing pagination...')
         return all_items
 
-    def fetch_all_sub_items(self, limit=100):
+    def fetch_all_sub_items(self, limit=100) -> list:
         """
-        🔎 Fetch all subitems from the subitem board, filtering out those without a parent_item.
-        Returns only valid subitems that have a parent.
+        Fetches all subitems from the subitem board.
         """
         self.logger.debug(
-            f'[fetch_all_sub_items] - 📥 Fetching all subitems from subitem board {self.SUBITEM_BOARD_ID}, limit={limit}...')
+            f"[fetch_all_sub_items] Fetching subitems from board {self.SUBITEM_BOARD_ID} with limit {limit}")
         all_items = []
         cursor = None
         while True:
@@ -308,7 +490,7 @@ class MondayAPI(metaclass=SingletonMeta):
                     complexity { query before after }
                     next_items_page(cursor: $cursor, limit: $limit) {
                         cursor
-                        items  {
+                        items {
                             id
                             name
                             parent_item {
@@ -353,15 +535,14 @@ class MondayAPI(metaclass=SingletonMeta):
             try:
                 response = self._make_request(query, variables)
             except Exception as e:
-                self.logger.error(f'[fetch_all_sub_items] - ❌ Error fetching subitems: {e}')
+                self.logger.error(f"[fetch_all_sub_items] Error: {e}")
                 break
             if cursor:
                 items_data = response.get('data', {}).get('next_items_page', {})
             else:
                 boards_data = response.get('data', {}).get('boards', [])
                 if not boards_data:
-                    self.logger.warning(
-                        f'[fetch_all_sub_items] - ⚠️ No boards found for board_id {self.SUBITEM_BOARD_ID}. Check your permissions or ID.')
+                    self.logger.warning(f"[fetch_all_sub_items] No boards found for board_id {self.SUBITEM_BOARD_ID}")
                     break
                 items_data = boards_data[0].get('items_page', {})
             items = items_data.get('items', [])
@@ -369,52 +550,19 @@ class MondayAPI(metaclass=SingletonMeta):
             all_items.extend(valid_items)
             cursor = items_data.get('cursor')
             if not cursor:
-                self.logger.debug('[fetch_all_sub_items] - ✅ No more subitem pages left to fetch.')
+                self.logger.debug("[fetch_all_sub_items] No more subitem pages to fetch.")
                 break
-            self.logger.info(
-                f'[fetch_all_sub_items] - 📄 Fetched {len(valid_items)} valid subitems from board {self.SUBITEM_BOARD_ID}. Continuing...')
         return all_items
 
-    def get_subitems_in_board(self, project_number=None):
+    def get_subitems_in_board(self, project_number=None) -> list:
         """
-        Fetches subitems from the subitem board (self.SUBITEM_BOARD_ID).
-
-        - If project_number is None, returns all subitems from the subitem board.
-        - If project_number is provided, returns all subitems whose
-          project_id column (self.monday_util.SUBITEM_PROJECT_ID_COLUMN_ID)
-          matches the given project_number.
-
-        For each subitem, we transform its 'column_values' list into a dict:
-          "column_values": {
-              <column_id>: {
-                  "text": <string>,
-                  "value": <raw JSON string or None>
-              },
-              ...
-          }
-
-        Returns: a list of subitem dicts like:
-        [
-          {
-            "id": <subitem_id>,
-            "name": <subitem_name>,
-            "parent_item": {
-                "id": <parent_item_id>,
-                "name": <parent_item_name>
-            },
-            "column_values": {
-                "<col_id>": { "text": ..., "value": ... },
-                ...
-            }
-          },
-          ...
-        ]
+        Fetches subitems from the subitem board, optionally filtering by project_number.
         """
         board_id = self.SUBITEM_BOARD_ID
         column_id = self.monday_util.SUBITEM_PROJECT_ID_COLUMN_ID
         limit = 200
         self.logger.info(
-            f'[get_subitems_in_board] - 📥 Fetching subitems from board_id={board_id}, project_number={project_number}')
+            f"[get_subitems_in_board] Fetching subitems from board {board_id} with project_number={project_number}")
         all_items = []
         cursor = None
         if project_number is None:
@@ -472,14 +620,14 @@ class MondayAPI(metaclass=SingletonMeta):
                 try:
                     response = self._make_request(query, variables)
                 except Exception as e:
-                    self.logger.error(f'[get_subitems_in_board] - ❌ Error fetching subitems: {e}')
+                    self.logger.error(f"[get_subitems_in_board] Error: {e}")
                     break
                 if cursor:
                     items_data = response.get('data', {}).get('next_items_page', {})
                 else:
                     boards_data = response.get('data', {}).get('boards', [])
                     if not boards_data:
-                        self.logger.warning(f'[get_subitems_in_board] - ⚠️ No boards found for board_id={board_id}.')
+                        self.logger.warning(f"[get_subitems_in_board] No boards found for board_id {board_id}")
                         break
                     items_data = boards_data[0].get('items_page', {})
                 items = items_data.get('items', [])
@@ -491,10 +639,8 @@ class MondayAPI(metaclass=SingletonMeta):
                 all_items.extend(valid_items)
                 cursor = items_data.get('cursor')
                 if not cursor:
-                    self.logger.debug('[get_subitems_in_board] - ✅ No more subitem pages to fetch.')
+                    self.logger.debug("[get_subitems_in_board] No more pages to fetch.")
                     break
-                self.logger.info(
-                    f'[get_subitems_in_board] - 🔄 Fetched {len(valid_items)} subitems so far, continuing pagination...')
             return all_items
         else:
             while True:
@@ -527,7 +673,7 @@ class MondayAPI(metaclass=SingletonMeta):
                     query ($board_id: ID!, $column_id: String!, $project_number: String!, $limit: Int!) {
                         complexity { query before after }
                         items_page_by_column_values(
-                            board_id: $board_id, 
+                            board_id: $board_id,
                             columns: [{column_id: $column_id, column_values: [$project_number]}],
                             limit: $limit
                         ) {
@@ -554,7 +700,7 @@ class MondayAPI(metaclass=SingletonMeta):
                 try:
                     response = self._make_request(query, variables)
                 except Exception as e:
-                    self.logger.error(f'[get_subitems_in_board] - ❌ Error fetching subitems by project_number: {e}')
+                    self.logger.error(f"[get_subitems_in_board] Error: {e}")
                     break
                 if cursor:
                     items_data = response.get('data', {}).get('next_items_page', {})
@@ -569,19 +715,15 @@ class MondayAPI(metaclass=SingletonMeta):
                 all_items.extend(valid_items)
                 cursor = items_data.get('cursor')
                 if not cursor:
-                    self.logger.debug('[get_subitems_in_board] - ✅ No more pages for filtered subitems.')
+                    self.logger.debug("[get_subitems_in_board] No more pages for filtered subitems.")
                     break
-                self.logger.info(
-                    f'[get_subitems_in_board] - 🔄 Fetched {len(valid_items)} matching subitems so far, continuing pagination...')
             return all_items
 
     def fetch_all_contacts(self, limit: int = 250) -> list:
         """
-        🔎 Fetch all contacts from the 'Contacts' board with pagination.
-        :param limit: number of items to fetch per page
-        :return: List of contact items
+        Fetches all contacts from the Contacts board using pagination.
         """
-        self.logger.info('[fetch_all_contacts] - 📥 Fetching all contacts from the Contacts board...')
+        self.logger.info("[fetch_all_contacts] Fetching contacts from the Contacts board...")
         all_items = []
         cursor = None
         while True:
@@ -624,41 +766,35 @@ class MondayAPI(metaclass=SingletonMeta):
                     }
                 }
                 '''
-                variables = {'board_id': str(self.monday_util.CONTACT_BOARD_ID), 'limit': limit}
+                variables = {'board_id': str(self.CONTACT_BOARD_ID), 'limit': limit}
             try:
                 response = self._make_request(query, variables)
             except Exception as e:
-                self.logger.error(f'[fetch_all_contacts] - ❌ Error fetching contacts: {e}')
+                self.logger.error(f"[fetch_all_contacts] Error: {e}")
                 break
             if cursor:
                 items_data = response.get('data', {}).get('next_items_page', {})
             else:
                 boards_data = response.get('data', {}).get('boards', [])
                 if not boards_data:
-                    self.logger.warning(
-                        f'[fetch_all_contacts] - ⚠️ No boards found for board_id {self.monday_util.CONTACT_BOARD_ID}. Check your permissions or ID.')
+                    self.logger.warning(f"[fetch_all_contacts] No boards found for board_id {self.CONTACT_BOARD_ID}")
                     break
                 items_data = boards_data[0].get('items_page', {})
             items = items_data.get('items', [])
             all_items.extend(items)
             cursor = items_data.get('cursor')
             if not cursor:
-                self.logger.debug('[fetch_all_contacts] - ✅ All contacts fetched successfully.')
+                self.logger.debug("[fetch_all_contacts] Completed fetching contacts.")
                 break
-            self.logger.debug(
-                f'[fetch_all_contacts] - 🔄 Fetched {len(items)} contacts so far. Continuing pagination...')
         return all_items
 
-    def fetch_item_by_ID(self, id: str):
+    def fetch_item_by_ID(self, item_id: str) -> dict:
         """
-        🔎 Fetch a single item by ID.
-        :param id: Item (pulse) ID
-        :return: The item dict, or None if not found
+        Fetches a single item by its ID.
         """
-        self.logger.debug(f"[fetch_item_by_ID] - 🕵️ Searching for item by ID '{id}'...")
+        self.logger.debug(f"[fetch_item_by_ID] Searching for item with ID '{item_id}'")
         try:
-            query = '''query ( $ID: ID!)
-                        {
+            query = '''query ($ID: ID!) {
                             complexity { query before after }
                             items (ids: [$ID]) {
                                 id,
@@ -666,7 +802,7 @@ class MondayAPI(metaclass=SingletonMeta):
                                 group {
                                     id
                                     title
-                                }
+                                },
                                 column_values {
                                     id,
                                     text,
@@ -674,836 +810,47 @@ class MondayAPI(metaclass=SingletonMeta):
                                 }
                             }
                         }'''
-            variables = {'ID': id}
-            response = self._make_request(query, variables)
-            items = response['data']['items']
-            if len(items) == 0:
-                self.logger.info(f'[fetch_item_by_ID] - 👀 No item found with ID {id}. Returning None.')
-                return None
-            return items[0]
-        except (TypeError, IndexError, KeyError) as e:
-            self.logger.error(f'[fetch_item_by_ID] - ❌ Error fetching item by ID {id}: {e}')
-            raise
-
-    def fetch_group_ID(self, project_id):
-        """
-        🔎 Fetches the group ID whose title contains the given project_id.
-        :param project_id: The project identifier string
-        :return: Group ID as string or None if no match
-        """
-        self.logger.debug(
-            f"[fetch_group_ID] - 🕵️ Searching for group ID matching project_id='{project_id}' on board {self.PO_BOARD_ID}...")
-        query = f'''
-        query {{
-            complexity {{ query before after }}
-            boards (ids: {self.PO_BOARD_ID}) {{
-                groups {{
-                  title
-                  id
-                }}
-            }}
-        }}
-        '''
-        response = self._make_request(query, {})
-        groups = response['data']['boards'][0]['groups']
-        for group in groups:
-            if group['title'] and project_id in group['title']:
-                self.logger.debug(f"[fetch_group_ID] - ✅ Found group '{group['title']}' with ID '{group['id']}'.")
-                return group['id']
-        self.logger.debug('[fetch_group_ID] - 🕵️ No matching group found.')
-        return None
-
-    def fetch_subitem_by_receipt_and_line(self, receipt_number, line_number):
-        """
-        🔎 Fetch subitem matching receipt_number & line_number from subitem board.
-        Replace 'receipt_number_column_id' and 'line_number_column_id' with your real subitem board columns.
-        """
-        self.logger.debug(
-            f"[fetch_subitem_by_receipt_and_line] - 🔍 Searching subitem by receipt_number='{receipt_number}', line_number='{line_number}'...")
-        receipt_number_column_id = 'numeric__1'
-        line_number_column_id = 'numbers_Mjj5uYts'
-        query = f'''
-        query ($board_id: ID!, $receipt_number: String!, $line_number: String!) {{
-            complexity {{ query before after }}
-            items_page_by_column_values(
-                board_id: $board_id, 
-                columns: [
-                  {{column_id: "{receipt_number_column_id}", column_values: [$receipt_number]}}, 
-                  {{column_id: "{line_number_column_id}", column_values: [$line_number]}}
-                ], 
-                limit: 1
-            ) {{
-                items {{
-                    id
-                    column_values {{
-                        id
-                        text
-                        value
-                    }}
-                }}
-            }}
-        }}
-        '''
-        variables = {'board_id': int(self.SUBITEM_BOARD_ID), 'receipt_number': str(receipt_number),
-                     'line_number': str(line_number)}
-        response = self._make_request(query, variables)
-        items = response.get('data', {}).get('items_page_by_column_values', {}).get('items', [])
-        return items[0] if items else None
-
-    def fetch_item_by_po_and_project(self, project_id, po_number):
-        """
-        🔎 Fetch a main item by matching project_id and po_number columns.
-        :param project_id: The project identifier
-        :param po_number: The Purchase Order number
-        :return: GraphQL response with item(s) in 'data.items_page_by_column_values.items'
-        """
-        self.logger.debug(
-            f"[fetch_item_by_po_and_project] - 🔍 Searching for item with project_id='{project_id}', po_number='{po_number}'...")
-        query = '''
-        query ($board_id: ID!, $po_number: String!, $project_id: String!, $project_id_column: String!, $po_column: String!) {
-            complexity { query before after }
-            items_page_by_column_values (limit: 1, board_id: $board_id, 
-                columns: [
-                   {column_id: $project_id_column, column_values: [$project_id]}, 
-                   {column_id: $po_column, column_values: [$po_number]}
-                ]) {
-                items {
-                  id
-                  name
-                  column_values {
-                    id
-                    value
-                  }
-                }
-            }
-        }'''
-        variables = {
-            'board_id': int(self.PO_BOARD_ID),
-            'po_number': str(po_number),
-            'project_id': str(project_id),
-            'po_column': str(self.po_number_column),
-            'project_id_column': str(self.project_id_column)
-        }
-        return self._make_request(query, variables)
-
-    def fetch_subitem_by_po_receipt_line(self, po_number, receipt_number, line_number):
-        """
-        🔎 Fetch a subitem by matching PO number, receipt number, and line ID columns.
-        """
-        self.logger.debug(
-            f"[fetch_subitem_by_po_receipt_line] - 🔍 Searching subitem (PO='{po_number}', receipt='{receipt_number}', line_number='{line_number}')...")
-        po_number_column_id = self.monday_util.SUBITEM_PO_COLUMN_ID
-        receipt_number_column_id = self.monday_util.SUBITEM_ID_COLUMN_ID
-        line_number_column_id = self.monday_util.SUBITEM_LINE_NUMBER_COLUMN_ID
-        query = f'''
-        query ($board_id: ID!, $po_number: String!, $receipt_number: String!, $line_number: String!) {{
-            complexity {{ query before after }}
-            items_page_by_column_values(
-                board_id: $board_id, 
-                columns: [
-                    {{column_id: "{po_number_column_id}", column_values: [$po_number]}},
-                    {{column_id: "{receipt_number_column_id}", column_values: [$receipt_number]}},
-                    {{column_id: "{line_number_column_id}", column_values: [$line_number]}}
-                ], 
-                limit: 1
-            ) {{
-                items {{
-                    id
-                    column_values {{
-                        id
-                        text
-                        value
-                    }}
-                }}
-            }}
-        }}
-        '''
-        variables = {
-            'board_id': int(self.SUBITEM_BOARD_ID),
-            'po_number': str(po_number),
-            'receipt_number': str(receipt_number),
-            'line_number': str(line_number)
-        }
-        response = self._make_request(query, variables)
-        items = response.get('data', {}).get('items_page_by_column_values', {}).get('items', [])
-        if items:
-            self.logger.debug(f"[fetch_subitem_by_po_receipt_line] - ✅ Found subitem with ID {items[0]['id']}")
-        else:
-            self.logger.debug(
-                '[fetch_subitem_by_po_receipt_line] - 🕵️ No subitem found for the given PO, receipt, and line.')
-        return items[0] if items else None
-
-    def fetch_item_by_name(self, name, board='PO'):
-        """
-        🔎 Fetch a single item by 'name' column on the specified board.
-        :param name: The item's name to search for
-        :param board: 'PO', 'Contacts', or fallback to subitem board
-        :return: The single matching item dict or None if not found
-        """
-        self.logger.debug(f"[fetch_item_by_name] - 🔎 Searching item by name='{name}' on '{board}' board...")
-        query = '''
-        query ($board_id: ID!, $name: String!) {
-            complexity { query before after }
-            items_page_by_column_values (limit: 1, board_id: $board_id, columns: [{column_id: "name", column_values: [$name]}]) {
-                items {
-                  id
-                  name
-                  column_values {
-                    id
-                    value
-                  }
-                }
-            }
-        }'''
-        if board == 'PO':
-            board_id = self.PO_BOARD_ID
-        elif board == 'Contacts':
-            board_id = self.CONTACT_BOARD_ID
-        else:
-            board_id = self.SUBITEM_BOARD_ID
-        variables = {'board_id': int(board_id), 'name': str(name)}
-        response = self._make_request(query, variables)
-        item_list = response['data']['items_page_by_column_values']['items']
-        if len(item_list) != 1:
-            self.logger.debug(
-                '[fetch_item_by_name] - 🕵️ No single matching item found or multiple matches encountered.')
-            return None
-        self.logger.debug(f"[fetch_item_by_name] - ✅ Found item with ID={item_list[0]['id']}.")
-        return item_list
-
-    def _safe_get_text(self, vals_dict, col_id):
-        """
-        🛡️ Safe retrieval of text from column_values dict.
-        Useful if the value doesn't exist or is None.
-        """
-        return vals_dict.get(col_id, {}).get('text', '')
-
-    def get_items_in_project(self, project_id):
-        """
-        🔎 Retrieve all items from the PO_BOARD_ID that match a given project_id column value.
-        Uses cursor-based pagination if needed.
-        :param project_id: The project identifier (string)
-        :return: A list of items with column_values as a dict
-        """
-        self.logger.debug(
-            f"[get_items_in_project] - 📥 Fetching all items in project_id='{project_id}' from board {self.PO_BOARD_ID} ...")
-        query = '''
-        query ($board_id: ID!, $project_id_column: String!, $project_id_val: String!, $limit: Int, $cursor: String) {
-            items_page_by_column_values(
-                board_id: $board_id,
-                columns: [{column_id: $project_id_column, column_values: [$project_id_val]}],
-                limit: $limit,
-                cursor: $cursor
-            ) {
-                cursor
-                items {
-                    id
-                    name
-                    column_values {
-                        id
-                        text
-                        value
-                    }
-                }
-            }
-        }'''
-        variables = {
-            'board_id': self.PO_BOARD_ID,
-            'project_id_column': self.project_id_column,
-            'project_id_val': str(project_id),
-            'limit': 500,
-            'cursor': None
-        }
-        all_items = []
-        try:
-            while True:
-                response = self._make_request(query, variables)
-                data = response.get('data', {}).get('items_page_by_column_values', {})
-                items_data = data.get('items', [])
-                cursor = data.get('cursor')
-                for it in items_data:
-                    cv_dict = {cv['id']: {'text': cv.get('text'), 'value': cv.get('value')} for cv in
-                               it.get('column_values', [])}
-                    all_items.append({'id': it['id'], 'name': it['name'], 'column_values': cv_dict})
-                if not cursor:
-                    self.logger.debug('[get_items_in_project] - ✅ No further cursor. All project items fetched.')
-                    break
-                self.logger.debug('[get_items_in_project] - 🔄 Found next cursor. Fetching additional items...')
-                variables['cursor'] = cursor
-            return all_items
-        except Exception as e:
-            self.logger.exception(f"[get_items_in_project] - ❌ Error fetching items by project_id='{project_id}': {e}")
-            raise
-
-    def get_subitems_for_item(self, item_id):
-        """
-        🔎 Fetch subitems for a given parent item_id in the main board.
-        :param item_id: Main item ID
-        :return: List of subitem dicts: { "id": subitem_id, "name": subitem_name, "column_values": {..} }
-        """
-        self.logger.debug(f'[get_subitems_for_item] - 📥 Fetching subitems for item_id={item_id} ...')
-        query = '''
-        query ($item_id: [ID!]!) {
-            complexity { query before after }
-            items (ids: $item_id) {
-                id
-                name
-                subitems {
-                    id
-                    name
-                    column_values {
-                        id
-                        text
-                    }
-                }
-            }
-        }
-        '''
-        variables = {'item_id': str(item_id)}
-        try:
+            variables = {'ID': item_id}
             response = self._make_request(query, variables)
             items = response.get('data', {}).get('items', [])
             if not items:
-                self.logger.info(
-                    f'[get_subitems_for_item] - 🕵️ No parent item found with ID {item_id}. Returning empty list.')
-                return []
-            parent_item = items[0]
-            subitems = parent_item.get('subitems', [])
-            results = []
-            for si in subitems:
-                cv_dict = {cv['id']: cv['text'] for cv in si.get('column_values', [])}
-                results.append({'id': si['id'], 'name': si['name'], 'column_values': cv_dict})
-            self.logger.debug(f'[get_subitems_for_item] - ✅ Retrieved {len(subitems)} subitems for item {item_id}.')
-            return results
+                self.logger.info(f"[fetch_item_by_ID] No item found with ID {item_id}")
+                return {}
+            return items[0]
         except Exception as e:
-            self.logger.exception(f"[get_subitems_for_item] - ❌ Error fetching subitems for item_id='{item_id}': {e}")
+            self.logger.error(f"[fetch_item_by_ID] Error: {e}")
             raise
 
-    def batch_create_or_update_items(self, batch, project_id, create=True):
+    # endregion
+
+    # region 3.7: Build Subitem Column Values
+    def build_subitem_column_values(self, detail_item: dict) -> dict:
         """
-        Splits items into sub-batches and calls create_items_batch for each.
+        Constructs column values for a detail item subitem using monday_util's formatter.
         """
-        self.logger.info(
-            f"[batch_create_or_update_items] - Processing {len(batch)} items for project_id={project_id}, create={create}...")
-
-        # Try smaller chunks. Even 5 might be too large if you have big text.
-        chunk_size = 5
-        sub_batches = [batch[i:i + chunk_size] for i in range(0, len(batch), chunk_size)]
-        self.logger.info(
-            f"[batch_create_or_update_items] - Splitting into {len(sub_batches)} sub-batches of size={chunk_size}.")
-
-        results = []
-        with ThreadPoolExecutor() as executor:
-            future_map = {}
-            for idx, sbatch in enumerate(sub_batches, start=1):
-                future = executor.submit(self.create_items_batch, sbatch, project_id)
-                future_map[future] = idx
-
-            for future in as_completed(future_map):
-                sbatch_num = future_map[future]
-                try:
-                    sub_result = future.result()
-                    results.extend(sub_result)
-                    self.logger.debug(f"[batch_create_or_update_items] - Sub-batch #{sbatch_num} done.")
-                except Exception as e:
-                    self.logger.exception(f"[batch_create_or_update_items] - Error in sub-batch #{sbatch_num}: {e}")
-                    raise
-
-        return results
-
-    def create_items_batch(self, batch, project_id):
-        """
-        Creates a batch of items on the PO board using the Monday.com GraphQL API.
-        Each item’s column values are formatted via monday_util.po_column_values_formatter,
-        which maps your DB field names to the proper Monday column IDs.
-
-        Args:
-            batch (list): A list of dicts. Each dict is expected to have:
-                - 'db_item': the local record (e.g. with a vendor name)
-                - 'column_values': a dict keyed by your DB field names
-            project_id: A project identifier (for logging purposes).
-
-        Returns:
-            The batch list updated with each item’s new Monday ID (under the key 'monday_item_id').
-        """
-        self.logger.info(f"[create_items_batch] - Creating {len(batch)} items in one request, project_id={project_id}.")
-        mutation_parts = []
-
-        for i, itm in enumerate(batch):
-            item = itm["db_item"]
-            formatted_column_values = monday_util.po_column_values_formatter(
-                project_id=item["project_number"],
-                po_number=item["po_number"],
-                description=item["description"],
-                contact_pulse_id=itm["monday_contact_id"],
-                folder_link=item["folder_link"],
-                producer_id=item["producer"],
-                name=item["vendor_name"],
-            )
-            formatted_value = formatted_column_values.replace('"', '\\"')
-            safe_item_name = itm['db_item'].get('vendor_name') or "Unnamed"
-            safe_item_name = safe_item_name.replace('"', '\\"')
-
-            mutation_parts.append(
-                f'create{i}: create_item('
-                f'board_id: {self.PO_BOARD_ID}, '
-                f'item_name: "{safe_item_name}", '
-                f'column_values: "{formatted_value}"'
-                f') {{ id }}'
-            )
-
-        mutation_body = " ".join(mutation_parts)
-        query = f"mutation {{ {mutation_body} }}"
-        self.logger.debug(f"[create_items_batch] GraphQL:\n{query}")
-
-        response = self._make_request(query)
-
-        for i, itm in enumerate(batch):
-            key = f'create{i}'
-            created_item = response.get('data', {}).get(key)
-            if created_item and 'id' in created_item:
-                itm['monday_item_id'] = created_item['id']
-            else:
-                self.logger.warning(f"[create_items_batch] - No item id in response for create{i}")
-
-        return batch
-
-    def find_or_create_item_in_monday(self, item, column_values):
-        """
-        🔎 Finds an item by project_id & PO. If it exists, returns it.
-        Otherwise, creates a new item.
-        :param item: dict with keys ["project_id", "PO", "name", "group_id", ...]
-        :param column_values: JSON/dict of column values
-        :return: The updated item with "item_pulse_id" assigned
-        """
-        self.logger.info(
-            f"[find_or_create_item_in_monday] - 🔎 Checking if item with project_id='{item['project_id']}' and PO='{item['PO']}' exists...")
-        response = self.fetch_item_by_po_and_project(item['project_id'], item['PO'])
-        response_item = response['data']['items_page_by_column_values']['items']
-        if len(response_item) == 1:
-            self.logger.debug('[find_or_create_item_in_monday] - ✅ Found existing item. Updating if needed...')
-            response_item = response_item[0]
-            item['item_pulse_id'] = response_item['id']
-            if response_item['name'] != item['name'] and item['po_type'] not in ('CC', 'PC'):
-                self.logger.info(
-                    f"[find_or_create_item_in_monday] - 🔄 Updating item name from '{response_item['name']}' to '{item['name']}'...")
-                updated_column_values = self.monday_util.po_column_values_formatter(
-                    name=item['name'],
-                    contact_pulse_id=item['contact_pulse_id']
-                )
-                self.update_item(response_item['id'], updated_column_values)
-                return item
-            return item
-        else:
-            self.logger.info('[find_or_create_item_in_monday] - 🆕 No matching item found. Creating a new item...')
-            response = self.create_item(self.PO_BOARD_ID, item['group_id'], item['name'], column_values)
-            try:
-                item['item_pulse_id'] = response['data']['create_item']['id']
-                self.logger.info(
-                    f"[find_or_create_item_in_monday] - 🎉 Created new item with pulse_id={item['item_pulse_id']}.")
-            except Exception as e:
-                self.logger.error(f'[find_or_create_item_in_monday] - ❌ Response Error: {response}')
-                raise e
-            return item
-
-    def find_or_create_sub_item_in_monday(self, sub_item, parent_item):
-        """
-        🔎 Finds or creates a subitem in Monday corresponding to external data (invoice lines, hours, etc.).
-        :param sub_item: dict with keys like ["line_number", "date", "due date", "po_number", "vendor", etc.]
-        :param parent_item: dict with at least ["item_pulse_id", "status", "name", ...]
-        :return: The updated sub_item with "pulse_id" assigned if created or found
-        """
-        try:
-            self.logger.debug(
-                f"[find_or_create_sub_item_in_monday] - 🔎 Checking subitem with line_number='{sub_item.get('line_number')}' "
-                f"under parent {parent_item.get('item_pulse_id')}..."
-            )
-            status = 'RTP' if parent_item.get('status') == 'RTP' else 'PENDING'
-            incoming_values_json = self.monday_util.subitem_column_values_formatter(
-                date=sub_item.get('date'),
-                due_date=sub_item['due date'],
-                account_number=sub_item.get('account'),
-                description=sub_item.get('description'),
-                rate=sub_item['rate'],
-                OT=sub_item['OT'],
-                fringes=sub_item['fringes'],
-                quantity=sub_item['quantity'],
-                status=status,
-                item_number=sub_item['detail_item_id'],
-                line_number=sub_item['line_number'],
-                PO=sub_item['po_number']
-            )
-            try:
-                incoming_values = json.loads(incoming_values_json)
-            except json.JSONDecodeError as jde:
-                self.logger.error(
-                    f'[find_or_create_sub_item_in_monday] - ❌ JSON decode error for incoming_values: {jde}')
-                return sub_item
-
-            if 'pulse_id' in sub_item and sub_item['pulse_id']:
-                pulse_id = sub_item['pulse_id']
-                self.logger.info(
-                    f'[find_or_create_sub_item_in_monday] - 🔎 Subitem already has pulse_id={pulse_id}. '
-                    f'Checking if it exists on Monday...'
-                )
-                existing_item = self.fetch_item_by_ID(pulse_id)
-                if not existing_item:
-                    self.logger.warning(
-                        f'[find_or_create_sub_item_in_monday] - ⚠️ pulse_id {pulse_id} not found on Monday. '
-                        f'Creating a new subitem.'
-                    )
-                    create_result = self.create_subitem(parent_item['item_pulse_id'],
-                                                        sub_item.get('vendor', parent_item['name']),
-                                                        incoming_values_json)
-                    new_pulse_id = create_result.get('data', {}).get('create_subitem', {}).get('id')
-                    if new_pulse_id:
-                        sub_item['pulse_id'] = new_pulse_id
-                        self.logger.info(
-                            f'[find_or_create_sub_item_in_monday] - ✅ Created new subitem with pulse_id={new_pulse_id}.')
-                    else:
-                        self.logger.exception(
-                            "[find_or_create_sub_item_in_monday] - ❌ Failed to create a new subitem. 'id' not found in the response."
-                        )
-                    return sub_item
-                else:
-                    existing_vals = list_to_dict(existing_item['column_values'])
-                    all_match = True
-                    for (col_id, new_val) in incoming_values.items():
-                        existing_val = existing_vals.get(col_id, {}).get('text', '')
-                        if str(existing_val) != str(new_val):
-                            all_match = False
-                            break
-                    if all_match:
-                        self.logger.info(
-                            f'[find_or_create_sub_item_in_monday] - 🔎 Subitem {pulse_id} is identical to incoming data. '
-                            f'No update needed.'
-                        )
-                        return sub_item
-                    else:
-                        self.logger.info(
-                            f'[find_or_create_sub_item_in_monday] - 💾 Updating subitem {pulse_id} '
-                            f'due to changes in column values.'
-                        )
-                        self.update_item(pulse_id, incoming_values_json, type='subitem')
-                        return sub_item
-            else:
-                self.logger.debug(
-                    '[find_or_create_sub_item_in_monday] - 🕵️ Searching subitem by PO, receipt_number, '
-                    'line_number to avoid duplicates...'
-                )
-                existing_subitem = self.fetch_subitem_by_po_receipt_line(
-                    po_number=sub_item['po_number'],
-                    receipt_number=sub_item['detail_item_id'],
-                    line_number=sub_item['line_number']
-                )
-                if existing_subitem:
-                    sub_item['pulse_id'] = existing_subitem['id']
-                    self.logger.info(
-                        f"[find_or_create_sub_item_in_monday] - ✅ Found existing subitem with ID={existing_subitem['id']}. "
-                        f'Not creating duplicate.'
-                    )
-                    return sub_item
-                else:
-                    self.logger.info(
-                        '[find_or_create_sub_item_in_monday] - 🆕 No matching subitem found. Creating a new subitem.')
-                    create_result = self.create_subitem(parent_item['item_pulse_id'],
-                                                        sub_item.get('vendor', parent_item['name']),
-                                                        incoming_values_json)
-                    new_pulse_id = create_result.get('data', {}).get('create_subitem', {}).get('id')
-                    if new_pulse_id:
-                        sub_item['pulse_id'] = new_pulse_id
-                        self.logger.info(
-                            f'[find_or_create_sub_item_in_monday] - ✅ New subitem created with pulse_id={new_pulse_id}.')
-                    else:
-                        self.logger.exception(
-                            "[find_or_create_sub_item_in_monday] - ❌ Failed to create a new subitem. 'id' not found in the response."
-                        )
-            return sub_item
-        except Exception as e:
-            self.logger.exception(
-                f'[find_or_create_sub_item_in_monday] - 🔥 Exception in find_or_create_sub_item_in_monday: {e}')
-            return sub_item
-
-    def parse_tax_number(self, tax_str: str):
-        """
-        🧾 Removes hyphens (e.g., for SSN '123-45-6789' or EIN '12-3456789') and attempts to parse as int.
-        Returns None if parsing fails or if the string is empty.
-        """
-        if not tax_str:
-            self.logger.debug('[parse_tax_number] - No tax_str provided. Returning None.')
-            return None
-        cleaned = tax_str.replace('-', '')
-        try:
-            parsed = int(cleaned)
-            self.logger.debug(f"[parse_tax_number] - 🧾 Parsed tax number '{tax_str}' -> {parsed}")
-            return parsed
-        except ValueError:
-            self.logger.warning(
-                f"[parse_tax_number] - ⚠️ Could not parse tax number '{tax_str}' as int after removing hyphens.")
-            return None
-
-    def extract_monday_contact_fields(self, contact_item: dict) -> dict:
-        """
-        🗂️ Converts a Monday contact_item (including its column_values) into a structured dict of fields.
-        """
-        self.logger.debug(
-            f"[extract_monday_contact_fields] [item ID={contact_item.get('id')}] "
-            "📦 Extracting contact fields..."
+        formatted = self.monday_util.subitem_column_values_formatter(
+            project_id=detail_item.get('project_number'),
+            po_number=detail_item.get('po_number'),
+            detail_number=detail_item.get('detail_number'),
+            line_number=detail_item.get('line_number'),
+            description=detail_item.get('description'),
+            quantity=detail_item.get('quantity'),
+            rate=detail_item.get('rate'),
+            date=detail_item.get('transaction_date'),
+            due_date=detail_item.get('due_date'),
+            account_number=detail_item.get('account_code'),
+            link=detail_item.get('file_link'),
+            OT=detail_item.get('ot'),
+            fringes=detail_item.get('fringes'),
+            xero_link=detail_item.get('xero_link'),
+            status=detail_item.get('state')
         )
-        column_values = contact_item.get('column_values', [])
-
-        def parse_column_value(cv):
-            raw_text = cv.get('text') or ''
-            raw_value = cv.get('value')
-            if raw_value:
-                try:
-                    data = json.loads(raw_value)
-                    if isinstance(data, dict) and data.get('url'):
-                        return data['url']
-                except (ValueError, TypeError):
-                    pass
-            return raw_text
-
-        parsed_values = {}
-        for cv in column_values:
-            col_id = cv['id']
-            parsed_values[col_id] = parse_column_value(cv)
-
-        return {
-            'pulse_id': contact_item['id'],
-            'phone': parsed_values.get(self.monday_util.CONTACT_PHONE),
-            'email': parsed_values.get(self.monday_util.CONTACT_EMAIL),
-            'address_line_1': parsed_values.get(self.monday_util.CONTACT_ADDRESS_LINE_1),
-            'address_line_2': parsed_values.get(self.monday_util.CONTACT_ADDRESS_LINE_2),
-            'city': parsed_values.get(self.monday_util.CONTACT_ADDRESS_CITY),
-            'zip_code': parsed_values.get(self.monday_util.CONTACT_ADDRESS_ZIP),
-            'region': parsed_values.get(self.monday_util.CONTACT_REGION),
-            'country': parsed_values.get(self.monday_util.CONTACT_ADDRESS_COUNTRY),
-            'tax_type': parsed_values.get(self.monday_util.CONTACT_TAX_TYPE),
-            'tax_number_str': parsed_values.get(self.monday_util.CONTACT_TAX_NUMBER),
-            'payment_details': parsed_values.get(self.monday_util.CONTACT_PAYMENT_DETAILS),
-            'vendor_status': parsed_values.get(self.monday_util.CONTACT_STATUS),
-            'tax_form_link': parsed_values.get(self.monday_util.CONTACT_TAX_FORM_LINK)
-        }
-
-    def create_contact_in_monday(self, name: str) -> dict:
-        """
-        ➕ Create a contact in Monday and immediately fetch its full item data.
-        :param name: Name of the contact
-        :return: The newly created contact item
-        """
-        self.logger.info(f"[create_contact_in_monday] - ➕ Creating new Monday contact with name='{name}'...")
-        create_resp = self.create_contact(name)
-        new_id = create_resp['data']['create_item']['id']
-        self.logger.info(
-            f"[create_contact_in_monday] - ✅ Contact created with pulse_id={new_id}. Fetching the new item's data...")
-        created_item = self.fetch_item_by_ID(new_id)
-        return created_item
-
-    def sync_db_contact_to_monday(self, db_contact):
-        """
-        🔄 Syncs local DB contact fields to an existing Monday contact.
-        :param db_contact: DB contact object with attributes matching your columns
-        """
-        if not db_contact.pulse_id:
-            self.logger.warning(
-                f"[sync_db_contact_to_monday] - ⚠️ DB Contact id={db_contact.id} has no pulse_id. "
-                "Use 'find_or_create_contact_in_monday' first."
-            )
-            return
-        self.logger.info(
-            f'[sync_db_contact_to_monday] - 🔄 Updating Monday contact (pulse_id={db_contact.pulse_id}) with DB fields...'
-        )
-        column_values = {
-            self.monday_util.CONTACT_PHONE: db_contact.phone or '',
-            self.monday_util.CONTACT_EMAIL: db_contact.email or '',
-            self.monday_util.CONTACT_ADDRESS_LINE_1: db_contact.address_line_1 or '',
-            self.monday_util.CONTACT_ADDRESS_LINE_2: db_contact.address_line_2 or '',
-            self.monday_util.CONTACT_CITY: db_contact.city or '',
-            self.monday_util.CONTACT_STATE: db_contact.state or '',
-            self.monday_util.CONTACT_COUNTRY: db_contact.country or '',
-            self.monday_util.CONTACT_REGION: db_contact.region or '',
-            self.monday_util.CONTACT_ZIP: db_contact.zip_code or '',
-            self.monday_util.CONTACT_TAX_TYPE: db_contact.tax_type or '',
-            self.monday_util.CONTACT_TAX_NUMBER: str(db_contact.tax_number) if db_contact.tax_number else '',
-            self.monday_util.CONTACT_TAX_FORM_LINK: db_contact.tax_form_link or '',
-            self.monday_util.CONTACT_PAYMENT_DETAILS: db_contact.payment_details or '',
-            self.monday_util.CONTACT_VENDOR_STATUS: db_contact.vendor_status or ''
-        }
-        try:
-            self.update_item(item_id=db_contact.pulse_id, column_values=column_values, type='contact')
-            self.logger.info(
-                f'[sync_db_contact_to_monday] - ✅ Monday contact (pulse_id={db_contact.pulse_id}) updated successfully.'
-            )
-        except Exception as sync_ex:
-            self.logger.exception(f'[sync_db_contact_to_monday] - ❌ Error syncing DB contact to Monday: {sync_ex}')
-
-    def update_monday_tax_form_link(self, pulse_id, new_link):
-        """
-        ✏️ Update the tax_form_link column for a Monday contact, setting an appropriate link text label.
-        """
-        if not pulse_id:
-            self.logger.warning(
-                '[update_monday_tax_form_link] - ⚠️ No pulse_id provided to update Monday link. Aborting update.')
-            return
-        link_lower = new_link.lower()
-        if 'w9' in link_lower:
-            link_text = 'W-9'
-        elif 'w8-ben-e' in link_lower:
-            link_text = 'W-8BEN-E'
-        elif 'w8-ben' in link_lower:
-            link_text = 'W-8BEN'
-        else:
-            link_text = 'Tax Form'
-        link_value = {'url': new_link, 'text': link_text}
-        column_values = json.dumps({self.monday_util.CONTACT_TAX_FORM_LINK: link_value})
-        try:
-            self.logger.debug(
-                f"[update_monday_tax_form_link] - 🔗 Updating tax_form_link for pulse_id={pulse_id} "
-                f"to '{new_link}' (label='{link_text}')..."
-            )
-            self.update_item(item_id=str(pulse_id), column_values=column_values, type='contact')
-            self.logger.info(
-                f"[update_monday_tax_form_link] - ✅ Updated tax_form_link for contact (pulse_id={pulse_id}) to '{new_link}'."
-            )
-        except Exception as e:
-            self.logger.exception(
-                f"[update_monday_tax_form_link] - ❌ Failed to update tax_form_link for pulse_id={pulse_id} with '{new_link}': {e}",
-                exc_info=True
-            )
-
-    # ------------------------------------------------------------------------
-    # BATCH CREATION / UPDATING FOR SUBITEMS
-    # ------------------------------------------------------------------------
-    def batch_create_or_update_subitems(self, subitems_batch, create=True):
-        """
-        Splits subitems into sub-batches and calls either create_subitems_batch() or update_subitems_batch().
-        Each subitem dict can have its own 'parent_id'; if missing, fallback to parent_item_id param.
-
-        subitems_batch: [
-          {
-            "db_sub_item": <python dict of subitem data>,
-            "column_values": {...some dict...},
-            "parent_id": <int or None>,
-            "monday_item_id": <existing subitem ID if update, else None>
-          },
-          ...
-        ]
-        """
-        verb = "create" if create else "update"
-        self.logger.info(
-            f"Preparing to {verb} {len(subitems_batch)} subitems..."
-        )
-
-        chunk_size = 5  # keep each GraphQL mutation of manageable size
-        sub_batches = [subitems_batch[i:i + chunk_size] for i in range(0, len(subitems_batch), chunk_size)]
-        self.logger.info(
-            f"Splitting subitems into {len(sub_batches)} sub-batches of size={chunk_size}."
-        )
-
-        results = []
-        with ThreadPoolExecutor() as executor:
-            future_map = {}
-            for idx, sbatch in enumerate(sub_batches, start=1):
-                if create:
-                    future = executor.submit(self.create_subitems_batch, sbatch)
-                else:
-                    future = executor.submit(self.update_subitems_batch, sbatch)
-
-                future_map[future] = idx
-
-            for future in as_completed(future_map):
-                sbatch_num = future_map[future]
-                try:
-                    sub_result = future.result()
-                    results.extend(sub_result)
-                    self.logger.debug(f"Sub-batch #{sbatch_num} done.")
-                except Exception as e:
-                    self.logger.exception(f"Error in sub-batch #{sbatch_num}: {e}")
-                    raise
-
-        return results
-
-    def create_subitems_batch(self, sbatch, default_parent_id=None):
-        """
-        Creates multiple subitems in one GraphQL mutation. Each subitem can define its own `parent_id`.
-        """
-        self.logger.info(f"Creating {len(sbatch)} subitems in one request.")
-        mutation_parts = []
-        for i, subdict in enumerate(sbatch):
-            db_sub_item = subdict["db_sub_item"]
-            column_values = subdict["column_values"]
-            parent_pulse_id = subdict.get("parent_id")
-            column_values_json = json.dumps(column_values).replace('"', '\\"')
-
-            if not parent_pulse_id:
-                raise ValueError(f"No parent_item_id provided for subitem: {db_sub_item}")
-
-            subitem_name = db_sub_item.get('name') or db_sub_item.get('vendor') or 'Subitem'
-            subitem_name_safe = subitem_name.replace('"', '\\"')
-
-            mutation_parts.append(
-                f'createSub{i}: create_subitem('
-                f'parent_item_id: {parent_pulse_id}, '
-                f'item_name: "{subitem_name_safe}", '
-                f'column_values: "{column_values_json}"'
-                f') {{ id }}'
-            )
-
-        mutation_body = " ".join(mutation_parts)
-        query = f"mutation {{ {mutation_body} }}"
-        self.logger.debug(f"[create_subitems_batch] GraphQL:\n{query}")
-
-        response = self._make_request(query)
-        for i, subdict in enumerate(sbatch):
-            key = f'createSub{i}'
-            created_item = response.get('data', {}).get(key)
-            if created_item and 'id' in created_item:
-                subdict['monday_item_id'] = created_item['id']
-            else:
-                self.logger.warning(f"No item id in response for createSub{i}")
-
-        return sbatch
-
-    def update_subitems_batch(self, sbatch):
-        """
-        Updates multiple existing subitems in one GraphQL mutation.
-        Expects each dict to have 'monday_item_id' and 'column_values'.
-        """
-        self.logger.info(f"[update_subitems_batch] - Updating {len(sbatch)} subitems in one request.")
-        mutation_parts = []
-
-        for i, subdict in enumerate(sbatch):
-            sub_id = subdict.get("monday_item_id")
-            column_values = subdict["column_values"]
-            if not sub_id:
-                raise ValueError(
-                    "[update_subitems_batch] - 'monday_item_id' is missing in subitem dict. Cannot update.")
-
-            column_values_json = json.dumps(column_values).replace('"', '\\"')
-
-            mutation_parts.append(
-                f'updateSub{i}: change_multiple_column_values('
-                f'board_id: {self.SUBITEM_BOARD_ID}, '
-                f'item_id: "{sub_id}", '
-                f'column_values: "{column_values_json}"'
-                f') {{ id }}'
-            )
-
-        mutation_body = " ".join(mutation_parts)
-        query = f"mutation {{ {mutation_body} }}"
-        self.logger.debug(f"[update_subitems_batch] GraphQL:\n{query}")
-
-        response = self._make_request(query)
-        for i, subdict in enumerate(sbatch):
-            key = f'updateSub{i}'
-            updated_item = response.get('data', {}).get(key)
-            if updated_item and 'id' in updated_item:
-                self.logger.debug(f"[update_subitems_batch] - Subitem {updated_item['id']} updated successfully.")
-            else:
-                self.logger.warning(f"[update_subitems_batch] - No 'id' in response for updateSub{i}")
-
-        return sbatch
+        return json.loads(formatted)
+    # endregion
 
 
+# endregion
+
+# region 4: Instantiate MondayAPI
 monday_api = MondayAPI()
+# endregion

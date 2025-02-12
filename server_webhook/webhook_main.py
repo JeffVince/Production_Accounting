@@ -2,8 +2,6 @@
 import logging
 logger = logging.getLogger("admin_logger")
 
-from server_agent.agent_app import ChatAgent
-agent = ChatAgent(model="gpt-3.5-turbo")
 import requests
 
 try:
@@ -49,8 +47,6 @@ logger.debug("🧩 control_panel_bp registered with default prefix '/'")
 webhook_main_bp.register_blueprint(account_tax_bp)
 logger.debug("🧩 account_tax_bp registered with default prefix '/'")
 
-webhook_main_bp.register_blueprint(agent_bp)
-logger.debug("🧩 agent_bp registered with default prefix '/'")
 
 # Load config
 logger.debug("🔧 Loading configuration from Config()...")

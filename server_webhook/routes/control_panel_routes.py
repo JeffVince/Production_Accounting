@@ -1,5 +1,3 @@
-# control_panel_routes.py
-
 from flask import Blueprint, request, jsonify
 import logging
 
@@ -105,6 +103,27 @@ def handle_sync_route(sync_route):
         except Exception as e:
             logger.exception(f"Error triggering sync_xero_bills: {e}")
             return jsonify({"message": "Failed to sync xero bills."}), 500
+    elif sync_route == 'sync_contacts':
+        try:
+            result = orchestrator.sync_contacts()
+            return jsonify({"message": f"Sync Xero Contacts triggered. Result: {result}"}), 200
+        except Exception as e:
+            logger.exception(f"Error triggering sync_contacts: {e}")
+            return jsonify({"message": "Failed to sync xero contacts."}), 500
+    elif sync_route == 'clear_po_log_data':
+        project_number = 2416
+        if not project_number:
+            logger.warning("No project number provided for clear_po_log_data.")
+            return jsonify({"message": "No project number provided."}), 400
+        try:
+            result = orchestrator.clear_po_log_data(project_number)
+            return jsonify({
+                "message": f"Cleared PO Log Data for project: {project_number}",
+                "result": result
+            }), 200
+        except Exception as e:
+            logger.exception(f"Error clearing PO Log Data for project {project_number}: {e}")
+            return jsonify({"message": "Failed to clear PO Log Data."}), 500
     else:
         logger.warning(f"Invalid sync route attempted: {sync_route}")
         return jsonify({"message": "Invalid sync route."}), 400

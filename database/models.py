@@ -4,7 +4,7 @@ from sqlalchemy import (
     Column, String, DateTime, ForeignKey, Enum, UniqueConstraint, Index,
     Computed, text, Date
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, foreign
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.dialects.mysql import (
     INTEGER as MYSQL_INTEGER, DECIMAL as MYSQL_DECIMAL, BIGINT as MYSQL_BIGINT
@@ -255,6 +255,7 @@ class XeroBill(Base):
     detail_number = Column(MYSQL_INTEGER(unsigned=True), nullable=True)
     transaction_date = Column(Date, nullable=True)  # Matching DATE in MySQL
     due_date = Column(Date, nullable=True)          # Matching DATE in MySQL
+    contact_xero_id = Column(String(255), nullable=True)
     xero_reference_number = Column(
         String(50),
         Computed(
@@ -399,9 +400,8 @@ class DetailItem(Base):
         ),
         nullable=False
     )
-    receipt_id = Column(MYSQL_BIGINT(unsigned=True), nullable=True)
-    invoice_id = Column(MYSQL_BIGINT(unsigned=True), nullable=True)
     pulse_id = Column(MYSQL_BIGINT, nullable=True)
+    xero_id = Column(String(100), nullable=True)
     parent_pulse_id = Column(MYSQL_BIGINT, nullable=True)
     created_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
     updated_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'))
@@ -425,9 +425,8 @@ class DetailItem(Base):
             'ot': self.ot,
             'fringes': self.fringes,
             'sub_total': self.sub_total,
-            'receipt_id': self.receipt_id,
-            'invoice_id': self.invoice_id,
             'pulse_id': self.pulse_id,
+            'xero_id': self.xero_id,
             'parent_pulse_id': self.parent_pulse_id,
             'created_at': self.created_at,
             'updated_at': self.updated_at
@@ -522,6 +521,8 @@ class Invoice(Base):
     term = Column(MYSQL_INTEGER, nullable=True)
     total = Column(MYSQL_DECIMAL(15, 2), nullable=True, server_default='0.00')
     transaction_date = Column(DateTime, nullable=True)
+    status = Column(Enum('PENDING, VERIFIED, REJECTED'), nullable=True)
+
     file_link = Column(String(255), nullable=True)
     created_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
     updated_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'))
@@ -534,6 +535,7 @@ class Invoice(Base):
             'invoice_number': self.invoice_number,
             'term': self.term,
             'total': self.total,
+            'status': self.status,
             'transaction_date': self.transaction_date,
             'file_link': self.file_link,
             'created_at': self.created_at,
@@ -550,6 +552,7 @@ class Receipt(Base):
     line_number = Column(MYSQL_INTEGER(unsigned=True), nullable=True)
     receipt_description = Column(String(255), nullable=True)
     total = Column(MYSQL_DECIMAL(15, 2), nullable=True, server_default='0.00')
+    status = Column(Enum('PENDING, VERIFIED, REJECTED'), nullable=True)
     purchase_date = Column(DateTime, nullable=True)
     dropbox_path = Column(String(255), nullable=True)
     file_link = Column(String(255), nullable=False)
@@ -565,6 +568,7 @@ class Receipt(Base):
             'detail_number': self.detail_number,
             'line_number': self.line_number,
             'receipt_description': self.receipt_description,
+            'status': self.status,
             'total': self.total,
             'purchase_date': self.purchase_date,
             'dropbox_path': self.dropbox_path,
@@ -617,7 +621,7 @@ class SpendMoney(Base):
             'xero_link': self.xero_link,
             'date': self.date,
             'state': self.state,
-            'contact_Id': self.contact_Id,
+            'contact_id': self.contact_id,
             'description': self.description,
             'tax_code': self.tax_code,
             'created_at': self.created_at,
@@ -686,7 +690,7 @@ class TaxForm(Base):
 #endregion
 
 
-#region Tax Form
+#region Dropboxfolder
 
 class Dropboxfolder(Base):
     __tablename__ = 'dropbox_folder'

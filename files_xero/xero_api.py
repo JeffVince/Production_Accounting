@@ -566,21 +566,32 @@ class XeroAPI(metaclass=SingletonMeta):
     # region 5.3 🔹 Bill Retrieval
     def get_bills_by_reference(self, reference_str: str):
         self._refresh_token_if_needed()
-        function_name = 'get_bills_by_reference'
         self.logger.info(f'- Searching for ACCPAY invoices using Reference="{reference_str}"')
+
         try:
-            raw_filter = (
-                'Type=="ACCPAY" AND Reference!=null '
-                f'AND Reference=="{reference_str}"'
-            )
+            raw_filter = f'Type=="ACCPAY" AND InvoiceNumber!=null AND InvoiceNumber.Contains("{reference_str}") AND Status!="DELETED"'
             self.logger.debug(f'Using raw filter => {raw_filter}')
+
             invoices = self._retry_on_unauthorized(self.xero.invoices.filter, raw=raw_filter)
+
             if not invoices:
                 self.logger.info(f'- No results for reference="{reference_str}". Returning [].')
                 return []
-            results = [inv for inv in invoices if inv.get('Status') != 'DELETED']
-            self.logger.debug(f'- Filtered out DELETED. Found {len(results)} invoice(s).')
-            return results
+
+            detailed_invoices = []
+
+            for invoice in invoices:
+                invoice_id = invoice.get("InvoiceID")
+                if not invoice_id:
+                    continue
+
+                full_invoice = self._retry_on_unauthorized(self.xero.invoices.get, invoice_id)
+
+                if full_invoice and full_invoice[0].get("Status") != "DELETED":
+                    detailed_invoices.append(full_invoice[0])  # Ensure only non-deleted invoices are returned
+
+            return detailed_invoices
+
         except XeroException as e:
             self.logger.error(f'❌ XeroException: {e}')
             return []
@@ -830,7 +841,6 @@ class XeroAPI(metaclass=SingletonMeta):
         Returns the response from Xero.
         """
         self._refresh_token_if_needed()
-        breakpoint()
         #format spend_money_records into Xero Payload  for Spend Money
         formatted_records = []
         for spend_money_record in spend_money_records:

@@ -442,16 +442,12 @@ class MondayUtil(metaclass=SingletonMeta):
             folder_link=None,
             status=None,
             producer_id=None,
-            name=None,
     ):
         column_values = {}
 
         # Convert numeric values to strings
         if project_id:
             column_values[self.PO_PROJECT_ID_COLUMN] = str(project_id)
-        if name:
-            # Convert set to list if needed
-            column_values["name"] = list(name) if isinstance(name, set) else name
         if po_number:
             column_values[self.PO_NUMBER_COLUMN] = str(po_number)
         if tax_id:
@@ -514,8 +510,7 @@ class MondayUtil(metaclass=SingletonMeta):
         if quantity is not None:
             try:
                 cleaned_quantity = float(str(quantity).replace(",", "").strip())
-                # Convert to string for the numeric column
-                column_values[self.SUBITEM_QUANTITY_COLUMN_ID] = str(cleaned_quantity)
+                column_values[self.SUBITEM_QUANTITY_COLUMN_ID] = cleaned_quantity
             except ValueError as e:
                 self.logger.error(
                     f"[subitem_column_values_formatter] - Invalid quantity '{quantity}': {e}"
@@ -525,7 +520,7 @@ class MondayUtil(metaclass=SingletonMeta):
         if rate is not None:
             try:
                 cleaned_rate = float(str(rate).replace(",", "").strip())
-                column_values[self.SUBITEM_RATE_COLUMN_ID] = str(cleaned_rate)
+                column_values[self.SUBITEM_RATE_COLUMN_ID] = cleaned_rate
             except ValueError as e:
                 self.logger.error(
                     f"[subitem_column_values_formatter] - Invalid rate '{rate}': {e}"
@@ -535,7 +530,7 @@ class MondayUtil(metaclass=SingletonMeta):
         if OT is not None:
             try:
                 cleaned_OT = float(str(OT).replace(",", "").strip())
-                column_values[self.SUBITEM_OT_COLUMN_ID] = str(cleaned_OT)
+                column_values[self.SUBITEM_OT_COLUMN_ID] = cleaned_OT
             except ValueError as e:
                 self.logger.error(
                     f"[subitem_column_values_formatter] - Invalid OT '{OT}': {e}"
@@ -545,7 +540,7 @@ class MondayUtil(metaclass=SingletonMeta):
         if fringes is not None:
             try:
                 cleaned_fringe = float(str(fringes).replace(",", "").strip())
-                column_values[self.SUBITEM_FRINGE_COLUMN_ID] = str(cleaned_fringe)
+                column_values[self.SUBITEM_FRINGE_COLUMN_ID] = cleaned_fringe
             except ValueError as e:
                 self.logger.error(
                     f"[subitem_column_values_formatter] - Invalid fringes '{fringes}': {e}"
@@ -589,9 +584,7 @@ class MondayUtil(metaclass=SingletonMeta):
             try:
                 cleaned_account_number = re.sub("[^\\d]", "", str(account_number).strip())
                 if cleaned_account_number:
-                    column_values[self.SUBITEM_ACCOUNT_NUMBER_COLUMN_ID] = str(
-                        int(cleaned_account_number)
-                    )
+                    column_values[self.SUBITEM_ACCOUNT_NUMBER_COLUMN_ID] = int(cleaned_account_number)
                 else:
                     raise ValueError(
                         f"Account number '{account_number}' invalid after cleaning."
@@ -605,26 +598,51 @@ class MondayUtil(metaclass=SingletonMeta):
         if link:
             column_values[self.SUBITEM_LINK_COLUMN_ID] = {
                 "url": link,
-                "text": "🧾",
+                "text": "Link",
             }
 
         if xero_link:
             column_values[self.SUBITEM_XERO_LINK_COLUMN_ID] = {
                 "url": xero_link,
-                "text": "📊",
+                "text": "Link",
             }
 
+        # Ensure that po_number, detail_number, line_number, and project_id are stored as numbers
         if po_number is not None:
-            column_values[self.SUBITEM_PO_COLUMN_ID] = po_number
+            try:
+                column_values[self.SUBITEM_PO_COLUMN_ID] = int(str(po_number).strip())
+            except ValueError as e:
+                self.logger.error(
+                    f"[subitem_column_values_formatter] - Invalid po_number '{po_number}': {e}"
+                )
+                column_values[self.SUBITEM_PO_COLUMN_ID] = None
 
         if detail_number is not None:
-            column_values[self.SUBITEM_ID_COLUMN_ID] = detail_number
+            try:
+                column_values[self.SUBITEM_ID_COLUMN_ID] = int(str(detail_number).strip())
+            except ValueError as e:
+                self.logger.error(
+                    f"[subitem_column_values_formatter] - Invalid detail_number '{detail_number}': {e}"
+                )
+                column_values[self.SUBITEM_ID_COLUMN_ID] = None
 
         if line_number is not None:
-            column_values[self.SUBITEM_LINE_NUMBER_COLUMN_ID] = line_number
+            try:
+                column_values[self.SUBITEM_LINE_NUMBER_COLUMN_ID] = int(str(line_number).strip())
+            except ValueError as e:
+                self.logger.error(
+                    f"[subitem_column_values_formatter] - Invalid line_number '{line_number}': {e}"
+                )
+                column_values[self.SUBITEM_LINE_NUMBER_COLUMN_ID] = None
 
         if project_id is not None:
-            column_values[self.SUBITEM_PROJECT_ID_COLUMN_ID] = project_id
+            try:
+                column_values[self.SUBITEM_PROJECT_ID_COLUMN_ID] = int(str(project_id).strip())
+            except ValueError as e:
+                self.logger.error(
+                    f"[subitem_column_values_formatter] - Invalid project_id '{project_id}': {e}"
+                )
+                column_values[self.SUBITEM_PROJECT_ID_COLUMN_ID] = None
 
         for (key, value) in column_values.items():
             if isinstance(value, set):

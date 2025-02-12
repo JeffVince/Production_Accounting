@@ -2,8 +2,32 @@ import logging
 import os
 from datetime import datetime
 
+def clear_log_files():
+    """
+    Opens each log file in write mode to truncate (empty) it.
+    Call this function whenever you need to clear your log files.
+    """
+    basepath = './server_webhook/logs/'
+    log_files = [
+        'admin.log',
+        'budget.log',
+        'dropbox.log',
+        'invoice.log',
+        'monday.log',
+        'po_log.log',
+        'xero.log',
+        'database.log',
+        'web.log'
+    ]
+    for log_file in log_files:
+        file_path = os.path.join(basepath, log_file)
+        # Only clear the file if it exists
+        if os.path.exists(file_path):
+            with open(file_path, 'w'):
+                pass  # Opening in 'w' mode truncates the file
+
 class PaddedFormatter(logging.Formatter):
-    def __init__(self, fmt=None, datefmt=None, max_length=80):
+    def __init__(self, fmt=None, datefmt=None, max_length=200):
         super().__init__(fmt, datefmt)
         self.max_length = max_length
         self.COLUMN_WIDTHS = {
@@ -36,7 +60,7 @@ class PaddedFormatter(logging.Formatter):
 
         # Center-align and pad each field dynamically
         record.asctime  = self.pad_center(self.formatTime(record), self.COLUMN_WIDTHS["time"])
-        record.levelname= self.pad_center(record.levelname,    self.COLUMN_WIDTHS["levelname"])
+        record.levelname = self.pad_center(record.levelname,    self.COLUMN_WIDTHS["levelname"])
         record.filename = self.pad_left(record.filename,       self.COLUMN_WIDTHS["filename"])
         record.funcName = self.pad_left(record.funcName,       self.COLUMN_WIDTHS["funcName"])
 
@@ -54,14 +78,18 @@ class PaddedFormatter(logging.Formatter):
         # We pad in the calling method so everything lines up
         return result
 
-
 def setup_logging():
     """
     Configure all module-specific loggers (admin, budget, dropbox, invoice, etc.)
     EXCEPT for the Flask `web_logger`. We'll do that in `setup_web_logger()`.
     """
+    # Ensure the log directories exist
     os.makedirs('./logs', exist_ok=True)
     basepath = './server_webhook/logs/'
+
+    # Option 1: Clear log files on startup by calling the helper function
+    # Comment out the next line if you prefer to use FileHandler's 'w' mode instead.
+    clear_log_files()
 
     # Prepare our custom formatter
     formatter = PaddedFormatter(
@@ -78,7 +106,9 @@ def setup_logging():
     # --------------------------------------------------------------------------
     admin_logger = logging.getLogger('admin_logger')
     admin_logger.setLevel(logging.DEBUG)
-    file_handler_admin = logging.FileHandler(os.path.join(basepath, 'admin.log'))
+    # Option 2: Instead of clearing the file manually, you could open it in 'w' mode:
+    # file_handler_admin = logging.FileHandler(os.path.join(basepath, 'admin.log'), mode='w')
+    file_handler_admin = logging.FileHandler(os.path.join(basepath, 'admin.log'), mode='a')
     file_handler_admin.setFormatter(formatter)
     admin_logger.addHandler(file_handler_admin)
     admin_logger.addHandler(console_handler)
@@ -89,7 +119,7 @@ def setup_logging():
     # --------------------------------------------------------------------------
     budget_logger = logging.getLogger('budget_logger')
     budget_logger.setLevel(logging.DEBUG)
-    file_handler_budget = logging.FileHandler(os.path.join(basepath, 'budget.log'))
+    file_handler_budget = logging.FileHandler(os.path.join(basepath, 'budget.log'), mode='a')
     file_handler_budget.setFormatter(formatter)
     budget_logger.addHandler(file_handler_budget)
     budget_logger.addHandler(console_handler)
@@ -100,7 +130,7 @@ def setup_logging():
     # --------------------------------------------------------------------------
     dropbox_logger = logging.getLogger('dropbox')
     dropbox_logger.setLevel(logging.DEBUG)
-    file_handler_dropbox = logging.FileHandler(os.path.join(basepath, 'dropbox.log'))
+    file_handler_dropbox = logging.FileHandler(os.path.join(basepath, 'dropbox.log'), mode='a')
     file_handler_dropbox.setFormatter(formatter)
     dropbox_logger.addHandler(file_handler_dropbox)
     dropbox_logger.addHandler(console_handler)
@@ -111,7 +141,7 @@ def setup_logging():
     # --------------------------------------------------------------------------
     invoice_logger = logging.getLogger('invoice_logger')
     invoice_logger.setLevel(logging.DEBUG)
-    file_handler_invoice = logging.FileHandler(os.path.join(basepath, 'invoice.log'))
+    file_handler_invoice = logging.FileHandler(os.path.join(basepath, 'invoice.log'), mode='a')
     file_handler_invoice.setFormatter(formatter)
     invoice_logger.addHandler(file_handler_invoice)
     invoice_logger.addHandler(console_handler)
@@ -122,7 +152,7 @@ def setup_logging():
     # --------------------------------------------------------------------------
     monday_logger = logging.getLogger('monday_logger')
     monday_logger.setLevel(logging.DEBUG)
-    file_handler_monday = logging.FileHandler(os.path.join(basepath, 'monday.log'))
+    file_handler_monday = logging.FileHandler(os.path.join(basepath, 'monday.log'), mode='a')
     file_handler_monday.setFormatter(formatter)
     monday_logger.addHandler(file_handler_monday)
     monday_logger.addHandler(console_handler)
@@ -133,7 +163,7 @@ def setup_logging():
     # --------------------------------------------------------------------------
     po_log_logger = logging.getLogger('po_log_logger')
     po_log_logger.setLevel(logging.DEBUG)
-    file_handler_po = logging.FileHandler(os.path.join(basepath, 'po_log.log'))
+    file_handler_po = logging.FileHandler(os.path.join(basepath, 'po_log.log'), mode='a')
     file_handler_po.setFormatter(formatter)
     po_log_logger.addHandler(file_handler_po)
     po_log_logger.addHandler(console_handler)
@@ -144,7 +174,7 @@ def setup_logging():
     # --------------------------------------------------------------------------
     xero_logger = logging.getLogger('xero_logger')
     xero_logger.setLevel(logging.DEBUG)
-    file_handler_xero = logging.FileHandler(os.path.join(basepath, 'xero.log'))
+    file_handler_xero = logging.FileHandler(os.path.join(basepath, 'xero.log'), mode='a')
     file_handler_xero.setFormatter(formatter)
     xero_logger.addHandler(file_handler_xero)
     xero_logger.addHandler(console_handler)
@@ -155,7 +185,7 @@ def setup_logging():
     # --------------------------------------------------------------------------
     db_logger = logging.getLogger('database_logger')
     db_logger.setLevel(logging.DEBUG)
-    file_handler_db = logging.FileHandler(os.path.join(basepath, 'database.log'))
+    file_handler_db = logging.FileHandler(os.path.join(basepath, 'database.log'), mode='a')
     file_handler_db.setFormatter(formatter)
     db_logger.addHandler(file_handler_db)
     db_logger.addHandler(console_handler)
@@ -171,7 +201,6 @@ def setup_logging():
     # Return console_handler (or any other handler) for potential reuse
     return console_handler, formatter
 
-
 def setup_web_logger(flask_app, console_handler, formatter):
     """
     Set up a 'web_logger' dedicated to Flask logs.
@@ -182,7 +211,7 @@ def setup_web_logger(flask_app, console_handler, formatter):
     web_logger.setLevel(logging.DEBUG)
 
     # Create a file handler specifically for web logs
-    file_handler_web = logging.FileHandler(os.path.join(basepath, 'web.log'))
+    file_handler_web = logging.FileHandler(os.path.join(basepath, 'web.log'), mode='a')
     file_handler_web.setFormatter(formatter)
 
     web_logger.addHandler(file_handler_web)
@@ -194,3 +223,4 @@ def setup_web_logger(flask_app, console_handler, formatter):
     flask_app.logger.addHandler(file_handler_web)
     flask_app.logger.addHandler(console_handler)
     flask_app.logger.setLevel(logging.DEBUG)
+

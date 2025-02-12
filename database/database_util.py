@@ -896,6 +896,22 @@ class DatabaseOperations:
     def update_xero_bill_line_item(self, xero_bill_line_item_id, session: Session = None, **kwargs):
         return self._update_record(XeroBillLineItem, xero_bill_line_item_id, session=session, **kwargs)
 
+    def bulk_update_xero_bill_line_items(self, items: List[dict], session: Session = None) -> List[Dict[str, Any]]:
+        """
+        Bulk update XeroBillLineItem records.
+        Each item dict must include the 'id' field along with the fields to update.
+        """
+        updated_objects = []
+        for item in items:
+            record = session.query(XeroBillLineItem).get(item['id'])
+            if record:
+                for key, value in item.items():
+                    if key != 'id':
+                        setattr(record, key, value)
+                updated_objects.append(record)
+        session.flush()
+        return [self._serialize_record(obj) for obj in updated_objects]
+
     def delete_xero_bill_line_item(self, xero_bill_line_item_id, session: Session = None, **kwargs) -> bool:
         unique_lookup = {}
         if 'parent_id' in kwargs and 'detail_number' in kwargs and 'line_number' in kwargs:
@@ -997,6 +1013,16 @@ class DatabaseOperations:
         else:
             match = matches
         return self.update_xero_bill_line_item(match['id'], session=session, **kwargs)
+
+    def batch_search_xero_bill_line_items_by_xero_bill_ids(self, xero_bill_ids: List[int], session: Session = None) -> List[Dict[str, Any]]:
+        """
+        Batch search for XeroBillLineItem records by a list of XeroBill IDs.
+        """
+        if not xero_bill_ids:
+            return []
+        query = session.query(XeroBillLineItem).filter(XeroBillLineItem.parent_xero_id.in_(xero_bill_ids))
+        records = query.all()
+        return [self._serialize_record(r) for r in records]
     # endregion
 
     # region 🧾 INVOICE
@@ -1011,6 +1037,22 @@ class DatabaseOperations:
 
     def update_invoice(self, invoice_id, session: Session = None, **kwargs):
         return self._update_record(Invoice, invoice_id, session=session, **kwargs)
+
+    def bulk_update_invoices(self, items: List[dict], session: Session = None) -> List[Dict[str, Any]]:
+        """
+        Bulk update Invoice records.
+        Each item dict must contain an 'id' field along with the fields to update.
+        """
+        updated_objects = []
+        for item in items:
+            record = session.query(Invoice).get(item['id'])
+            if record:
+                for key, value in item.items():
+                    if key != 'id':
+                        setattr(record, key, value)
+                updated_objects.append(record)
+        session.flush()
+        return [self._serialize_record(obj) for obj in updated_objects]
 
     def delete_invoice(self, invoice_id, session: Session = None, **kwargs) -> bool:
         unique_lookup = {}
@@ -1062,6 +1104,25 @@ class DatabaseOperations:
 
     def update_receipt_by_id(self, receipt_id, session: Session = None, **kwargs):
         return self._update_record(Receipt, receipt_id, session=session, **kwargs)
+
+    def bulk_update_receipts(self, items: List[dict], session: Session = None) -> List[Dict[str, Any]]:
+        """
+        Bulk update Receipt records.
+        Each item dict must contain an 'id' field along with the fields to update.
+        """
+        updated_objects = []
+        for item in items:
+            # Retrieve the existing Receipt record by its id.
+            record = session.query(Receipt).get(item['id'])
+            if record:
+                # Update every field (except 'id') with the new value.
+                for key, value in item.items():
+                    if key != 'id':
+                        setattr(record, key, value)
+                updated_objects.append(record)
+        session.flush()
+        # Serialize and return the updated records.
+        return [self._serialize_record(obj) for obj in updated_objects]
 
     def delete_receipt_by_id(self, receipt_id, session: Session = None, **kwargs) -> bool:
         return self._delete_record(Receipt, receipt_id, unique_lookup=None, session=session)
@@ -1172,8 +1233,52 @@ class DatabaseOperations:
                 records = [rec for rec in records if rec.get('state') != 'DELETED']
         return records
 
+    def batch_search_spend_money_by_keys(self, keys: List[tuple], deleted: bool = False, session: Session = None) -> List[Dict[str, Any]]:
+        """
+        Batch search for SpendMoney records.
+        Each key is a tuple: (project_number, po_number, detail_number).
+        Filters out records marked as DELETED if deleted=False.
+        """
+        from sqlalchemy import or_, and_
+        if not keys:
+            return []
+        conditions = []
+        for key in keys:
+            conditions.append(
+                and_(
+                    SpendMoney.project_number == key[0],
+                    SpendMoney.po_number == key[1],
+                    SpendMoney.detail_number == key[2]
+                )
+            )
+        query = session.query(SpendMoney).filter(or_(*conditions))
+        records = query.all()
+        result = []
+        for rec in records:
+            rec_dict = self._serialize_record(rec)
+            if not deleted and rec_dict.get("state") == "DELETED":
+                continue
+            result.append(rec_dict)
+        return result
+
     def update_spend_money(self, spend_money_id, session: Session = None, **kwargs):
         return self._update_record(SpendMoney, spend_money_id, session=session, **kwargs)
+
+    def bulk_update_spend_money(self, items: List[dict], session: Session = None) -> List[Dict[str, Any]]:
+        """
+        Bulk update SpendMoney records.
+        Each item dict must include an 'id' field along with the fields to update.
+        """
+        updated_objects = []
+        for item in items:
+            record = session.query(SpendMoney).get(item['id'])
+            if record:
+                for key, value in item.items():
+                    if key != 'id':
+                        setattr(record, key, value)
+                updated_objects.append(record)
+        session.flush()
+        return [self._serialize_record(obj) for obj in updated_objects]
 
     def delete_spend_money(self, spend_money_id, session: Session = None, **kwargs) -> bool:
         return self._delete_record(SpendMoney, spend_money_id, unique_lookup=None, session=session)
@@ -1313,8 +1418,54 @@ class DatabaseOperations:
     def search_xero_bills(self, column_names, values, session: Session = None):
         return self._search_records(XeroBill, column_names, values, session=session)
 
+    def batch_search_xero_bills_by_keys(self, keys: List[tuple], session: Session = None) -> List[Dict[str, Any]]:
+        """
+        Batch search for XeroBill records.
+        Each key is a tuple: (project_number, po_number, detail_number).
+        """
+        from sqlalchemy import or_, and_
+        if not keys:
+            return []
+        conditions = []
+        for key in keys:
+            conditions.append(
+                and_(
+                    XeroBill.project_number == key[0],
+                    XeroBill.po_number == key[1],
+                    XeroBill.detail_number == key[2]
+                )
+            )
+        query = session.query(XeroBill).filter(or_(*conditions))
+        records = query.all()
+        return [self._serialize_record(r) for r in records]
+
     def update_xero_bill(self, xero_bill_id, session: Session = None, **kwargs):
         return self._update_record(XeroBill, xero_bill_id, session=session, **kwargs)
+
+    def bulk_create_xero_bills(self, items: List[dict], session: Session = None) -> List[Dict[str, Any]]:
+        """
+        Bulk create XeroBill records.
+        """
+        new_objects = [XeroBill(**item) for item in items]
+        session.add_all(new_objects)
+        session.flush()
+        return [self._serialize_record(obj) for obj in new_objects]
+
+    def bulk_update_xero_bills(self, items: List[dict], session: Session = None) -> List[Dict[str, Any]]:
+        """
+        Bulk update XeroBill records.
+        Each item dict must contain an 'id' field along with the fields to update.
+        """
+        updated_objects = []
+        for item in items:
+            record = session.query(XeroBill).get(item['id'])
+            if record:
+                for key, value in item.items():
+                    if key != 'id':
+                        setattr(record, key, value)
+                updated_objects.append(record)
+        session.flush()
+        return [self._serialize_record(obj) for obj in updated_objects]
 
     def delete_xero_bill(self, xero_bill_id, session: Session = None, **kwargs) -> bool:
         return self._delete_record(XeroBill, xero_bill_id, unique_lookup=None, session=session)
@@ -1690,7 +1841,8 @@ class DatabaseOperations:
         """
         updated_objects = []
         for item in items:
-            record = session.query(DetailItem).get(item['id'])
+
+            record = session.query(DetailItem).get(item["id"])
             if record:
                 for key, value in item.items():
                     if key != 'id':

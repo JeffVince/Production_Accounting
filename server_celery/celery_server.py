@@ -14,11 +14,13 @@ from celery import Celery, Task
 from database.db_util import initialize_database
 from utilities.config import Config
 from dotenv import load_dotenv
+from server_celery.logging_setup import clear_log_files
 
 load_dotenv("../.env")
 
 # 2. Get your custom logger
 logger = logging.getLogger('admin_logger')
+clear_log_files()
 
 # 3. Create the Celery app instance
 celery_app = Celery(

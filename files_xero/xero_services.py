@@ -1,7 +1,9 @@
 import datetime
 import logging
 import re
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
+
+from sqlalchemy.exc import IntegrityError
 
 from database.database_util import DatabaseOperations
 from files_xero.xero_api import xero_api
@@ -30,15 +32,13 @@ class XeroServices(metaclass=SingletonMeta):
     # ─────────────────────────────────────────────────────────────
     #                SPEND MONEY METHODS
     # ─────────────────────────────────────────────────────────────
-
     def handle_spend_money_create_bulk(self, spend_money_items: list, session):
         # Retrieve spend money records for the provided IDs.
-        breakpoint()
         spend_money_ids = [item.get('id') for item in spend_money_items]
         spend_money_records = self.db_ops.search_spend_money(["id"], [spend_money_ids], session=session)
         if not spend_money_records:
             self.logger.warning("No SpendMoney records found for the provided IDs.")
-            return
+            return []
 
         # Separate records into creation vs. update groups.
         records_to_create = []
@@ -59,12 +59,12 @@ class XeroServices(metaclass=SingletonMeta):
             else:
                 records_to_create.append(record)
 
+        updated_spend_money = []
+
         # Process bulk creation for new spend money records.
-        # if records_to_create:
-        #     #format records to creat into Spend Money format for Xero Api
-        #     records_to_create = self.xero_api.format_spend_money_bulk(records_to_create)
-
-
+        if records_to_create:
+            # Optionally format records to create into Spend Money format for Xero API
+            # records_to_create = self.xero_api.format_spend_money_bulk(records_to_create)
             self.logger.info(f"Attempting bulk creation for {len(records_to_create)} new SpendMoney records in Xero.")
             bulk_create_response = self.xero_api.create_spend_money_bulk(records_to_create)
             if not bulk_create_response:
@@ -82,6 +82,11 @@ class XeroServices(metaclass=SingletonMeta):
                         self.logger.info(
                             f"Successfully created SpendMoney record {spend_money_id} in Xero => xero_spend_money_id={new_xero_spend_money_id}"
                         )
+                        updated_spend_money.append({
+                            "id": spend_money_id,
+                            "xero_spend_money_id": new_xero_spend_money_id,
+                            "xero_link": f"https://go.xero.com/Bank/ViewTransaction.aspx?bankTransactionID={new_xero_spend_money_id}"
+                        })
                     else:
                         self.logger.warning(
                             f"Failed to create SpendMoney record {spend_money_id} in Xero. Response: {response}"
@@ -109,12 +114,19 @@ class XeroServices(metaclass=SingletonMeta):
                         self.logger.info(
                             f"Successfully updated SpendMoney record {spend_money_id} in Xero => xero_spend_money_id={updated_xero_spend_money_id}"
                         )
+                        updated_spend_money.append({
+                            "id": spend_money_id,
+                            "xero_spend_money_id": updated_xero_spend_money_id,
+                            "xero_link": f"https://go.xero.com/Bank/ViewTransaction.aspx?bankTransactionID={updated_xero_spend_money_id}"
+                        })
                     else:
                         self.logger.warning(
                             f"Failed to update SpendMoney record {spend_money_id} in Xero. Response: {response}"
                         )
         else:
             self.logger.info("No existing SpendMoney records require an update in Xero.")
+
+        return updated_spend_money
 
     def handle_spend_money_create(self, spend_money_id: int):
         self.logger.info(f'handle_spend_money_create => spend_money_id={spend_money_id}')
@@ -176,7 +188,7 @@ class XeroServices(metaclass=SingletonMeta):
     # ─────────────────────────────────────────────────────────────
     #                XERO BILLS (CREATE/UPDATE/DELETE)
     # ─────────────────────────────────────────────────────────────
-    def create_xero_bills_in_xero_bulk(self, new_bills: list, session):
+    def handle_xero_bill_create_bulk(self, new_bills: list, session):
         self.logger.info(f"Pushing {len(new_bills)} bills to Xero.")
         payloads = []
         for bill in new_bills:
@@ -263,8 +275,9 @@ class XeroServices(metaclass=SingletonMeta):
         self.logger.debug(f"Bulk create invoice response: {result}")
         if not result:
             self.logger.error("Bulk invoice creation in Xero failed.")
-            return
+            return []
 
+        updated_bills = []
         # Update local DB with new Xero IDs
         for bill, inv in zip(new_bills, result):
             try:
@@ -272,8 +285,15 @@ class XeroServices(metaclass=SingletonMeta):
                 link = f"https://go.xero.com/AccountsPayable/View.aspx?invoiceId={new_xero_id}"
                 self.db_ops.update_xero_bill(bill["id"], xero_id=new_xero_id, xero_link=link, session=session)
                 self.logger.info(f"Bill ID {bill['id']}: Created new Xero invoice => ID={new_xero_id}")
+                updated_bills.append({
+                    "id": bill["id"],
+                    "xero_id": new_xero_id,
+                    "xero_link": link
+                })
             except Exception as e:
                 self.logger.error(f"Bill ID {bill['id']}: Error parsing invoice response: {e}")
+        return updated_bills
+
     def create_xero_bill_in_xero(self, xero_bill: dict):
         bill_id = xero_bill["id"]
         self.logger.info(f'[create_xero_bill_in_xero] => BillID={bill_id}')
@@ -362,26 +382,7 @@ class XeroServices(metaclass=SingletonMeta):
                 return
             detail_items = self.db_ops.search_detail_item_by_keys(project_number, po_number, detail_number)
             self.logger.debug(f'Found detail_items => {detail_items}')
-            if isinstance(detail_items, dict):
-                detail_items = [detail_items]
-            if detail_items:
-                for di in detail_items:
-                    if not di.get('parent_xero_id'):
-                        xero_bill_line_items = self.db_ops.search_xero_bill_line_items(
-                            ['description', 'parent_id', 'xero_bill_line_id'],
-                            [di['description'], bill_id, None]
-                        )
-                        if xero_bill_line_items:
-                            if isinstance(xero_bill_line_items, list):
-                                xero_bill_line_item = xero_bill_line_items[0]
-                            else:
-                                xero_bill_line_item = xero_bill_line_items
-                            xero_line_id = xero_bill_line_item.get('xero_bill_line_id')
-                            if xero_line_id:
-                                self.logger.info(f'Updating DetailItem={di["id"]} => parent_xero_id={xero_line_id}')
-                                self.db_ops.update_detail_item(di['id'], parent_xero_id=xero_line_id)
-                        else:
-                            self.logger.warning(f'No XeroBillLineItem found matching detail_item={di["id"]}')
+
             return
         changes = {}
         self.logger.debug(f'Potential changes => {changes}')
@@ -417,6 +418,164 @@ class XeroServices(metaclass=SingletonMeta):
             self.logger.info("Invoice set to DELETED in Xero.")
         else:
             self.logger.warning("Could not set to DELETED.")
+
+    def load_xero_bills(self, project_number: int, po_number: int = None):
+        """
+        Loads Xero bills (ACCPAY invoices) and their line items for a given project_number
+        and (optionally) a po_number into the local database.
+
+        Assumes that each bill's 'InvoiceNumber' is formatted as "projectNumber_poNumber_detailNumber".
+        Uses the local database operations (self.db_ops) to search, create, or update records.
+        """
+        self.logger.info(f"load_xero_bills => project_number={project_number}, po_number={po_number}")
+        self.logger.info("Retrieving Xero bills from Xero...")
+
+        xero_bills = self.xero_api.get_bills_by_reference(project_number)
+        if not xero_bills:
+            self.logger.info("No Xero bills retrieved.")
+            return []
+
+        for bill in xero_bills:
+            reference = bill.get("InvoiceNumber", "")
+            parts = reference.split("_")
+            if len(parts) == 2:
+                parts.append("1")
+            local_project_number = None
+            local_po_number = None
+            detail_number = None
+            if len(parts) >= 3:
+                try:
+                    local_project_number = int(parts[0])
+                    local_po_number = int(parts[1])
+                    detail_number = int(parts[2])
+                except ValueError:
+                    self.logger.warning(f"Invalid detail_number in reference: {reference}")
+
+            xero_invoice_id = bill.get("InvoiceID")
+            xero_link = (f"https://go.xero.com/AccountsPayable/View.aspx?invoiceId={xero_invoice_id}"
+                         if xero_invoice_id else None)
+
+            # Extract additional fields from the Xero bill
+            bill_date = bill.get("Date") or bill.get("transaction_date")
+            bill_due_date = bill.get("DueDate") or bill.get("due_date")
+            contact_data = bill.get("Contact", {})
+            xero_contact_id = contact_data.get("ContactID")
+            bill_status = bill.get("Status", "DRAFT")
+            if bill.get("IsReconciled") or \
+                    (bill.get("Status") == "PAID" and bill.get("AmountDue", 0) == 0) or \
+                    bill.get("FullyPaidOnDate"):
+                bill_status = "RECONCILED"
+
+            # Upsert the Xero bill record in the local database.
+            local_bill = self.db_ops.search_xero_bill_by_keys(local_project_number, local_po_number, detail_number)
+            if local_bill:
+                if isinstance(local_bill, list):
+                    local_bill = local_bill[0]
+                local_bill_id = local_bill['id']
+                self.db_ops.update_xero_bill(
+                    local_bill_id,
+                    xero_id=xero_invoice_id,
+                    xero_link=xero_link,
+                    transaction_date=bill_date,
+                    due_date=bill_due_date,
+                    contact_xero_id=xero_contact_id,
+                    state=bill_status
+                )
+                self.logger.info(f"Updated local bill ID {local_bill_id} with Xero invoice {xero_invoice_id}")
+            else:
+                local_bill = self.db_ops.create_xero_bill_by_keys(
+                    local_project_number,
+                    local_po_number,
+                    detail_number,
+                    xero_id=xero_invoice_id,
+                    xero_link=xero_link,
+                    transaction_date=bill_date,
+                    due_date=bill_due_date,
+                    contact_xero_id=xero_contact_id,
+                    state=bill_status
+                )
+                local_bill_id = local_bill['id']
+                self.logger.info(f"Created new local bill for Reference {reference} with ID {local_bill_id}")
+
+            # Process each line item in the bill.
+            line_items = bill.get("LineItems", [])
+            for idx, li in enumerate(line_items, start=1):
+                # Extract fields from the Xero line item.
+                line_item_id = li.get("LineItemID", idx)
+                description = li.get("Description", "")
+                quantity = li.get("Quantity", 1)
+                unit_amount = Decimal(li.get("UnitAmount", 0)).quantize(Decimal("0.00"), rounding=ROUND_HALF_UP)
+                account_code = li.get("AccountCode", "")
+
+                # Attempt to find a matching detail item using project, PO, detail number, unit amount, and description.
+                matching_detail_item = self.db_ops.search_detail_items(
+                    ["project_number", "po_number", "detail_number", "sub_total"],
+                    [local_project_number, local_po_number, detail_number, unit_amount]
+                )
+                if matching_detail_item:
+                    if isinstance(matching_detail_item, list):
+                        matching_detail_item = matching_detail_item[0]
+                    # Update the detail item with the Xero line item ID and parent Xero bill ID.
+                    self.db_ops.update_detail_item(
+                        matching_detail_item['id'],
+                        xero_id=line_item_id,
+                    )
+                    self.logger.info(
+                        f"Updated detail item ID {matching_detail_item['id']} with xero_id {line_item_id} "
+                    )
+                else:
+                    self.logger.warning(
+                        f"No matching detail item found for project {local_project_number}, PO {local_po_number}, "
+                        f"detail {detail_number}, unit_amount {unit_amount}"
+                    )
+                    continue
+
+                breakpoint()
+                line_number = matching_detail_item["line_number"]
+
+                # Process the corresponding Xero bill line item.
+                local_li = self.db_ops.search_xero_bill_line_item_by_keys(
+                    local_project_number,
+                    local_po_number,
+                    detail_number,
+                    line_number
+                )
+                if local_li:
+                    if isinstance(local_li, list):
+                        local_li = local_li[0]
+                    self.db_ops.update_xero_bill_line_item(
+                        local_li['id'],
+                        description=description,
+                        quantity=quantity,
+                        unit_amount=unit_amount,
+                        account_code=account_code,
+                        xero_bill_line_id=line_item_id,
+                        parent_xero_id=xero_invoice_id
+                    )
+                    self.logger.info(
+                        f"Updated local bill line item ID {local_li['id']} with xero_bill_line_id {line_item_id} "
+                        f"and parent_xero_id {xero_invoice_id} for bill Reference {reference}"
+                    )
+                else:
+                    self.db_ops.create_xero_bill_line_item_by_keys(
+                        parent_id=local_bill_id,
+                        project_number=local_project_number,
+                        po_number=local_po_number,
+                        detail_number=detail_number,
+                        line_number=line_number,
+                        description=description,
+                        quantity=quantity,
+                        unit_amount=unit_amount,
+                        account_code=account_code,
+                        xero_bill_line_id=line_item_id,
+                        parent_xero_id=xero_invoice_id
+                    )
+                    self.logger.info(
+                        f"Created new line item for bill Reference {reference} with xero_bill_line_id {line_item_id} "
+                        f"and parent_xero_id {xero_invoice_id}"
+                    )
+
+        return "Success"
 
     # ─────────────────────────────────────────────────────────────
     #                  SPEND MONEY LOADING
@@ -485,8 +644,6 @@ class XeroServices(metaclass=SingletonMeta):
             else:
                 contact_id = contact_record["id"]
 
-
-
             spend_kwargs = {
                 "project_number": project_number,
                 "po_number": po_number,
@@ -530,8 +687,13 @@ class XeroServices(metaclass=SingletonMeta):
     # ─────────────────────────────────────────────────────────────
     def populate_xero_contacts(self):
         self.logger.info('populate_xero_contacts => retrieving local DB and Xero contacts...')
+        # Retrieve all contacts from the local DB.
         db_contacts = self.db_ops.search_contacts()
         self.logger.info(f'Found {len(db_contacts)} contacts locally.')
+
+        # Build a set of local contact names (in lower-case) for easy lookup.
+        db_contact_names = {contact.get('name', '').strip().lower() for contact in db_contacts if contact.get('name')}
+
         self.logger.info('Retrieving all contacts from Xero...')
         try:
             all_xero_contacts = self.xero_api.get_all_contacts()
@@ -539,19 +701,94 @@ class XeroServices(metaclass=SingletonMeta):
         except Exception as xe:
             self.logger.error(f'Failed to retrieve contacts from Xero => {xe}')
             return
+
+        # Build a dictionary of Xero contacts mapping lower-case name to the contact object.
         xero_contacts_dict = {
             c['Name'].strip().lower(): c for c in all_xero_contacts if c.get('Name')
         }
+
+        # Prepare a list to accumulate local contacts that need to be created in Xero.
+        contacts_to_create = []
+
+        # Process each local DB contact.
         for db_contact in db_contacts:
-            contact_name = db_contact.get('name', '')
+            contact_name = db_contact.get('name', '').strip()
             if not contact_name:
                 continue
-            xero_match = xero_contacts_dict.get(contact_name.strip().lower())
-            if xero_match:
-                xero_id = xero_match['ContactID']
-                self.db_ops.update_contact(db_contact['id'], xero_id=xero_id)
-                self.logger.info(f"Linked local contact '{contact_name}' => XeroID={xero_id}")
+            lower_name = contact_name.lower()
 
+            if lower_name in xero_contacts_dict:
+                # Match found in Xero: update the local record with the Xero_ID.
+                xero_contact = xero_contacts_dict[lower_name]
+                xero_id = xero_contact['ContactID']
+                if db_contact.get('xero_id') != xero_id:
+                    try:
+                        self.db_ops.update_contact(db_contact['id'], xero_id=xero_id)
+                        self.logger.info(f"Linked local contact '{contact_name}' => XeroID={xero_id}")
+                    except IntegrityError as ie:
+                        self.logger.warning(
+                            f"IntegrityError while updating contact '{contact_name}' with XeroID {xero_id}: {ie}. Skipping update.")
+            else:
+                # No match found in Xero: stage this contact for bulk creation.
+                self.logger.info(f"Local contact '{contact_name}' not found in Xero. Staging for bulk creation...")
+                contacts_to_create.append(db_contact)
+
+        # Bulk create new contacts in chunks.
+        if contacts_to_create:
+            chunk_size = 50  # Adjust chunk size as needed.
+            self.logger.info(f"Bulk creating {len(contacts_to_create)} contacts in chunks of {chunk_size}...")
+            for i in range(0, len(contacts_to_create), chunk_size):
+                chunk = contacts_to_create[i:i + chunk_size]
+                # Convert each local DB contact to a Xero-friendly payload.
+                payloads = [self._convert_contact_to_xero_schema(contact) for contact in chunk]
+                try:
+                    # Bulk create contacts via the Xero API.
+                    api_result = self.xero_api._retry_on_unauthorized(
+                        self.xero_api.xero.contacts.put,
+                        payloads
+                    )
+                    if api_result:
+                        # Iterate over the chunk and corresponding API result.
+                        for db_contact, created_contact in zip(chunk, api_result):
+                            new_xero_id = created_contact.get('ContactID')
+                            if new_xero_id:
+                                try:
+                                    self.db_ops.update_contact(db_contact['id'], xero_id=new_xero_id)
+                                    self.logger.info(
+                                        f"Created and linked new Xero contact for local contact '{db_contact.get('name', '').strip()}' => XeroID={new_xero_id}"
+                                    )
+                                except IntegrityError as ie:
+                                    self.logger.warning(
+                                        f"IntegrityError while updating contact '{db_contact.get('name', '').strip()}' with new XeroID {new_xero_id}: {ie}. Skipping update.")
+                                # Update our Xero contacts dictionary so subsequent lookups work as expected.
+                                xero_contacts_dict[db_contact.get('name', '').strip().lower()] = {
+                                    'Name': db_contact.get('name', '').strip(),
+                                    'ContactID': new_xero_id
+                                }
+                            else:
+                                self.logger.error(
+                                    f"Failed to create Xero contact for local contact '{db_contact.get('name', '').strip()}'.")
+                    else:
+                        self.logger.error("Bulk creation API call returned no result.")
+                except Exception as e:
+                    self.logger.error(f"⛔ Exception during bulk creation of contacts: {e}")
+        else:
+            self.logger.info("No new contacts need to be created in Xero.")
+
+        # Now check for any Xero contacts that are missing from the local DB.
+        for name_lower, xero_contact in xero_contacts_dict.items():
+            if name_lower not in db_contact_names:
+                self.logger.info(
+                    f"Xero contact '{xero_contact.get('Name')}' not found in local DB. Creating new local contact record..."
+                )
+                created_contact = self.db_ops.create_contact(name=xero_contact.get('Name'),
+                                                             xero_id=xero_contact.get('ContactID'))
+                if created_contact:
+                    self.logger.info(
+                        f"Added new local contact '{xero_contact.get('Name')}' with XeroID={xero_contact.get('ContactID')}"
+                    )
+                else:
+                    self.logger.error(f"Failed to create local contact for Xero contact '{xero_contact.get('Name')}'.")
     # ─────────────────────────────────────────────────────────────
     #                CONTACT VALIDATION
     # ─────────────────────────────────────────────────────────────

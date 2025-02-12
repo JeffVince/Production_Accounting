@@ -222,3 +222,27 @@ def setup_web_logger(flask_app):
     flask_app.logger.addHandler(web_logger.handlers[0])  # webtax_form
     flask_app.logger.addHandler(web_logger.handlers[1])  # console
     flask_app.logger.setLevel(logging.DEBUG)
+
+def clear_log_files():
+    """
+    Opens each log file in write mode to truncate (empty) it.
+    Call this function whenever you need to clear your log files.
+    """
+    basepath = "./logs/"
+    log_files = [
+        'admin.log',
+        'budget.log',
+        'dropbox.log',
+        'invoice.log',
+        'monday.log',
+        'po_log.log',
+        'xero.log',
+        'database.log',
+        'web.log'
+    ]
+    for log_file in log_files:
+        file_path = os.path.join(basepath, log_file)
+        # Only clear the file if it exists
+        if os.path.exists(file_path):
+            with open(file_path, 'w'):
+                pass  # Opening in 'w' mode truncates the file
