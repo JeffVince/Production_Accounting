@@ -33,7 +33,6 @@ use_control_panel = True
 
 # endregion
 
-
 # region 📄 PO LOG TRIGGERS
 def handle_po_log_create(po_log_id: int) -> None:
     """
@@ -499,7 +498,6 @@ def handle_project_delete():
 
 
 # endregion
-
 
 # region HELPER FUNCTIONS
 def _get_tax_from_detail(detail_item: dict) -> int:

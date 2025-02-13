@@ -1,4 +1,5 @@
 -- Step 1: Create a temporary table listing the "keeper" rows
+DROP TABLE IF EXISTS keeper_rows;
 CREATE TEMPORARY TABLE keeper_rows AS
 SELECT
     name,

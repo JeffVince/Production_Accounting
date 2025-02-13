@@ -551,7 +551,7 @@ class DatabaseOperations:
         return self.search_purchase_orders(col_filters, val_filters, session=session)
 
     def create_purchase_order_by_keys(self, project_number: int, po_number: int, session: Session = None, **kwargs):
-        project_record = self.search_projects(['project_number'], [project_number], session=session)
+        project_record = self.search_projects(['project_number'], [str(project_number)], session=session)
         if not project_record:
             return None
         if isinstance(project_record, list):

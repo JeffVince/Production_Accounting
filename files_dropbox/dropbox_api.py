@@ -17,7 +17,11 @@ class DropboxAPI(metaclass=SingletonMeta):
         if not hasattr(self, '_initialized'):
             self.logger = logging.getLogger('dropbox')
             self.dbx_client = dropbox_client
-            self.dbx = self.dbx_client.dbx
+            try:
+                self.dbx = self.dbx_client.dbx
+            except AttributeError as err:
+                self.logger.error('Dropbox API error: {}'.format(err))
+                self.dbx = None
             self.TAX_FORM_REGEX = '(?i)\\b(w9)|(w8-ben)|(w8-bene)|(w8-ben-e)\\b'
 
     def upload_file(self, file_path: str, destination_path: str):

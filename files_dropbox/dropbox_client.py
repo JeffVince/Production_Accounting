@@ -55,8 +55,8 @@ class DropboxClient(metaclass=SingletonMeta):
                 self.logger.warning(f"Namespace '{self.NAMESPACE_NAME}' not found. Using default path root.")
             self.start_token_refresher()
         except Exception as e:
-            self.logger.error(f'An error occurred while creating Dropbox client: {e}', exc_info=True)
-            raise e
+            self.logger.error(f'An error occurred while creating Dropbox client')
+            # raise e
         self._initialized = True
 
     def get_new_access_token(self):
@@ -64,17 +64,20 @@ class DropboxClient(metaclass=SingletonMeta):
         Use the refresh token to get a new access token.
         """
         data = {'grant_type': 'refresh_token', 'refresh_token': self.DROPBOX_REFRESH_TOKEN, 'client_id': self.DROPBOX_APP_KEY, 'client_secret': self.DROPBOX_APP_SECRET}
-        response = requests.post(self.OAUTH_TOKEN_URL, data=data)
-        if response.status_code == 200:
-            token_data = response.json()
-            new_access_token = token_data['access_token']
-            expires_in = token_data['expires_in']
-            self.save_access_token(new_access_token, expires_in)
-            self.logger.info('[get_new_access_token] - Access token refreshed successfully.')
-            return new_access_token
-        else:
-            self.logger.error(f'[get_new_access_token] - Failed to refresh token: {response.text}')
-            raise Exception(f'Failed to refresh token: {response.text}')
+        try:
+            response = requests.post(self.OAUTH_TOKEN_URL, data=data)
+            if response.status_code == 200:
+                token_data = response.json()
+                new_access_token = token_data['access_token']
+                expires_in = token_data['expires_in']
+                self.save_access_token(new_access_token, expires_in)
+                self.logger.info('Access token refreshed successfully.')
+                return new_access_token
+            else:
+                self.logger.error(f'Failed to refresh token: {response.text}')
+                raise Exception(f'Failed to refresh token: {response.text}')
+        except Exception as e:
+            self.logger.error(f'Failed to refresh token')
 
     def save_access_token(self, access_token, expires_in):
         """

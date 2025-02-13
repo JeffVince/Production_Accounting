@@ -12,7 +12,7 @@ from monday import MondayClient
 from files_monday.monday_util import monday_util
 
 load_dotenv('../.env')
-MAX_RETRIES = 3
+MAX_RETRIES = 0
 RETRY_BACKOFF_FACTOR = 2
 # endregion
 
@@ -172,7 +172,7 @@ class MondayAPI(metaclass=SingletonMeta):
                 self._handle_graphql_errors([e])
                 raise
         self.logger.error('❌ Max retries reached. Request failed.')
-        raise ConnectionError('Request failed after maximum retries.')
+        # raise ConnectionError('Request failed after maximum retries.')
     # endregion
 
     # region 3.3: Error and Complexity Handlers
@@ -278,12 +278,12 @@ class MondayAPI(metaclass=SingletonMeta):
     # endregion
 
     # region 3.5: Batch Mutation Methods
-    def batch_create_or_update_items(self, batch: list, project_id: str, create: bool = True) -> list:
+    def batch_create_or_update_items(self, batch: list, project_id: str, create: bool = True) -> list or None:
         """
         Batch creates or updates items (e.g. POs) using multithreading.
         """
         self.logger.info(
-            f"[batch_create_or_update_items] Processing {len(batch)} items for project {project_id}, create={create}"
+            f"Processing {len(batch)} items for project {project_id}, create={create}"
         )
         results = []
         futures = []
@@ -297,10 +297,13 @@ class MondayAPI(metaclass=SingletonMeta):
                 idx += self.po_batch_size
             for future in concurrent.futures.as_completed(futures):
                 resp = future.result()
+                if not resp:
+                    self.logger.warning("No response from Monday.API for batch create or update items")
+                    return None
                 data = resp.get("data", {})
                 for key in sorted(data.keys()):
                     results.append(data[key])
-        self.logger.info(f"[batch_create_or_update_items] Completed with {len(results)} submutations.")
+        self.logger.info(f"Completed with {len(results)} submutations.")
         return results
 
     def _build_batch_item_mutation(self, batch: list, create: bool) -> str:
@@ -358,13 +361,14 @@ class MondayAPI(metaclass=SingletonMeta):
             mutations.append(mutation.strip())
         return "mutation {" + " ".join(mutations) + "}"
 
-    def batch_create_or_update_subitems(self, subitems_batch: list, create: bool = True) -> list:
+    # TODO make the contact batch functions too
+    def batch_create_or_update_subitems(self, subitems_batch: list, create: bool = True) -> list or None:
         """
         Batch creates or updates subitems (i.e. detail items) on the Subitem board.
         Uses a similar pattern to batch_create_or_update_items but for subitems.
         """
         self.logger.info(
-            f"[batch_create_or_update_subitems] Processing {len(subitems_batch)} subitems, create={create}"
+            f"Processing {len(subitems_batch)} subitems, create={create}"
         )
         results = []
         futures = []
@@ -378,11 +382,14 @@ class MondayAPI(metaclass=SingletonMeta):
                 idx += self.subitem_batch_size
             for future in concurrent.futures.as_completed(futures):
                 resp = future.result()
+                if not resp:
+                    self.logger.warning("No response from Monday.API for batch create or update sub-items")
+                    return None
                 data = resp.get("data", {})
                 # The keys should be the mutation aliases (e.g. mutation_0, mutation_1, etc.)
                 for key in sorted(data.keys()):
                     results.append(data[key])
-        self.logger.info(f"[batch_create_or_update_subitems] Completed with {len(results)} submutations.")
+        self.logger.info(f"Completed with {len(results)} submutations.")
         return results
 
     def _build_batch_subitem_mutation(self, subitems_batch: list, create: bool) -> str:

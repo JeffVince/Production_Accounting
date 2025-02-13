@@ -48,7 +48,7 @@ class MondayService(metaclass=SingletonMeta):
         (using project_number and po_number) and then either updates the existing Monday item
         or creates a new one.
         """
-        self.logger.info(f"🌐 [upsert_po_in_monday] - Processing PO record:\n{po_record}")
+        self.logger.info(f"🌐 Processing PO record:\n{po_record}")
         project_number = po_record.get('project_number')
         po_number = po_record.get('po_number')
         pulse_id = po_record.get('pulse_id')
@@ -71,10 +71,10 @@ class MondayService(metaclass=SingletonMeta):
         )
 
         if not pulse_id:
-            self.logger.info("🔎 [upsert_po_in_monday] - No pulse_id; searching for existing PO...")
+            self.logger.info("🔎 No pulse_id; searching for existing PO...")
             existing = self.db_ops.search_purchase_order_by_keys(project_number, po_number)
             if not existing:
-                self.logger.info("🆕 [upsert_po_in_monday] - No existing PO found; creating new PO.")
+                self.logger.info("🆕 No existing PO found; creating new PO.")
                 new_po = self.db_ops.create_purchase_order_by_keys(
                     project_number=project_number,
                     po_number=po_number,
@@ -88,9 +88,9 @@ class MondayService(metaclass=SingletonMeta):
                 )
                 if new_po:
                     po_record['pulse_id'] = new_po.get("pulse_id")  # Assuming your DB record stores the Monday pulse_id
-                    self.logger.info(f"🎉 [upsert_po_in_monday] - Created PO with DB ID {new_po['id']}")
+                    self.logger.info(f"🎉 Created PO with DB ID {new_po['id']}")
                 else:
-                    self.logger.error("❌ [upsert_po_in_monday] - PO creation failed.")
+                    self.logger.error("❌ PO creation failed.")
                     return
                 # Now upsert to Monday.
                 self.monday_api.create_item(
@@ -100,7 +100,7 @@ class MondayService(metaclass=SingletonMeta):
                     column_values=column_values
                 )
             else:
-                self.logger.info("🔄 [upsert_po_in_monday] - Existing PO found; updating PO.")
+                self.logger.info("🔄 Existing PO found; updating PO.")
                 self.db_ops.update_purchase_order_by_keys(project_number, po_number, session=None,
                                                           description=po_record.get("description"),
                                                           vendor_name=contact_name,
@@ -111,9 +111,9 @@ class MondayService(metaclass=SingletonMeta):
                 # Upsert to Monday.
                 self.monday_api.update_item(existing.get("pulse_id"), column_values, type='main')
         else:
-            self.logger.info(f"ℹ️ [upsert_po_in_monday] - Pulse_id {pulse_id} exists; updating Monday item.")
+            self.logger.info(f"ℹ️ Pulse_id {pulse_id} exists; updating Monday item.")
             self.monday_api.update_item(pulse_id, column_values, type='main')
-        self.logger.info("✅ [upsert_po_in_monday] - PO upsert complete.")
+        self.logger.info("✅ PO upsert complete.")
 
     def sync_main_items_from_monday_board(self):
         """
@@ -235,9 +235,12 @@ class MondayService(metaclass=SingletonMeta):
                 create=False
             )
         self._detail_upsert_queue.clear()
-        total = len(created_results) + len(updated_results)
-        self.logger.info(f"🌀 [execute_batch_upsert_detail_items] - Processed {total} subitems.")
-        return created_results, updated_results
+        if created_results and updated_results:
+            total = len(created_results) + len(updated_results)
+            self.logger.info(f"🌀 [execute_batch_upsert_detail_items] - Processed {total} subitems.")
+            return created_results, updated_results
+        else:
+            return None, None
 
     def buffered_upsert_detail_item(self, detail_item: dict):
         """
@@ -256,7 +259,7 @@ class MondayService(metaclass=SingletonMeta):
         """
         Stages a Contact record for upsert to Monday.
         """
-        self.logger.info("🌀 [buffered_upsert_contact] - Processing contact record for upsert...")
+        self.logger.info("🌀 Processing contact record for upsert...")
         if not contact_record:
             self.logger.warning("🌀 No contact record provided.")
             return
@@ -285,16 +288,16 @@ class MondayService(metaclass=SingletonMeta):
         )
 
         if not pulse_id or has_changes:
-            self.logger.info("🆕 [buffered_upsert_contact] - Enqueuing contact for upsert.")
+            self.logger.info("🆕 Enqueuing contact for upsert.")
             self.contact_upsert_queue.append(contact_record)
         else:
-            self.logger.info("🌀 [buffered_upsert_contact] - No changes detected; skipping upsert.")
+            self.logger.info("🌀 No changes detected; skipping upsert.")
 
     def execute_batch_upsert_contacts(self):
         """
         Processes all queued Contact upserts in a batch via MondayAPI.
         """
-        self.logger.info("🌀 [execute_batch_upsert_contacts] - Starting batch contact upsert...")
+        self.logger.info("🌀 Starting batch contact upsert...")
         if not self.contact_upsert_queue:
             self.logger.info("🌀 No contacts queued for upsert.")
             return
@@ -305,7 +308,6 @@ class MondayService(metaclass=SingletonMeta):
         for ct in self.contact_upsert_queue:
             pulse_id = ct.get('pulse_id')
             col_vals = json.loads(self.monday_util.contact_column_values_formatter(
-                name=ct.get("name"),
                 email=ct.get("email"),
                 phone=ct.get("phone"),
                 address_line_1=ct.get("address_line_1"),
@@ -333,7 +335,7 @@ class MondayService(metaclass=SingletonMeta):
                     'monday_item_id': pulse_id
                 })
 
-        self.logger.info(f"🌀 [execute_batch_upsert_contacts] - Creating: {len(items_to_create)}; Updating: {len(items_to_update)}")
+        self.logger.info(f"🌀 Creating: {len(items_to_create)}; Updating: {len(items_to_update)}")
         created_results = []
         updated_results = []
         if items_to_create:
@@ -348,7 +350,7 @@ class MondayService(metaclass=SingletonMeta):
             )
         self.contact_upsert_queue.clear()
         total = len(created_results) + len(updated_results)
-        self.logger.info(f"🌀 [execute_batch_upsert_contacts] - Upserted {total} contacts.")
+        self.logger.info(f"🌀 Upserted {total} contacts.")
     # endregion
 
     # region 2.11: Purchase Order Aggregator Methods
@@ -389,9 +391,9 @@ class MondayService(metaclass=SingletonMeta):
         Returns:
             list: A list of created (or updated) PO results from Monday.
         """
-        self.logger.info("🌀 [execute_batch_upsert_pos] - Starting batch upsert of PO records.")
+        self.logger.info("🌀 Starting batch upsert of PO records.")
         if not self._po_upsert_queue:
-            self.logger.info("🌀 [execute_batch_upsert_pos] - No PO records to upsert.")
+            self.logger.info("🌀 No PO records to upsert.")
             return []
 
         items_to_create = []
@@ -419,7 +421,7 @@ class MondayService(metaclass=SingletonMeta):
                 })
 
         self.logger.info(
-            f"🌀 [execute_batch_upsert_pos] - Preparing to create {len(items_to_create)} items and update {len(items_to_update)} items.")
+            f"🌀 Preparing to create {len(items_to_create)} items and update {len(items_to_update)} items.")
         created_results = []
         updated_results = []
         project_id = items_to_create[0]['db_item'].get('project_number') if items_to_create else None
@@ -436,10 +438,10 @@ class MondayService(metaclass=SingletonMeta):
                 project_id=project_id or "Unknown",
                 create=False
             )
-
-        total_processed = len(created_results) + len(updated_results)
-        self.logger.info(f"🌀 [execute_batch_upsert_pos] - Processed {total_processed} PO records.")
-        self._po_upsert_queue.clear()
+        if items_to_update and created_results:
+            total_processed = len(created_results) + len(updated_results)
+            self.logger.info(f"🌀 Processed {total_processed} PO records.")
+            self._po_upsert_queue.clear()
         return created_results
     # endregion
 

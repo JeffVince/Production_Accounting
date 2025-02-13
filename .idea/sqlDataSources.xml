@@ -4,5 +4,28 @@
     <mapping uuid="062c648d-ab64-4a13-87e8-306eea0575c4" name="main_db [2] Mapping">
       <data-sources db="0e09a013-77f5-4aad-bbf1-a5606e9a80b3" ddl="02e8915f-3101-443b-9476-682a39b99b38" />
     </mapping>
+    <mapping uuid="78e3a8df-c89f-4715-bcba-a0cfcc999507" name="virtual_pm@localhost Mapping">
+      <data-sources db="ea2f7e23-0008-40bb-b3d0-f6388a00650f" ddl="7f80100d-e120-49e6-a774-90e68cecd350" />
+      <scope>
+        <node kind="schema" qname="virtual_pm" />
+      </scope>
+    </mapping>
+  </component>
+  <component name="SqlDataSourceStorage">
+    <option name="dataSources">
+      <list>
+        <State>
+          <option name="id" value="7f80100d-e120-49e6-a774-90e68cecd350" />
+          <option name="name" value="virtual_pm@localhost (DDL)" />
+          <option name="dbmsName" value="MYSQL" />
+          <option name="urls">
+            <array>
+              <option value="file://$PROJECT_DIR$/database/DDL" />
+            </array>
+          </option>
+          <option name="outLayout" value="File per object by schema.groovy" />
+        </State>
+      </list>
+    </option>
   </component>
 </project>

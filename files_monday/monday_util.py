@@ -178,27 +178,28 @@ class MondayUtil(metaclass=SingletonMeta):
             "{\n                columns {\n                    id\n                    "
             "type\n                }\n            }\n        }\n        "
         )
+        try:
+            data = None
+            response = requests.post(
+                self.MONDAY_API_URL, headers=self.headers, json={"query": query}
+            )
+            data = response.json()
 
-        response = requests.post(
-            self.MONDAY_API_URL, headers=self.headers, json={"query": query}
-        )
-        data = response.json()
+            if response.status_code == 200 and "data" in data:
 
-        if response.status_code == 200 and "data" in data:
-            try:
-                columns = data["data"]["boards"][0]["columns"]
-                for column in columns:
-                    if column["type"] == "subtasks":
-                        self.logger.debug(
-                            f"[get_subitems_column_id] - "
-                            f"Found subitems column ID: {column['id']}"
-                        )
-                        return column["id"]
-            except Exception as e:
-                self.logger.error(
-                    f"[get_subitems_column_id] - Failed to "
-                    f"retrieve columns: {data}"
-                )
+                    columns = data["data"]["boards"][0]["columns"]
+                    for column in columns:
+                        if column["type"] == "subtasks":
+                            self.logger.debug(
+                                f"[get_subitems_column_id] - "
+                                f"Found subitems column ID: {column['id']}"
+                            )
+                            return column["id"]
+        except Exception as e:
+            self.logger.error(
+                f"[get_subitems_column_id] - Failed to "
+                f"retrieve columns: {data}"
+            )
 
     def get_subitem_board_id(self, subitems_column_id):
         """
@@ -219,20 +220,24 @@ class MondayUtil(metaclass=SingletonMeta):
             "{\n                    settings_str\n                }\n            }"
             "\n        }\n        "
         )
+        try:
+            response = requests.post(
+                self.MONDAY_API_URL, headers=self.headers, json={"query": query}
+            )
+            data = response.json()
 
-        response = requests.post(
-            self.MONDAY_API_URL, headers=self.headers, json={"query": query}
-        )
-        data = response.json()
-
-        if response.status_code == 200 and "data" in data:
-            settings_str = data["data"]["boards"][0]["columns"][0]["settings_str"]
-            settings = json.loads(settings_str)
-            subitem_board_id = settings["boardIds"][0]
-            return subitem_board_id
-        else:
-            raise Exception(
-                f"Failed to retrieve subitem board ID: {response.text}"
+            if response.status_code == 200 and "data" in data:
+                settings_str = data["data"]["boards"][0]["columns"][0]["settings_str"]
+                settings = json.loads(settings_str)
+                subitem_board_id = settings["boardIds"][0]
+                return subitem_board_id
+            else:
+                raise Exception(
+                    f"Failed to retrieve subitem board ID: {response.text}"
+                )
+        except Exception as e:
+            self.logger.error(
+                f"Failed to retrieve sub item board id"
             )
 
     def _handle_date_column(self, event):
@@ -513,7 +518,7 @@ class MondayUtil(metaclass=SingletonMeta):
                 column_values[self.SUBITEM_QUANTITY_COLUMN_ID] = cleaned_quantity
             except ValueError as e:
                 self.logger.error(
-                    f"[subitem_column_values_formatter] - Invalid quantity '{quantity}': {e}"
+                    f"Invalid quantity '{quantity}': {e}"
                 )
                 column_values[self.SUBITEM_QUANTITY_COLUMN_ID] = None
 
@@ -523,7 +528,7 @@ class MondayUtil(metaclass=SingletonMeta):
                 column_values[self.SUBITEM_RATE_COLUMN_ID] = cleaned_rate
             except ValueError as e:
                 self.logger.error(
-                    f"[subitem_column_values_formatter] - Invalid rate '{rate}': {e}"
+                    f"Invalid rate '{rate}': {e}"
                 )
                 column_values[self.SUBITEM_RATE_COLUMN_ID] = None
 
@@ -533,7 +538,7 @@ class MondayUtil(metaclass=SingletonMeta):
                 column_values[self.SUBITEM_OT_COLUMN_ID] = cleaned_OT
             except ValueError as e:
                 self.logger.error(
-                    f"[subitem_column_values_formatter] - Invalid OT '{OT}': {e}"
+                    f"Invalid OT '{OT}': {e}"
                 )
                 column_values[self.SUBITEM_OT_COLUMN_ID] = None
 
@@ -543,7 +548,7 @@ class MondayUtil(metaclass=SingletonMeta):
                 column_values[self.SUBITEM_FRINGE_COLUMN_ID] = cleaned_fringe
             except ValueError as e:
                 self.logger.error(
-                    f"[subitem_column_values_formatter] - Invalid fringes '{fringes}': {e}"
+                    f"Invalid fringes '{fringes}': {e}"
                 )
                 column_values[self.SUBITEM_FRINGE_COLUMN_ID] = None
 
@@ -560,7 +565,7 @@ class MondayUtil(metaclass=SingletonMeta):
                 }
             except Exception as e:
                 self.logger.error(
-                    f"[subitem_column_values_formatter] - Error parsing date '{date}': {e}"
+                    f"Error parsing date '{date}': {e}"
                 )
 
         if due_date:
@@ -576,7 +581,7 @@ class MondayUtil(metaclass=SingletonMeta):
                 }
             except Exception as e:
                 self.logger.error(
-                    f"[subitem_column_values_formatter] - Error parsing due_date '{due_date}': {e}"
+                    f"Error parsing due_date '{due_date}': {e}"
                 )
                 raise
 
@@ -591,7 +596,7 @@ class MondayUtil(metaclass=SingletonMeta):
                     )
             except (ValueError, TypeError) as e:
                 self.logger.error(
-                    f"[subitem_column_values_formatter] - Invalid account number '{account_number}': {e}"
+                    f"Invalid account number '{account_number}': {e}"
                 )
                 column_values[self.SUBITEM_ACCOUNT_NUMBER_COLUMN_ID] = None
 
@@ -613,7 +618,7 @@ class MondayUtil(metaclass=SingletonMeta):
                 column_values[self.SUBITEM_PO_COLUMN_ID] = int(str(po_number).strip())
             except ValueError as e:
                 self.logger.error(
-                    f"[subitem_column_values_formatter] - Invalid po_number '{po_number}': {e}"
+                    f"Invalid po_number '{po_number}': {e}"
                 )
                 column_values[self.SUBITEM_PO_COLUMN_ID] = None
 
@@ -622,7 +627,7 @@ class MondayUtil(metaclass=SingletonMeta):
                 column_values[self.SUBITEM_ID_COLUMN_ID] = int(str(detail_number).strip())
             except ValueError as e:
                 self.logger.error(
-                    f"[subitem_column_values_formatter] - Invalid detail_number '{detail_number}': {e}"
+                    f"Invalid detail_number '{detail_number}': {e}"
                 )
                 column_values[self.SUBITEM_ID_COLUMN_ID] = None
 
@@ -631,7 +636,7 @@ class MondayUtil(metaclass=SingletonMeta):
                 column_values[self.SUBITEM_LINE_NUMBER_COLUMN_ID] = int(str(line_number).strip())
             except ValueError as e:
                 self.logger.error(
-                    f"[subitem_column_values_formatter] - Invalid line_number '{line_number}': {e}"
+                    f"Invalid line_number '{line_number}': {e}"
                 )
                 column_values[self.SUBITEM_LINE_NUMBER_COLUMN_ID] = None
 
@@ -640,7 +645,7 @@ class MondayUtil(metaclass=SingletonMeta):
                 column_values[self.SUBITEM_PROJECT_ID_COLUMN_ID] = int(str(project_id).strip())
             except ValueError as e:
                 self.logger.error(
-                    f"[subitem_column_values_formatter] - Invalid project_id '{project_id}': {e}"
+                    f"Invalid project_id '{project_id}': {e}"
                 )
                 column_values[self.SUBITEM_PROJECT_ID_COLUMN_ID] = None
 
@@ -649,6 +654,7 @@ class MondayUtil(metaclass=SingletonMeta):
                 column_values[key] = list(value)
 
         return json.dumps(column_values)
+
 
     def create_subitem(self, parent_item_id, subitem_name, column_values):
         """
@@ -680,7 +686,7 @@ class MondayUtil(metaclass=SingletonMeta):
         )
 
         self.logger.info(
-            f"[create_subitem] - Creating subitem under parent "
+            f" Creating subitem under parent "
             f"{parent_item_id} with name '{subitem_name}'."
         )
 
@@ -693,24 +699,24 @@ class MondayUtil(metaclass=SingletonMeta):
             if "data" in data and "create_subitem" in data["data"]:
                 subitem_id = data["data"]["create_subitem"]["id"]
                 self.logger.info(
-                    f"[create_subitem] - Created subitem with ID {subitem_id}"
+                    f" Created subitem with ID {subitem_id}"
                 )
                 return subitem_id
             elif "errors" in data:
                 self.logger.error(
-                    f"[create_subitem] - Error creating subitem in "
+                    f" Error creating subitem in "
                     f"Monday.com: {data['errors']}"
                 )
                 return None
             else:
                 self.logger.error(
-                    f"[create_subitem] - Unexpected response "
+                    f" Unexpected response "
                     f"structures: {data}"
                 )
                 return None
         else:
             self.logger.error(
-                f"[create_subitem] - HTTP Error {response.status_code}: "
+                f" HTTP Error {response.status_code}: "
                 f"{response.text}"
             )
             return None
@@ -843,6 +849,61 @@ class MondayUtil(metaclass=SingletonMeta):
 
     def prep_po_log_contact_for_monday(self, item):
         pass
+
+    def contact_column_values_formatter(self,
+            email=None,
+            phone=None,
+            address_line_1=None,
+            address_line_2=None,
+            city=None,
+            zip=None,
+            region=None,
+            country=None,
+            tax_type=None,
+            tax_number=None,
+            payment_details=None,
+            vendor_status=None,
+            tax_form_link=None
+            ):
+        # check if each field is None or has a value, then store it into the below variables:
+        column_values = {}
+
+        if phone:
+            column_values[self.CONTACT_PHONE] = phone
+        if email:
+            column_values[self.CONTACT_PHONE] = email
+        if address_line_1:
+            column_values[self.CONTACT_ADDRESS_LINE_1] = address_line_1
+        if address_line_2:
+            column_values[self.CONTACT_ADDRESS_LINE_2] = address_line_2
+        if city:
+            column_values[self.CONTACT_ADDRESS_CITY] = city
+        if zip:
+            column_values[self.CONTACT_ADDRESS_ZIP] = zip
+        if region:
+            column_values[self.CONTACT_REGION] = region
+        if country:
+            column_values[self.CONTACT_ADDRESS_COUNTRY] = country
+        if tax_type:
+            column_values[self.CONTACT_TAX_TYPE] = tax_type
+        if tax_number:
+            column_values[self.CONTACT_TAX_NUMBER] = tax_number
+        if payment_details:
+            column_values[self.CONTACT_PAYMENT_DETAILS] = {"label": payment_details}
+        if vendor_status:
+            column_values[self.CONTACT_STATUS] = {"label": vendor_status}
+        if tax_form_link:
+            column_values[self.CONTACT_TAX_FORM_LINK] = {
+                "url": tax_form_link,
+                "text": "Link",
+            }
+
+        for (key, value) in column_values.items():
+            if isinstance(value, set):
+                column_values[key] = list(value)
+                
+        return json.dumps(column_values)
+
 
     def validate_monday_request(self, request_headers):
         """
@@ -1092,7 +1153,7 @@ class MondayUtil(metaclass=SingletonMeta):
             and (detail_num is not None)
             and (line_number is not None)
         ):
-            return (project_id, po_number, detail_num, line_number)
+            return project_id, po_number, detail_num, line_number
         else:
             self.logger.warning(
                 "[extract_subitem_identifiers] - Subitem missing one of the "
