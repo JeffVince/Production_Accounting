@@ -198,7 +198,7 @@ class BudgetService(metaclass=SingletonMeta):
                 try:
                     self.logger.info("📤 Executing batch upsert to Xero & Monday.")
                     self.xero_services.execute_batch_upsert_contacts(self.xero_services.contact_upsert_queue)
-                    #self.monday_service.execute_batch_upsert_contacts()
+                    #TODO self.monday_service.execute_batch_upsert_contacts()
                 except Exception:
                     self.logger.exception("Exception during final batch upsert.", exc_info=True)
                 # endregion
