@@ -11,19 +11,14 @@ from files_xero.xero_services import xero_services
 from utilities.singleton import SingletonMeta
 # endregion
 
-#TODO get xero bills and spend money to sync and make sure to check DB for changes first
+#TODO get xero bills and spend money to sync
 #TODO make sure we don't sync contacts with APIs if they aren't different from DB
 #TODO populate subitems with Xero Link
-#TODO if Detail Aggregator crashes mid upsert we do not commit detail items but have them in Monday, we should delete the items in Monday and Xero if it fails to commit
 #TODO populate PO items in monday with Dropbox Folders
 #TODO test full Showbiz pipeline
 #TODO move to postgres
 #TODO add webhook CRUD from Xero and Monday
 #TODO connect AI Agent to Monday / POSTGRES
-
-
-
-
 
 # region 2: BudgetService Class Definition
 # noinspection PyBroadException
@@ -1189,10 +1184,7 @@ class BudgetService(metaclass=SingletonMeta):
                 self.logger.exception("Error during bulk create/update of Xero Bills.", exc_info=True)
                 session.rollback()
                 raise
-            xero_bills_to_upload = []
-            if xero_bills_to_create and xero_bills_to_update:
-                xero_bills_to_upload.extend(created_xero_bills_db)
-                xero_bills_to_upload.extend(updated_xero_bills_db)
+
             # After Xero Bills insertion, map their composite keys to IDs
             bill_id_map = {}
             for bill in created_xero_bills_db:
@@ -1255,6 +1247,7 @@ class BudgetService(metaclass=SingletonMeta):
                 raise
 
             # --- Invoices ---
+            updated_invoices_db = []
             invoices_to_update = []
             for inv in updated_invoices:
                 key = (
@@ -1269,7 +1262,7 @@ class BudgetService(metaclass=SingletonMeta):
                         invoices_to_update.append(inv)
 
             if invoices_to_update:
-                self.db_ops.bulk_update_invoices(invoices_to_update, session=session)
+                updated_invoices_db = self.db_ops.bulk_update_invoices(invoices_to_update, session=session)
                 session.flush()
 
             # --- Receipts ---
@@ -1313,15 +1306,7 @@ class BudgetService(metaclass=SingletonMeta):
                 self.db_ops.bulk_update_spend_money(spend_money_to_update, session=session)
                 session.flush()
 
-            try:
-                session.commit()
-                self.logger.info("💾 DB Bulk Create/Update complete for all items. Commit successful.")
-
-            except Exception:
-                session.rollback()
-                self.logger.exception("Error during DB Bulk Create/Update commit.", exc_info=True)
-                raise
-
+            self.logger.info("💾 DB Bulk Create/Update complete for all items.")
             # endregion
 
             # region 2.4.6: Monday Upsert for Detail Items
@@ -1407,20 +1392,8 @@ class BudgetService(metaclass=SingletonMeta):
                 self.logger.exception("Exception during Monday upsert for detail items.", exc_info=True)
             # endregion
 
-            # region 2.4.7: Xero Upsert for Xero Bill, Xero Bill Line Item, Spend Money Item
-            try:
-                self.logger.info("🔄 Starting Xero Upsert for Xero Bills and associated line items.")
-                # Sync Xero Bills (and implicitly their line items via the bill creation process)
-                #xero_bill_results = xero_services.handle_xero_bill_create_bulk(xero_bills_to_upload, session)
-                #self.logger.info(f"✅ Synced {len(xero_bill_results)} Xero Bills.")
-
-                self.logger.info("🔄 Starting Xero Upsert for Spend Money items.")
-                spend_money_results = xero_services.handle_spend_money_create_bulk(updated_spend_money, session)
-                self.logger.info(f"✅ Synced {len(spend_money_results)} Spend Money items.")
-            except Exception:
-                self.logger.exception("Error during Xero Upsert for bills and spend money items.", exc_info=True)
-                session.rollback()
-                raise
+            # region 2.4.7 Xero Upsert for Xero Bill, Xero Bill Line Item, Spend Money Item
+            # (Placeholder code for your Xero upsert calls, if needed)
             # endregion
 
         except Exception:
@@ -1446,8 +1419,10 @@ class BudgetService(metaclass=SingletonMeta):
                     return []
                 self.logger.info(f'📝 Received PO Log file from Dropbox: {po_log_filename}')
             self.logger.info('🔧 Passing parsed PO log data to DB aggregator...')
-            main_items, detail_items, contacts = self.dropbox_service.extract_data_from_po_log(temp_file_path,
-                                                                                               project_number)
+            main_items, detail_items, contacts = self.dropbox_service.extract_data_from_po_log(
+                temp_file_path,
+                project_number
+            )
             return {
                 "main_items": main_items,
                 "detail_items": detail_items,
@@ -1477,10 +1452,8 @@ class BudgetService(metaclass=SingletonMeta):
                 self.logger.warning(f"No tax account found for account code: {param}")
                 return None
 
-
             if isinstance(tax_account, list):
                 tax_account = tax_account[0]
-
 
             return tax_account["tax_code"]
         except Exception:

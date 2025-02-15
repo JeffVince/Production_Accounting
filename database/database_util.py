@@ -12,6 +12,7 @@ import logging
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from sqlalchemy import or_, and_
 
 # Use the unified session pattern (get_db_session) instead of make_local_session
 from database.db_util import get_db_session
@@ -2032,9 +2033,15 @@ class DatabaseOperations:
                     Invoice.invoice_number == invoice_number
                 )
             )
-        query = session.query(Invoice).filter(or_(*conditions))
-        records = query.all()
-        return [self._serialize_record(r) for r in records]
+        if session:
+            query = session.query(Invoice).filter(or_(*conditions))
+            records = query.all()
+            return [self._serialize_record(r) for r in records]
+        else:
+            with get_db_session() as session_local:
+                query = session_local.query(Invoice).filter(or_(*conditions))
+                records = query.all()
+                return [self._serialize_record(r) for r in records]
 
     def batch_search_receipts_by_keys(self, keys: List[tuple], session: Session = None) -> List[Dict[str, Any]]:
         """
@@ -2055,9 +2062,15 @@ class DatabaseOperations:
                     Receipt.detail_number == detail_number
                 )
             )
-        query = session.query(Receipt).filter(or_(*conditions))
-        records = query.all()
-        return [self._serialize_record(r) for r in records]
+        if isinstance(session, Session):
+            query = session.query(Receipt).filter(or_(*conditions))
+            records = query.all()
+            return [self._serialize_record(r) for r in records]
+        else:
+            with get_db_session() as session_local:
+                query = session_local.query(Receipt).filter(or_(*conditions))
+                records = query.all()
+                return [self._serialize_record(r) for r in records]
 
     def batch_search_detail_items_by_keys(self, keys: List[dict], session: Session = None) -> List[Dict[str, Any]]:
         """
@@ -2065,7 +2078,6 @@ class DatabaseOperations:
         Each key dict should have: project_number, po_number, detail_number, and line_number.
         Returns a list of matching DetailItem records as dicts.
         """
-        from sqlalchemy import or_, and_
         if not keys:
             return []
         conditions = []
@@ -2077,8 +2089,15 @@ class DatabaseOperations:
                 DetailItem.line_number == key.get('line_number')
             )
             conditions.append(cond)
-        query = session.query(DetailItem).filter(or_(*conditions))
-        records = query.all()
-        return [self._serialize_record(r) for r in records]
+        if session is not None:
+            query = session.query(DetailItem).filter(or_(*conditions))
+            records = query.all()
+            return [self._serialize_record(r) for r in records]
+        else:
+            with get_db_session() as session_local:
+                query = session_local.query(DetailItem).filter(or_(*conditions))
+                records = query.all()
+                return [self._serialize_record(r) for r in records]
+
 
 # End of DatabaseOperations class

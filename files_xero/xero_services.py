@@ -196,6 +196,7 @@ class XeroServices(metaclass=SingletonMeta):
             project_number = bill.get("project_number")
             po_number = bill.get("po_number")
             po_record = self.db_ops.search_purchase_order_by_keys(project_number=project_number, po_number=po_number)
+            detail_number = bill.get("detail_number")
             if isinstance(po_record, list):
                 po_record = po_record[0]
             if not po_record:
@@ -250,7 +251,7 @@ class XeroServices(metaclass=SingletonMeta):
             }
 
             # Fetch raw line items and transform them for Xero
-            line_items_raw = self.db_ops.search_xero_bill_line_items(["parent_id"], [bill["id"]], session=session)
+            line_items_raw = self.db_ops.search_xero_bill_line_items(["project_number", "po_number", "detail_number"], [project_number, po_number, detail_number])
             if line_items_raw:
                 if isinstance(line_items_raw, dict):
                     line_items_raw = [line_items_raw]
