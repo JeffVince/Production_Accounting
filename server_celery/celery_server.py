@@ -37,6 +37,9 @@ celery_app.conf.update(
     worker_hijack_root_logger=False,  # Prevent Celery from overriding your loggers
 )
 
+celery_app.conf.enable_utc = True
+celery_app.conf.timezone = 'UTC'
+
 # 5. Log Celery configuration using your custom logger
 logger.debug(
     f'Celery config: '

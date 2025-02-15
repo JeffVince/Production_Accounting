@@ -467,7 +467,7 @@ class MondayUtil(metaclass=SingletonMeta):
         if folder_link:
             column_values[self.PO_FOLDER_LINK_COLUMN_ID] = {
                 "url": folder_link,
-                "text": "📦",
+                "text": "FOLDER LINK",
             }
         if producer_id:
             column_values[self.PO_PRODUCER_COLUMN_ID] = {
@@ -603,13 +603,13 @@ class MondayUtil(metaclass=SingletonMeta):
         if link:
             column_values[self.SUBITEM_LINK_COLUMN_ID] = {
                 "url": link,
-                "text": "Link",
+                "text": " FILE ",
             }
 
         if xero_link:
             column_values[self.SUBITEM_XERO_LINK_COLUMN_ID] = {
                 "url": xero_link,
-                "text": "Link",
+                "text": " XERO ",
             }
 
         # Ensure that po_number, detail_number, line_number, and project_id are stored as numbers
@@ -811,7 +811,7 @@ class MondayUtil(metaclass=SingletonMeta):
         )
 
         self.logger.info(
-            f"[link_contact_to_po_item] - Linking contact {contact_item_id} "
+            f" Linking contact {contact_item_id} "
             f"to PO item {po_item_id}."
         )
 
@@ -823,26 +823,26 @@ class MondayUtil(metaclass=SingletonMeta):
         if response.status_code == 200:
             if "data" in data and "change_column_value" in data["data"]:
                 self.logger.info(
-                    f"[link_contact_to_po_item] - Successfully linked "
+                    f" Successfully linked "
                     f"contact item {contact_item_id} to PO item "
                     f"{po_item_id}."
                 )
                 return True
             elif "errors" in data:
                 self.logger.error(
-                    "[link_contact_to_po_item] - Error linking contact to PO "
+                    " Error linking contact to PO "
                     f"item in Monday.com: {data['errors']}"
                 )
                 return False
             else:
                 self.logger.error(
-                    f"[link_contact_to_po_item] - Unexpected response "
+                    f" Unexpected response "
                     f"structure: {data}"
                 )
                 return False
         else:
             self.logger.error(
-                f"[link_contact_to_po_item] - HTTP Error {response.status_code}: "
+                f" HTTP Error {response.status_code}: "
                 f"{response.text}"
             )
             return False
@@ -893,9 +893,18 @@ class MondayUtil(metaclass=SingletonMeta):
         if vendor_status:
             column_values[self.CONTACT_STATUS] = {"label": vendor_status}
         if tax_form_link:
+            if any(substr in tax_form_link for substr in ["W8BENE", "W8-BENE", "W8-BEN-E"]):
+                text_value = "W8-BEN-E"
+            elif any(substr in tax_form_link for substr in ["W8BEN", "W8-BEN"]):
+                text_value = "W8-BEN"
+            elif "W9" in tax_form_link:
+                text_value = "W9"
+            else:
+                text_value = "Tax Form"
+
             column_values[self.CONTACT_TAX_FORM_LINK] = {
                 "url": tax_form_link,
-                "text": "Link",
+                "text": text_value,
             }
 
         for (key, value) in column_values.items():

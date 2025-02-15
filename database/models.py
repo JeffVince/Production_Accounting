@@ -22,7 +22,7 @@ class Contact(Base):
     id = Column(MYSQL_BIGINT(unsigned=True), primary_key=True, autoincrement=True)
     name = Column(String(255), nullable=False, index=True)
     vendor_status = Column(
-        Enum('PENDING', 'TO VERIFY', 'APPROVED', 'ISSUE'),
+        Enum('PENDING', 'TO VERIFY', 'APPROVED', 'ISSUE', 'VERIFIED'),
         nullable=False,
         server_default='PENDING')
     payment_details = Column(String(255), nullable=False, server_default='PENDING')
@@ -306,7 +306,7 @@ class XeroBillLineItem(Base):
     quantity = Column(MYSQL_DECIMAL(10, 0), nullable=True)
     unit_amount = Column(MYSQL_DECIMAL(10, 0), nullable=True)
     line_amount = Column(MYSQL_DECIMAL(10, 0), nullable=True)
-    account_code = Column(MYSQL_INTEGER, nullable=True)
+    tax_code = Column(MYSQL_INTEGER, nullable=True)
     parent_id = Column(
         MYSQL_BIGINT(unsigned=True),
         ForeignKey('xero_bill.id', onupdate='CASCADE', ondelete='CASCADE'),
@@ -330,7 +330,7 @@ class XeroBillLineItem(Base):
             'quantity': self.quantity,
             'unit_amount': self.unit_amount,
             'line_amount': self.line_amount,
-            'account_code': self.account_code,
+            'tax_code': self.tax_code,
             'parent_id': self.parent_id,
             'parent_xero_id': self.parent_xero_id,
             'xero_bill_line_id': self.xero_bill_line_id,
@@ -383,7 +383,7 @@ class DetailItem(Base):
     payment_type = Column(String(45), nullable=True)
     state = Column(Enum(
         'PENDING', 'OVERDUE', 'REVIEWED', 'ISSUE', 'RTP',
-        'RECONCILED', 'PAID', 'APPROVED', 'SUBMITTED', 'PO MISMATCH'
+        'RECONCILED', 'PAID', 'APPROVED', 'SUBMITTED', 'PO MISMATCH', 'VERIFIED'
     ), nullable=False, server_default='PENDING')
     description = Column(String(255), nullable=True)
     transaction_date = Column(DateTime, nullable=True)
@@ -521,7 +521,7 @@ class Invoice(Base):
     term = Column(MYSQL_INTEGER, nullable=True)
     total = Column(MYSQL_DECIMAL(15, 2), nullable=True, server_default='0.00')
     transaction_date = Column(DateTime, nullable=True)
-    status = Column(Enum('PENDING, VERIFIED, REJECTED'), nullable=True)
+    status = Column(Enum('PENDING', 'VERIFIED', 'REJECTED'), nullable=True)
 
     file_link = Column(String(255), nullable=True)
     created_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
@@ -552,7 +552,7 @@ class Receipt(Base):
     line_number = Column(MYSQL_INTEGER(unsigned=True), nullable=True)
     receipt_description = Column(String(255), nullable=True)
     total = Column(MYSQL_DECIMAL(15, 2), nullable=True, server_default='0.00')
-    status = Column(Enum('PENDING, VERIFIED, REJECTED'), nullable=True)
+    status = Column(Enum('PENDING', 'VERIFIED', 'REJECTED'), nullable=True)
     purchase_date = Column(DateTime, nullable=True)
     dropbox_path = Column(String(255), nullable=True)
     file_link = Column(String(255), nullable=False)
@@ -675,7 +675,6 @@ class TaxForm(Base):
     def to_dict(self):
         return {
             'id': self.id,
-            'contact_id': self.contact_id,
             'status': self.status,
             'type': self.type,
             'entity_name': self.entity_name,

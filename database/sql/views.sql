@@ -101,7 +101,7 @@ SELECT
     bli.id AS bill_line_item_id,
     bli.description AS bill_line_desc,
     bli.line_amount AS bill_line_amount,
-    bli.account_code AS bill_line_account_code,
+    bli.tax_code AS bill_line_account_code,
     di.id AS detail_item_id,
     di.state AS detail_item_state,
     di.sub_total AS detail_item_subtotal,

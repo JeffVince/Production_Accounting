@@ -126,6 +126,31 @@ class Orchestrator:
             po_records = db_ops.search_purchase_orders(["project_number"], [project_number_int], session=session)
             # Search for Detail Item records with the given project number
             di_records = db_ops.search_detail_items(["project_number"], [project_number_int], session=session)
+            # Search for Spend Monday Items, Xero Bills, and Xero Bills Items given project number
+            sm_records = db_ops.search_spend_money(["project_number"], [project_number_int], session=session)
+            xb_records = db_ops.search_xero_bills(["project_number"], [project_number_int], session=session)
+            xbli_records = db_ops.search_xero_bill_line_items(["project_number"], [project_number_int], session=session)
+
+            if sm_records:
+                if isinstance(sm_records, dict):
+                    sm_records = [sm_records]
+                for record in sm_records:
+                    if db_ops.delete_spend_money(record["id"], session=session):
+                        count_po += 1
+
+            if xb_records:
+                if isinstance(xb_records, dict):
+                    xb_records = [xb_records]
+                for record in xb_records:
+                    if db_ops.delete_xero_bill(record["id"], session=session):
+                        count_po += 1
+
+            if xbli_records:
+                if isinstance(xbli_records, dict):
+                    xbli_records = [xbli_records]
+                for record in xbli_records:
+                    if db_ops.delete_xero_bill_line_item(record["id"], session=session):
+                        count_di += 1
 
             if po_records:
                 if isinstance(po_records, dict):

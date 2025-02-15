@@ -3,6 +3,8 @@ import json
 import logging
 import time
 import concurrent.futures
+import random
+import threading
 from dotenv import load_dotenv
 import requests
 
@@ -12,9 +14,12 @@ from monday import MondayClient
 from files_monday.monday_util import monday_util
 
 load_dotenv('../.env')
-MAX_RETRIES = 0
+MAX_RETRIES = 3
 RETRY_BACKOFF_FACTOR = 2
 # endregion
+
+
+#TODO FIGURE OUT WHY WERE DROPPING SUBITEMS WHEN UPLOADING THEM
 
 # region 2: Helper Functions
 def _parse_subitem_mutation_response(response_data: dict, subitems_batch: list, create: bool) -> list:
@@ -80,6 +85,10 @@ class MondayAPI(metaclass=SingletonMeta):
                 self.po_rate_limit_window = 12
                 self.last_po_batch_time = 0
 
+                # New: Semaphore for throttling subitem requests
+                self.max_concurrent_subitem_requests = 5
+                self.subitem_semaphore = threading.BoundedSemaphore(value=self.max_concurrent_subitem_requests)
+
                 self._initialized = True
             except Exception as init_ex:
                 self.logger.exception(f'❌ Error during MondayAPI initialization: {init_ex}')
@@ -89,20 +98,29 @@ class MondayAPI(metaclass=SingletonMeta):
     # region 3.2: Internal Request Method
     def _calculate_retry_sleep_time(self, attempt):
         """
-        Calculates the sleep time for retries based on the dynamic backoff factor.
+        Calculates the sleep time for retries based on the dynamic backoff factor with added jitter.
         """
-        return self.dynamic_retry_backoff_factor ** (attempt + 1)
+        base = self.dynamic_retry_backoff_factor ** (attempt + 1)
+        jitter = random.uniform(0, 1)
+        return base + jitter
 
     def _make_request(self, query: str, variables: dict = None) -> dict:
         """
         Executes a GraphQL request against Monday.com, with retries, rate limiting,
         and a check against complexity tokens to prevent exhausting them too quickly.
         """
+        # Determine if this is a subitem-related mutation for throttling purposes.
+        is_subitem_request = False
+        if query.strip().startswith("mutation"):
+            if "create_subitem" in query or f"board_id: {self.SUBITEM_BOARD_ID}" in query:
+                is_subitem_request = True
+
         # Before constructing the query, check if our remaining complexity is low.
         if self.remaining_complexity is not None and self.remaining_complexity < self.MINIMUM_COMPLEXITY_THRESHOLD:
             self.logger.info(
                 f"Remaining complexity ({self.remaining_complexity}) is below threshold ({self.MINIMUM_COMPLEXITY_THRESHOLD}). "
-                f"Pausing for {self.WAIT_TIME_FOR_COMPLEXITY_RESET} seconds to allow token recovery.")
+                f"Pausing for {self.WAIT_TIME_FOR_COMPLEXITY_RESET} seconds to allow token recovery."
+            )
             time.sleep(self.WAIT_TIME_FOR_COMPLEXITY_RESET)
 
         # Ensure the query includes complexity metrics if not already present.
@@ -117,22 +135,32 @@ class MondayAPI(metaclass=SingletonMeta):
             start_time = time.time()
             try:
                 self.logger.debug(f'📡 Attempt {attempt + 1}/{MAX_RETRIES}: Sending GraphQL request.')
-                response = requests.post(
-                    self.api_url,
-                    json={'query': query, 'variables': variables},
-                    headers=headers,
-                    timeout=200
-                )
+                # Throttle subitem requests using semaphore if applicable.
+                if is_subitem_request:
+                    with self.subitem_semaphore:
+                        response = requests.post(
+                            self.api_url,
+                            json={'query': query, 'variables': variables},
+                            headers=headers,
+                            timeout=200
+                        )
+                else:
+                    response = requests.post(
+                        self.api_url,
+                        json={'query': query, 'variables': variables},
+                        headers=headers,
+                        timeout=200
+                    )
                 response.raise_for_status()
                 end_time = time.time()
                 elapsed = end_time - start_time
 
                 # Dynamic adjustment for subitem batch queries based on response time.
                 if ("create_subitem" in query or "change_multiple_column_values" in query) and "subitem" in query:
-                    if elapsed > 5 and self.subitem_batch_size > 1:
+                    if elapsed > 10 and self.subitem_batch_size > 1:
                         self.logger.info("High response time detected; reducing subitem batch size.")
                         self.subitem_batch_size = max(1, self.subitem_batch_size - 1)
-                    elif elapsed < 2 and self.subitem_batch_size < 10:
+                    elif elapsed < 5 and self.subitem_batch_size < 10:
                         self.logger.info("Low response time detected; increasing subitem batch size.")
                         self.subitem_batch_size = min(10, self.subitem_batch_size + 1)
 
@@ -162,6 +190,10 @@ class MondayAPI(metaclass=SingletonMeta):
                     if self.consecutive_rate_limit_errors >= 2:
                         self.max_concurrent_requests = max(1, self.max_concurrent_requests - 1)
                         self.logger.warning(f"Reducing max concurrent requests to {self.max_concurrent_requests}")
+                        # Also adjust subitem semaphore if this is a subitem request.
+                        if is_subitem_request:
+                            self.max_concurrent_subitem_requests = max(1, self.max_concurrent_subitem_requests - 1)
+                            self.subitem_semaphore = threading.BoundedSemaphore(value=self.max_concurrent_subitem_requests)
                         self.consecutive_rate_limit_errors = 0
                     time.sleep(retry_after)
                     attempt += 1
@@ -183,11 +215,14 @@ class MondayAPI(metaclass=SingletonMeta):
         then raises an exception so that the outer retry mechanism can reattempt the request.
         """
         for error in errors:
-            message = error.get('message', '')
+            if isinstance(error, str):
+                message = error
+            else:
+                message = error.get('message', '')
             if 'failed to acquire lock' in message:
-                self.logger.warning(f"Lock error encountered: {message}. Retrying after a short delay.")
-                # You can adjust the delay as needed (e.g., 2 seconds)
-                time.sleep(2)
+                delay = 5 + random.uniform(0, 2)
+                self.logger.warning(f"Lock error encountered: {message}. Retrying after {delay:.2f} seconds.")
+                time.sleep(delay)
                 raise Exception(message)
             elif 'ComplexityException' in message:
                 self.logger.error(' 💥 ComplexityException encountered.')

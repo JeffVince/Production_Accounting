@@ -460,9 +460,9 @@ class XeroServices(metaclass=SingletonMeta):
             bill_due_date = bill.get("DueDate") or bill.get("due_date")
             contact_data = bill.get("Contact", {})
             xero_contact_id = contact_data.get("ContactID")
-            bill_status = bill.get("Status", "DRAFT")
+            bill_status = bill.get("state", "DRAFT")
             if bill.get("IsReconciled") or \
-                    (bill.get("Status") == "PAID" and bill.get("AmountDue", 0) == 0) or \
+                    (bill.get("state") == "PAID" and bill.get("AmountDue", 0) == 0) or \
                     bill.get("FullyPaidOnDate"):
                 bill_status = "RECONCILED"
 

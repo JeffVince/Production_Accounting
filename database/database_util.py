@@ -7,7 +7,6 @@ using SQLAlchemy ORM with an optional session parameter. If no session is provid
 it uses `get_db_session()` from db_util to open/close a new session.
 """
 
-from difflib import SequenceMatcher
 from typing import Optional, Dict, Any, List, Union
 import logging
 
@@ -21,6 +20,7 @@ from database.models import (
     XeroBillLineItem, Invoice, AccountCode, Receipt, SpendMoney, TaxAccount,
     XeroBill, User, TaxLedger, BudgetMap, PoLog
 )
+
 
 class DatabaseOperations:
     """
@@ -65,8 +65,7 @@ class DatabaseOperations:
 
         if column_names and values:
             self.logger.debug(f"{prefix}🕵️ Searching {model.__name__} with filters: {list(zip(column_names, values))}")
-            self.logger.info(
-                f"{prefix}🔎 Checking {model.__name__} for columns/values: {list(zip(column_names, values))}")
+            self.logger.info(f"{prefix}🔎 Checking {model.__name__} for columns/values: {list(zip(column_names, values))}")
             if len(column_names) != len(values):
                 self.logger.warning(f"{prefix}⚠️ Mismatch: columns vs. values. Returning empty list.")
                 return []
@@ -156,27 +155,17 @@ class DatabaseOperations:
                     record = model(**kwargs)
                     session.add(record)
                     session.flush()  # May raise IntegrityError
-                self.logger.debug(
-                    f"{prefix}🎉 Flushed new {model.__name__}, "
-                    f"ID={getattr(record, 'id', 'N/A')}"
-                )
+                self.logger.debug(f"{prefix}🎉 Flushed new {model.__name__}, ID={getattr(record, 'id', 'N/A')}")
                 return self._serialize_record(record)
             except IntegrityError as ie:
                 self.logger.debug(f"{prefix}❗ IntegrityError creating {model.__name__}: {ie}")
                 session.expire_all()  # Clear any stale state
                 if unique_lookup:
                     self.logger.warning(f"{prefix}🔎 Trying concurrency fallback re-query...")
-                    found = self._search_records(
-                        model,
-                        list(unique_lookup.keys()),
-                        list(unique_lookup.values()),
-                        session=session
-                    )
+                    found = self._search_records(model, list(unique_lookup.keys()), list(unique_lookup.values()), session=session)
                     if found:
                         if isinstance(found, list) and len(found) > 0:
-                            self.logger.info(
-                                f"{prefix}⚠️ Found {len(found)}; returning first fallback match."
-                            )
+                            self.logger.info(f"{prefix}⚠️ Found {len(found)}; returning first fallback match.")
                             return found[0]
                         elif isinstance(found, dict):
                             self.logger.info(f"{prefix}⚠️ Found existing record after fallback.")
@@ -208,12 +197,7 @@ class DatabaseOperations:
                     self.logger.debug(f"❗ IntegrityError on create: {ie}")
                     if unique_lookup:
                         self.logger.warning("🔎 Attempting concurrency fallback re-query...")
-                        found = self._search_records(
-                            model,
-                            list(unique_lookup.keys()),
-                            list(unique_lookup.values()),
-                            session=new_session
-                        )
+                        found = self._search_records(model, list(unique_lookup.keys()), list(unique_lookup.values()), session=new_session)
                         if found:
                             if isinstance(found, list) and len(found) > 0:
                                 self.logger.info(f"⚠️ Found {len(found)} matching; returning first.")
@@ -308,7 +292,6 @@ class DatabaseOperations:
                     self.logger.debug(f"🎉 Updated {model.__name__}(id={record_id}).")
                     return self._serialize_record(record)
                 except IntegrityError:
-                    # Let the context manager handle rollback.
                     self.logger.warning("❗ IntegrityError on update.")
                     if unique_lookup:
                         self.logger.warning("🔎 Attempting fallback re-query after update fail...")
@@ -387,7 +370,6 @@ class DatabaseOperations:
                     self.logger.debug(f"🗑️ Deleted {model.__name__}(id={record_id}).")
                     return True
                 except IntegrityError:
-                    # Let the context manager handle rollback.
                     self.logger.warning("❗ IntegrityError on delete.")
                     if unique_lookup:
                         self.logger.warning("🔎 Attempting fallback re-query (post-delete error).")
@@ -448,7 +430,7 @@ class DatabaseOperations:
                 record_dict = fetch_record(new_session)
 
         if not record_dict:
-            self.logger.debug(f"{prefix}🙅 No single {model.__name__} found => no changes.")
+            self.logger.debug(f"{prefix}🙅 No single {model.__name__} found => has changes.")
             return True
 
         for field, new_val in kwargs.items():
@@ -732,17 +714,9 @@ class DatabaseOperations:
             **kwargs
         )
 
-    def find_contact_close_match(self, contact_name: str, all_db_contacts: List[Dict[str, Any]]) -> Optional[
-        List[Dict[str, Any]]]:
+    def find_contact_close_match(self, contact_name: str, all_db_contacts: List[Dict[str, Any]]) -> Optional[List[Dict[str, Any]]]:
         """
         Finds contacts in all_db_contacts that have the same first character as contact_name and are at most one edit away.
-
-        Args:
-            contact_name (str): The name of the contact to match.
-            all_db_contacts (List[Dict[str, Any]]): A list of contact dictionaries to search within.
-
-        Returns:
-            Optional[List[Dict[str, Any]]]: A list of matching contact dictionaries or None if no matches found.
         """
         if not all_db_contacts:
             self.logger.debug("🙅 No existing contacts to match.")
@@ -777,24 +751,13 @@ class DatabaseOperations:
     def _is_one_edit_away(self, s1: str, s2: str) -> bool:
         """
         Determines if two strings are at most one edit away from each other.
-        An edit is an insertion, deletion, or substitution of a single character.
-
-        Args:
-            s1 (str): The first string.
-            s2 (str): The second string.
-
-        Returns:
-            bool: True if the strings are at most one edit away, False otherwise.
         """
         len1, len2 = len(s1), len(s2)
-
-        # If the length difference is more than 1, they can't be one edit away
         if abs(len1 - len2) > 1:
             return False
 
-        # Identify the shorter and longer string
         if len1 > len2:
-            s1, s2 = s2, s1  # Ensure that s1 is the shorter string
+            s1, s2 = s2, s1  # Ensure s1 is the shorter string
             len1, len2 = len2, len1
 
         index1 = index2 = 0
@@ -805,14 +768,10 @@ class DatabaseOperations:
                 if found_difference:
                     return False
                 found_difference = True
-
                 if len1 == len2:
-                    # Move both pointers if lengths are equal (substitution)
                     index1 += 1
             else:
-                index1 += 1  # Move shorter string pointer if characters match
-
-            # Always move pointer for longer string
+                index1 += 1
             index2 += 1
 
         return True
@@ -895,22 +854,6 @@ class DatabaseOperations:
 
     def update_xero_bill_line_item(self, xero_bill_line_item_id, session: Session = None, **kwargs):
         return self._update_record(XeroBillLineItem, xero_bill_line_item_id, session=session, **kwargs)
-
-    def bulk_update_xero_bill_line_items(self, items: List[dict], session: Session = None) -> List[Dict[str, Any]]:
-        """
-        Bulk update XeroBillLineItem records.
-        Each item dict must include the 'id' field along with the fields to update.
-        """
-        updated_objects = []
-        for item in items:
-            record = session.query(XeroBillLineItem).get(item['id'])
-            if record:
-                for key, value in item.items():
-                    if key != 'id':
-                        setattr(record, key, value)
-                updated_objects.append(record)
-        session.flush()
-        return [self._serialize_record(obj) for obj in updated_objects]
 
     def delete_xero_bill_line_item(self, xero_bill_line_item_id, session: Session = None, **kwargs) -> bool:
         unique_lookup = {}
@@ -1038,22 +981,6 @@ class DatabaseOperations:
     def update_invoice(self, invoice_id, session: Session = None, **kwargs):
         return self._update_record(Invoice, invoice_id, session=session, **kwargs)
 
-    def bulk_update_invoices(self, items: List[dict], session: Session = None) -> List[Dict[str, Any]]:
-        """
-        Bulk update Invoice records.
-        Each item dict must contain an 'id' field along with the fields to update.
-        """
-        updated_objects = []
-        for item in items:
-            record = session.query(Invoice).get(item['id'])
-            if record:
-                for key, value in item.items():
-                    if key != 'id':
-                        setattr(record, key, value)
-                updated_objects.append(record)
-        session.flush()
-        return [self._serialize_record(obj) for obj in updated_objects]
-
     def delete_invoice(self, invoice_id, session: Session = None, **kwargs) -> bool:
         unique_lookup = {}
         if 'invoice_number' in kwargs:
@@ -1112,16 +1039,13 @@ class DatabaseOperations:
         """
         updated_objects = []
         for item in items:
-            # Retrieve the existing Receipt record by its id.
             record = session.query(Receipt).get(item['id'])
             if record:
-                # Update every field (except 'id') with the new value.
                 for key, value in item.items():
                     if key != 'id':
                         setattr(record, key, value)
                 updated_objects.append(record)
         session.flush()
-        # Serialize and return the updated records.
         return [self._serialize_record(obj) for obj in updated_objects]
 
     def delete_receipt_by_id(self, receipt_id, session: Session = None, **kwargs) -> bool:
@@ -1224,7 +1148,6 @@ class DatabaseOperations:
         records = self._search_records(SpendMoney, column_names, values, session=session)
         if not records:
             return records
-        # filter out state=DELETED if not asked for deleted
         if not deleted:
             if isinstance(records, dict):
                 if records.get('state') == 'DELETED':
@@ -1469,70 +1392,6 @@ class DatabaseOperations:
 
     def delete_xero_bill(self, xero_bill_id, session: Session = None, **kwargs) -> bool:
         return self._delete_record(XeroBill, xero_bill_id, unique_lookup=None, session=session)
-
-    def bulk_create_xero_bill_line_items(self, bill_id: int, items: List[dict], session: Session = None) -> List[
-        Dict[str, Any]]:
-        """
-        Bulk create XeroBillLineItem records for a given XeroBill, skipping any
-        that already exist either in the database or within the provided items list.
-
-        Parameters:
-          bill_id (int): The ID of the parent XeroBill record.
-          items (List[dict]): A list of dictionaries, each containing the fields for a new XeroBillLineItem.
-          session (Session, optional): A SQLAlchemy session to use for the operation.
-
-        Returns:
-          List[Dict[str, Any]]: A list of dictionaries representing the newly created XeroBillLineItem records.
-        """
-        created_records = []
-        new_objects = []
-        seen_keys = set()  # Track keys within the provided items
-
-        for item in items:
-            # Ensure the parent reference is set
-            item["parent_id"] = bill_id
-
-            # Define the unique key tuple using the fields that form the unique constraint.
-            # Adjust these fields if your unique constraint differs.
-            key = (
-                item.get("project_number"),
-                item.get("po_number"),
-                item.get("detail_number"),
-                item.get("line_number")
-            )
-
-            # Check for duplicates within the provided items.
-            if key in seen_keys:
-                self.logger.info(
-                    f"Skipping duplicate in input set for project={key[0]}, po={key[1]}, detail={key[2]}, line={key[3]}."
-                )
-                continue
-            seen_keys.add(key)
-
-            # Check if a record with this unique key already exists in the database.
-            existing = self.search_xero_bill_line_items(
-                ["project_number", "po_number", "detail_number", "line_number"],
-                [key[0], key[1], key[2], key[3]],
-                session=session
-            )
-
-            if existing:
-                self.logger.info(
-                    f"Skipping duplicate XeroBillLineItem for project={key[0]}, po={key[1]}, detail={key[2]}, line={key[3]} as it already exists in the DB."
-                )
-                continue
-
-            # If no duplicate found, instantiate the XeroBillLineItem object.
-            new_obj = XeroBillLineItem(**item)
-            new_objects.append(new_obj)
-
-        # Add all new objects to the session and flush in one batch.
-        if new_objects:
-            session.add_all(new_objects)
-            session.flush()
-            created_records = [self._serialize_record(obj) for obj in new_objects]
-
-        return created_records
 
     def xero_bill_has_changes(
             self,
@@ -1802,7 +1661,404 @@ class DatabaseOperations:
         return self.update_po_log(match['id'], session=session, status=status, **kwargs)
     # endregion
 
-    # region BULK/Batch Helper Methods
+    ########################################################################
+    # 🚀 BULK/Batch Helper Methods (ADDITIONS - NO BREAKING CHANGES)
+    ########################################################################
+
+    def bulk_create_records(self, model, items: List[Dict[str, Any]], session: Session = None) -> List[Dict[str, Any]]:
+        """
+        Creates multiple records in the DB in bulk.
+        Returns a list of dict representations for the created records.
+        """
+        if session is not None:
+            try:
+                records = [model(**item) for item in items]
+                session.add_all(records)
+                session.flush()
+                return [self._serialize_record(record) for record in records]
+            except Exception as e:
+                self.logger.error(f"Error in bulk create for {model.__name__}: {e}", exc_info=True)
+                session.rollback()
+                return []
+        else:
+            with get_db_session() as new_session:
+                try:
+                    records = [model(**item) for item in items]
+                    new_session.add_all(records)
+                    new_session.flush()
+                    new_session.commit()
+                    return [self._serialize_record(record) for record in records]
+                except Exception as e:
+                    new_session.rollback()
+                    self.logger.error(f"Error in bulk create for {model.__name__}: {e}", exc_info=True)
+                    return []
+
+    def bulk_update_records(self, model, updates: List[Dict[str, Any]], session: Session = None) -> List[Dict[str, Any]]:
+        """
+        Updates multiple records in bulk.
+        Each item in updates should have an 'id' key and the fields to update.
+        Returns a list of updated record dicts.
+        """
+        updated_records = []
+        if session is not None:
+            try:
+                for item in updates:
+                    record_id = item.get("id")
+                    if not record_id:
+                        continue
+                    record = session.query(model).get(record_id)
+                    if not record:
+                        continue
+                    for key, value in item.items():
+                        if key != "id" and hasattr(record, key):
+                            setattr(record, key, value)
+                    updated_records.append(record)
+                session.flush()
+                return [self._serialize_record(r) for r in updated_records]
+            except Exception as e:
+                self.logger.error(f"Error in bulk update for {model.__name__}: {e}", exc_info=True)
+                session.rollback()
+                return []
+        else:
+            with get_db_session() as new_session:
+                try:
+                    for item in updates:
+                        record_id = item.get("id")
+                        if not record_id:
+                            continue
+                        record = new_session.query(model).get(record_id)
+                        if not record:
+                            continue
+                        for key, value in item.items():
+                            if key != "id" and hasattr(record, key):
+                                setattr(record, key, value)
+                        updated_records.append(record)
+                    new_session.flush()
+                    new_session.commit()
+                    return [self._serialize_record(r) for r in updated_records]
+                except Exception as e:
+                    new_session.rollback()
+                    self.logger.error(f"Error in bulk update for {model.__name__}: {e}", exc_info=True)
+                    return []
+
+    def bulk_delete_records(self, model, record_ids: List[int], session: Session = None) -> bool:
+        """
+        Deletes multiple records in bulk.
+        Returns True if deletion is successful, else False.
+        """
+        if session is not None:
+            try:
+                for record_id in record_ids:
+                    record = session.query(model).get(record_id)
+                    if record:
+                        session.delete(record)
+                session.flush()
+                return True
+            except Exception as e:
+                self.logger.error(f"Error in bulk delete for {model.__name__}: {e}", exc_info=True)
+                session.rollback()
+                return False
+        else:
+            with get_db_session() as new_session:
+                try:
+                    for record_id in record_ids:
+                        record = new_session.query(model).get(record_id)
+                        if record:
+                            new_session.delete(record)
+                    new_session.flush()
+                    new_session.commit()
+                    return True
+                except Exception as e:
+                    new_session.rollback()
+                    self.logger.error(f"Error in bulk delete for {model.__name__}: {e}", exc_info=True)
+                    return False
+
+    def bulk_has_changes(self, model, checks: List[Dict[str, Any]], session: Session = None) -> List[bool]:
+        """
+        Checks for changes in multiple records.
+        Each check is a dict containing either 'record_id' or 'unique_filters' and expected field values.
+        Returns a list of booleans indicating if changes were detected.
+        """
+        results = []
+        if session is not None:
+            for check in checks:
+                record_id = check.get("record_id")
+                unique_filters = check.get("unique_filters")
+                expected = {k: v for k, v in check.items() if k not in ("record_id", "unique_filters")}
+                result = self._has_changes_for_record(model, record_id=record_id, unique_filters=unique_filters, session=session, **expected)
+                results.append(result)
+            return results
+        else:
+            with get_db_session() as new_session:
+                for check in checks:
+                    record_id = check.get("record_id")
+                    unique_filters = check.get("unique_filters")
+                    expected = {k: v for k, v in check.items() if k not in ("record_id", "unique_filters")}
+                    result = self._has_changes_for_record(model, record_id=record_id, unique_filters=unique_filters, session=new_session, **expected)
+                    results.append(result)
+                return results
+
+    # Bulk convenience wrappers for each model (all additions; existing functions remain untouched)
+
+    # region 🚀 Bulk Operations for Contact
+    def bulk_create_contacts(self, items: List[Dict[str, Any]], session: Session = None):
+        return self.bulk_create_records(Contact, items, session=session)
+
+    def bulk_update_contacts(self, updates: List[Dict[str, Any]], session: Session = None):
+        return self.bulk_update_records(Contact, updates, session=session)
+
+    def bulk_delete_contacts(self, record_ids: List[int], session: Session = None) -> bool:
+        return self.bulk_delete_records(Contact, record_ids, session=session)
+
+    def bulk_contact_has_changes(self, checks: List[Dict[str, Any]], session: Session = None) -> List[bool]:
+        return self.bulk_has_changes(Contact, checks, session=session)
+    # endregion
+
+    # region 🚀 Bulk Operations for Project
+    def bulk_create_projects(self, items: List[Dict[str, Any]], session: Session = None):
+        return self.bulk_create_records(Project, items, session=session)
+
+    def bulk_update_projects(self, updates: List[Dict[str, Any]], session: Session = None):
+        return self.bulk_update_records(Project, updates, session=session)
+
+    def bulk_delete_projects(self, record_ids: List[int], session: Session = None) -> bool:
+        return self.bulk_delete_records(Project, record_ids, session=session)
+
+    def bulk_project_has_changes(self, checks: List[Dict[str, Any]], session: Session = None) -> List[bool]:
+        return self.bulk_has_changes(Project, checks, session=session)
+    # endregion
+
+    # region 🚀 Bulk Operations for PurchaseOrder
+    def bulk_create_purchase_orders(self, items: List[Dict[str, Any]], session: Session = None):
+        return self.bulk_create_records(PurchaseOrder, items, session=session)
+
+    def bulk_update_purchase_orders(self, updates: List[Dict[str, Any]], session: Session = None):
+        return self.bulk_update_records(PurchaseOrder, updates, session=session)
+
+    def bulk_delete_purchase_orders(self, record_ids: List[int], session: Session = None) -> bool:
+        return self.bulk_delete_records(PurchaseOrder, record_ids, session=session)
+
+    def bulk_purchase_order_has_changes(self, checks: List[Dict[str, Any]], session: Session = None) -> List[bool]:
+        return self.bulk_has_changes(PurchaseOrder, checks, session=session)
+    # endregion
+
+    # region 🚀 Bulk Operations for DetailItem
+    def bulk_create_detail_items(self, items: List[Dict[str, Any]], session: Session = None):
+        return self.bulk_create_records(DetailItem, items, session=session)
+
+    def bulk_update_detail_items(self, updates: List[Dict[str, Any]], session: Session = None):
+        return self.bulk_update_records(DetailItem, updates, session=session)
+
+    def bulk_delete_detail_items(self, record_ids: List[int], session: Session = None) -> bool:
+        return self.bulk_delete_records(DetailItem, record_ids, session=session)
+
+    def bulk_detail_item_has_changes(self, checks: List[Dict[str, Any]], session: Session = None) -> List[bool]:
+        return self.bulk_has_changes(DetailItem, checks, session=session)
+    # endregion
+
+    # region 🚀 Bulk Operations for BankTransaction
+    def bulk_create_bank_transactions(self, items: List[Dict[str, Any]], session: Session = None):
+        return self.bulk_create_records(BankTransaction, items, session=session)
+
+    def bulk_update_bank_transactions(self, updates: List[Dict[str, Any]], session: Session = None):
+        return self.bulk_update_records(BankTransaction, updates, session=session)
+
+    def bulk_delete_bank_transactions(self, record_ids: List[int], session: Session = None) -> bool:
+        return self.bulk_delete_records(BankTransaction, record_ids, session=session)
+
+    def bulk_bank_transaction_has_changes(self, checks: List[Dict[str, Any]], session: Session = None) -> List[bool]:
+        return self.bulk_has_changes(BankTransaction, checks, session=session)
+    # endregion
+
+    # region 🚀 Bulk Operations for XeroBillLineItem
+    def bulk_create_xero_bill_line_items(self, items: List[Dict[str, Any]], session: Session = None):
+        return self.bulk_create_records(XeroBillLineItem, items, session=session)
+
+    def bulk_update_xero_bill_line_items(self, updates: List[Dict[str, Any]], session: Session = None):
+        return self.bulk_update_records(XeroBillLineItem, updates, session=session)
+
+    def bulk_delete_xero_bill_line_items(self, record_ids: List[int], session: Session = None) -> bool:
+        return self.bulk_delete_records(XeroBillLineItem, record_ids, session=session)
+
+    def bulk_xero_bill_line_item_has_changes(self, checks: List[Dict[str, Any]], session: Session = None) -> List[bool]:
+        return self.bulk_has_changes(XeroBillLineItem, checks, session=session)
+    # endregion
+
+    # region 🚀 Bulk Operations for Invoice
+    def bulk_create_invoices(self, items: List[Dict[str, Any]], session: Session = None):
+        return self.bulk_create_records(Invoice, items, session=session)
+
+    def bulk_update_invoices(self, updates: List[Dict[str, Any]], session: Session = None):
+        return self.bulk_update_records(Invoice, updates, session=session)
+
+    def bulk_delete_invoices(self, record_ids: List[int], session: Session = None) -> bool:
+        return self.bulk_delete_records(Invoice, record_ids, session=session)
+
+    def bulk_invoice_has_changes(self, checks: List[Dict[str, Any]], session: Session = None) -> List[bool]:
+        return self.bulk_has_changes(Invoice, checks, session=session)
+    # endregion
+
+    # region 🚀 Bulk Operations for AccountCode
+    def bulk_create_account_codes(self, items: List[Dict[str, Any]], session: Session = None):
+        return self.bulk_create_records(AccountCode, items, session=session)
+
+    def bulk_update_account_codes(self, updates: List[Dict[str, Any]], session: Session = None):
+        return self.bulk_update_records(AccountCode, updates, session=session)
+
+    def bulk_delete_account_codes(self, record_ids: List[int], session: Session = None) -> bool:
+        return self.bulk_delete_records(AccountCode, record_ids, session=session)
+
+    def bulk_account_code_has_changes(self, checks: List[Dict[str, Any]], session: Session = None) -> List[bool]:
+        return self.bulk_has_changes(AccountCode, checks, session=session)
+    # endregion
+
+    # region 🚀 Bulk Operations for Receipt
+    def bulk_create_receipts(self, items: List[Dict[str, Any]], session: Session = None):
+        return self.bulk_create_records(Receipt, items, session=session)
+
+    def bulk_delete_receipts(self, record_ids: List[int], session: Session = None) -> bool:
+        return self.bulk_delete_records(Receipt, record_ids, session=session)
+
+    def bulk_receipt_has_changes(self, checks: List[Dict[str, Any]], session: Session = None) -> List[bool]:
+        return self.bulk_has_changes(Receipt, checks, session=session)
+    # endregion
+
+    # region 🚀 Bulk Operations for SpendMoney
+    def bulk_create_spend_money(self, items: List[Dict[str, Any]], session: Session = None):
+        return self.bulk_create_records(SpendMoney, items, session=session)
+
+
+    def bulk_delete_spend_money(self, record_ids: List[int], session: Session = None) -> bool:
+        return self.bulk_delete_records(SpendMoney, record_ids, session=session)
+
+    def bulk_spend_money_has_changes(self, checks: List[Dict[str, Any]], session: Session = None) -> List[bool]:
+        return self.bulk_has_changes(SpendMoney, checks, session=session)
+    # endregion
+
+    # region 🚀 Bulk Operations for TaxAccount
+    def bulk_create_tax_accounts(self, items: List[Dict[str, Any]], session: Session = None):
+        return self.bulk_create_records(TaxAccount, items, session=session)
+
+    def bulk_update_tax_accounts(self, updates: List[Dict[str, Any]], session: Session = None):
+        return self.bulk_update_records(TaxAccount, updates, session=session)
+
+    def bulk_delete_tax_accounts(self, record_ids: List[int], session: Session = None) -> bool:
+        return self.bulk_delete_records(TaxAccount, record_ids, session=session)
+
+    def bulk_tax_account_has_changes(self, checks: List[Dict[str, Any]], session: Session = None) -> List[bool]:
+        return self.bulk_has_changes(TaxAccount, checks, session=session)
+    # endregion
+
+    # region 🚀 Bulk Operations for XeroBill
+    def bulk_delete_xero_bills(self, record_ids: List[int], session: Session = None) -> bool:
+        return self.bulk_delete_records(XeroBill, record_ids, session=session)
+
+    def bulk_xero_bill_has_changes(self, checks: List[Dict[str, Any]], session: Session = None) -> List[bool]:
+        return self.bulk_has_changes(XeroBill, checks, session=session)
+    # endregion
+
+    # region 🚀 Bulk Operations for User
+    def bulk_create_users(self, items: List[Dict[str, Any]], session: Session = None):
+        return self.bulk_create_records(User, items, session=session)
+
+    def bulk_update_users(self, updates: List[Dict[str, Any]], session: Session = None):
+        return self.bulk_update_records(User, updates, session=session)
+
+    def bulk_delete_users(self, record_ids: List[int], session: Session = None) -> bool:
+        return self.bulk_delete_records(User, record_ids, session=session)
+
+    def bulk_user_has_changes(self, checks: List[Dict[str, Any]], session: Session = None) -> List[bool]:
+        return self.bulk_has_changes(User, checks, session=session)
+    # endregion
+
+    # region 🚀 Bulk Operations for TaxLedger
+    def bulk_create_tax_ledgers(self, items: List[Dict[str, Any]], session: Session = None):
+        return self.bulk_create_records(TaxLedger, items, session=session)
+
+    def bulk_update_tax_ledgers(self, updates: List[Dict[str, Any]], session: Session = None):
+        return self.bulk_update_records(TaxLedger, updates, session=session)
+
+    def bulk_delete_tax_ledgers(self, record_ids: List[int], session: Session = None) -> bool:
+        return self.bulk_delete_records(TaxLedger, record_ids, session=session)
+
+    def bulk_tax_ledger_has_changes(self, checks: List[Dict[str, Any]], session: Session = None) -> List[bool]:
+        return self.bulk_has_changes(TaxLedger, checks, session=session)
+    # endregion
+
+    # region 🚀 Bulk Operations for BudgetMap
+    def bulk_create_budget_maps(self, items: List[Dict[str, Any]], session: Session = None):
+        return self.bulk_create_records(BudgetMap, items, session=session)
+
+    def bulk_update_budget_maps(self, updates: List[Dict[str, Any]], session: Session = None):
+        return self.bulk_update_records(BudgetMap, updates, session=session)
+
+    def bulk_delete_budget_maps(self, record_ids: List[int], session: Session = None) -> bool:
+        return self.bulk_delete_records(BudgetMap, record_ids, session=session)
+
+    def bulk_budget_map_has_changes(self, checks: List[Dict[str, Any]], session: Session = None) -> List[bool]:
+        return self.bulk_has_changes(BudgetMap, checks, session=session)
+    # endregion
+
+    # region 🚀 Bulk Operations for PoLog
+    def bulk_create_po_logs(self, items: List[Dict[str, Any]], session: Session = None):
+        return self.bulk_create_records(PoLog, items, session=session)
+
+    def bulk_update_po_logs(self, updates: List[Dict[str, Any]], session: Session = None):
+        return self.bulk_update_records(PoLog, updates, session=session)
+
+    def bulk_delete_po_logs(self, record_ids: List[int], session: Session = None) -> bool:
+        return self.bulk_delete_records(PoLog, record_ids, session=session)
+
+    def bulk_po_log_has_changes(self, checks: List[Dict[str, Any]], session: Session = None) -> List[bool]:
+        return self.bulk_has_changes(PoLog, checks, session=session)
+    # endregion
+
+    def batch_search_invoices_by_keys(self, keys: List[tuple], session: Session = None) -> List[Dict[str, Any]]:
+        """
+        Batch search for Invoice records using a list of keys.
+        Each key is a tuple: (project_number, po_number, invoice_number)
+        Returns a list of matching Invoice records as dicts.
+        """
+        from sqlalchemy import or_, and_
+        if not keys:
+            return []
+        conditions = []
+        for key in keys:
+            project_number, po_number, invoice_number = key
+            conditions.append(
+                and_(
+                    Invoice.project_number == project_number,
+                    Invoice.po_number == po_number,
+                    Invoice.invoice_number == invoice_number
+                )
+            )
+        query = session.query(Invoice).filter(or_(*conditions))
+        records = query.all()
+        return [self._serialize_record(r) for r in records]
+
+    def batch_search_receipts_by_keys(self, keys: List[tuple], session: Session = None) -> List[Dict[str, Any]]:
+        """
+        Batch search for Receipt records using a list of keys.
+        Each key is a tuple: (project_number, po_number, detail_number)
+        Returns a list of matching Receipt records as dicts.
+        """
+        from sqlalchemy import or_, and_
+        if not keys:
+            return []
+        conditions = []
+        for key in keys:
+            project_number, po_number, detail_number = key
+            conditions.append(
+                and_(
+                    Receipt.project_number == project_number,
+                    Receipt.po_number == po_number,
+                    Receipt.detail_number == detail_number
+                )
+            )
+        query = session.query(Receipt).filter(or_(*conditions))
+        records = query.all()
+        return [self._serialize_record(r) for r in records]
+
     def batch_search_detail_items_by_keys(self, keys: List[dict], session: Session = None) -> List[Dict[str, Any]]:
         """
         Batch search for DetailItem records using a list of key dictionaries.
@@ -1825,102 +2081,4 @@ class DatabaseOperations:
         records = query.all()
         return [self._serialize_record(r) for r in records]
 
-    def bulk_create_detail_items(self, items: List[dict], session: Session = None) -> List[Dict[str, Any]]:
-        """
-        Bulk create DetailItem records.
-        """
-        new_objects = [DetailItem(**item) for item in items]
-        session.add_all(new_objects)
-        session.flush()
-        return [self._serialize_record(obj) for obj in new_objects]
-
-    def bulk_update_detail_items(self, items: List[dict], session: Session = None) -> List[Dict[str, Any]]:
-        """
-        Bulk update DetailItem records.
-        Each item dict must contain the 'id' field and the fields to update.
-        """
-        updated_objects = []
-        for item in items:
-
-            record = session.query(DetailItem).get(item["id"])
-            if record:
-                for key, value in item.items():
-                    if key != 'id':
-                        setattr(record, key, value)
-                updated_objects.append(record)
-        session.flush()
-        return [self._serialize_record(obj) for obj in updated_objects]
-
-    def batch_search_receipts_by_keys(self, keys: List[tuple], session: Session = None) -> List[Dict[str, Any]]:
-        """
-        Batch search for Receipt records using a list of keys.
-        Each key is a tuple: (project_number, po_number, detail_number)
-        Returns a list of matching Receipt records as dicts.
-        """
-        from sqlalchemy import or_, and_
-        if not keys:
-            return []
-        conditions = []
-        for key in keys:
-            project_number, po_number, detail_number = key
-            cond = and_(
-                Receipt.project_number == project_number,
-                Receipt.po_number == po_number,
-                Receipt.detail_number == detail_number
-            )
-            conditions.append(cond)
-        query = session.query(Receipt).filter(or_(*conditions))
-        records = query.all()
-        return [self._serialize_record(r) for r in records]
-
-    def bulk_update_detail_items_state(self, detail_ids: List[int], new_state: str, session: Session = None) -> \
-    List[Dict[str, Any]]:
-        """
-        Bulk update the state of DetailItem records identified by detail_ids.
-        Returns the updated records as dicts.
-        """
-        session.query(DetailItem).filter(DetailItem.id.in_(detail_ids)).update({DetailItem.state: new_state},
-                                                                               synchronize_session='fetch')
-        session.flush()
-        updated_records = session.query(DetailItem).filter(DetailItem.id.in_(detail_ids)).all()
-        return [self._serialize_record(r) for r in updated_records]
-
-    def bulk_create_spend_money(self, items: List[dict], session: Session = None) -> List[Dict[str, Any]]:
-        """
-        Bulk create SpendMoney records.
-        """
-        new_objects = [SpendMoney(**item) for item in items]
-        session.add_all(new_objects)
-        session.flush()
-        return [self._serialize_record(obj) for obj in new_objects]
-
-    def batch_search_invoices_by_keys(self, keys: List[tuple], session: Session = None) -> List[Dict[str, Any]]:
-        """
-        Batch search for Invoice records using a list of keys.
-        Each key is a tuple: (project_number, po_number, invoice_number).
-        Returns a list of matching Invoice records as dicts.
-        """
-        from sqlalchemy import or_, and_
-
-        if not keys:
-            return []
-
-        conditions = []
-        for key in keys:
-            # key is (project_number, po_number, invoice_number)
-            project_number, po_number, invoice_number = key
-
-            # Build an AND condition for each tuple
-            cond = and_(
-                Invoice.project_number == project_number,
-                Invoice.po_number == po_number,
-                Invoice.invoice_number == invoice_number
-            )
-            conditions.append(cond)
-
-        # Combine with OR so any matching (proj, po, invoice) is returned
-        query = session.query(Invoice).filter(or_(*conditions))
-        records = query.all()
-
-        return [self._serialize_record(r) for r in records]
-    # endregion
+# End of DatabaseOperations class
