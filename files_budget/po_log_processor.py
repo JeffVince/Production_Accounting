@@ -303,7 +303,7 @@ class POLogProcessor(metaclass=SingletonMeta):
         self.logger.debug('[parse_showbiz_po_log] - 🔄 Creating detail_items from raw_entries...')
         for entry in raw_entries:
             (quantity, rate, ot) = self._parse_factors(entry['factors'], entry['subtotal'])
-            detail_item = {'project_number': entry['project_number'], 'po_number': entry['po_number'], 'detail_item_id': entry['detail_item_id'], 'line_number': entry['line_number'], 'vendor': entry['vendor'], 'date': entry['date'].strftime('%Y-%m-%d'), 'due date': entry['due_date'].strftime('%Y-%m-%d'), 'quantity': quantity, 'rate': rate, 'description': entry['description'], 'state': entry['status'], 'account': entry['account'], 'payment_type': entry['payment_type'], 'total': entry['subtotal'], 'OT': ot, 'fringes': entry['fringes']}
+            detail_item = {'project_number': entry['project_number'], 'po_number': entry['po_number'], 'detail_item_id': entry['detail_item_id'], 'line_number': entry['line_number'], 'vendor': entry['vendor'], 'date': entry['date'].strftime('%Y-%m-%d'), 'due date': entry['due_date'].strftime('%Y-%m-%d'), 'quantity': quantity, 'rate': rate, 'description': entry['description'], 'state': entry['status'], 'account': entry['account'], 'payment_type': entry['payment_type'], 'total': entry['subtotal'], 'ot': ot, 'fringes': entry['fringes']}
             detail_items.append(detail_item)
             self.logger.debug(f'[parse_showbiz_po_log] - 💾 Created detail_item: {detail_item}')
         self.logger.debug('[parse_showbiz_po_log] - 🔢 Summing up amounts for main items...')

@@ -168,7 +168,7 @@ class MondayService(metaclass=SingletonMeta):
             self.logger.warning("⚠️ [upsert_detail_subitem_in_monday] - Missing parent_pulse_id; cannot proceed.")
             return
 
-        column_values = self.monday_api.build_subitem_column_values(detail_item)
+        column_values = self.build_subitem_column_values(detail_item)
         column_values_json = json.dumps(column_values)
         subitem_id = detail_item.get('pulse_id')
 
@@ -195,7 +195,7 @@ class MondayService(metaclass=SingletonMeta):
         Batch upserts detail subitems in Monday.
         Returns a tuple: (created_results, updated_results)
         """
-        self.logger.info("🌀 [execute_batch_upsert_detail_items] - Processing batch subitem upserts...")
+        self.logger.info("🌀 Processing batch subitem upserts...")
         if not self._detail_upsert_queue:
             self.logger.info("🌀 No detail items queued for upsert.")
             return
@@ -206,7 +206,7 @@ class MondayService(metaclass=SingletonMeta):
         for di in self._detail_upsert_queue:
             subitem_id = di.get('pulse_id')
             parent_id = di.get('parent_pulse_id')
-            col_vals = self.monday_api.build_subitem_column_values(di)
+            col_vals = self.build_subitem_column_values(di)
             if not subitem_id:
                 items_to_create.append({
                     'db_sub_item': di,
@@ -221,7 +221,7 @@ class MondayService(metaclass=SingletonMeta):
                     'monday_item_id': subitem_id
                 })
 
-        self.logger.info(f"🌀 [execute_batch_upsert_detail_items] - Creating: {len(items_to_create)}; Updating: {len(items_to_update)}")
+        self.logger.info(f"🌀 Creating: {len(items_to_create)}; Updating: {len(items_to_update)}")
         created_results = []
         updated_results = []
         if items_to_create:
@@ -235,12 +235,17 @@ class MondayService(metaclass=SingletonMeta):
                 create=False
             )
         self._detail_upsert_queue.clear()
-        if created_results and updated_results:
-            total = len(created_results) + len(updated_results)
-            self.logger.info(f"🌀 [execute_batch_upsert_detail_items] - Processed {total} subitems.")
-            return created_results, updated_results
-        else:
-            return None, None
+        total = len(created_results) + len(updated_results)
+        self.logger.info(f"🌀 Processed {total} subitems.")
+        for item in created_results:
+            # remove the item from the list if it's a dict of 3 keys, after, before, query. If it's a dict of just 1 key, ID, then it can stay
+            if isinstance(item, dict) and len(item.keys()) == 3:
+                    created_results.remove(item)
+        for item in updated_results:
+            if isinstance(item, dict) and len(item.keys()) == 3:
+                    created_results.remove(item)
+
+        return created_results, updated_results
 
     def buffered_upsert_detail_item(self, detail_item: dict):
         """
@@ -438,11 +443,38 @@ class MondayService(metaclass=SingletonMeta):
                 project_id=project_id or "Unknown",
                 create=False
             )
-        if items_to_update and created_results:
-            total_processed = len(created_results) + len(updated_results)
-            self.logger.info(f"🌀 Processed {total_processed} PO records.")
-            self._po_upsert_queue.clear()
+        total_processed = len(created_results) + len(updated_results)
+        self.logger.info(f"🌀 Processed {total_processed} PO records.")
+        self._po_upsert_queue.clear()
         return created_results
+    # endregion
+
+    # region 3.7: Build Subitem Column Values
+    def build_subitem_column_values(self, detail_item: dict) -> dict:
+        """
+        Constructs column values for a detail item subitem using monday_util's formatter.
+        Retrieves the appropriate link from the DB based on payment type:
+          - For 'CC' or 'PC', fetch the spend money link.
+          - For 'INV' or 'PROJ', fetch the xero bill link.
+        """
+        formatted = self.monday_util.subitem_column_values_formatter(
+            project_id=detail_item.get('project_number'),
+            po_number=detail_item.get('po_number'),
+            detail_number=detail_item.get('detail_number'),
+            line_number=detail_item.get('line_number'),
+            description=detail_item.get('description'),
+            quantity=detail_item.get('quantity'),
+            rate=detail_item.get('rate'),
+            date=detail_item.get('transaction_date'),
+            due_date=detail_item.get('due_date'),
+            account_number=detail_item.get('account_code'),
+            link=detail_item.get('file_link'),
+            ot=detail_item.get('ot'),
+            fringes=detail_item.get('fringes'),
+            xero_link=detail_item.get('xero_link'),
+            status=detail_item.get('state')
+        )
+        return json.loads(formatted)
     # endregion
 
 # endregion

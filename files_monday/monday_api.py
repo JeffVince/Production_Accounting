@@ -901,30 +901,7 @@ class MondayAPI(metaclass=SingletonMeta):
             raise
     # endregion
 
-    # region 3.7: Build Subitem Column Values
-    def build_subitem_column_values(self, detail_item: dict) -> dict:
-        """
-        Constructs column values for a detail item subitem using monday_util's formatter.
-        """
-        formatted = self.monday_util.subitem_column_values_formatter(
-            project_id=detail_item.get('project_number'),
-            po_number=detail_item.get('po_number'),
-            detail_number=detail_item.get('detail_number'),
-            line_number=detail_item.get('line_number'),
-            description=detail_item.get('description'),
-            quantity=detail_item.get('quantity'),
-            rate=detail_item.get('rate'),
-            date=detail_item.get('transaction_date'),
-            due_date=detail_item.get('due_date'),
-            account_number=detail_item.get('account_code'),
-            link=detail_item.get('file_link'),
-            OT=detail_item.get('ot'),
-            fringes=detail_item.get('fringes'),
-            xero_link=detail_item.get('xero_link'),
-            status=detail_item.get('state')
-        )
-        return json.loads(formatted)
-    # endregion
+
 
 # endregion
 

@@ -76,4 +76,4 @@ def xero_api():
     xero_client = Xero(credentials)
     return '<h2>Authorization Successful!</h2><p>Your tokens are now saved in .env. You can now make Xero API calls with fresh tokens.</p>'
 if __name__ == '__main__':
-    app.run(host='localhost', port=5002, debug=True)
+    app.run(host='localhost', port=5002, debug=True, use_reloader=False)

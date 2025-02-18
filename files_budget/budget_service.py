@@ -11,15 +11,15 @@ from files_xero.xero_services import xero_services
 from utilities.singleton import SingletonMeta
 # endregion
 
-#TODO get xero bills and spend money to sync and make sure to check DB for changes first
+
+#TODO get xero bills to sync and make sure to check DB for changes first (add a diff flag?)
 #TODO make sure we don't sync contacts with APIs if they aren't different from DB
-#TODO populate subitems with Xero Link
-#TODO if Detail Aggregator crashes mid upsert we do not commit detail items but have them in Monday, we should delete the items in Monday and Xero if it fails to commit
-#TODO populate PO items in monday with Dropbox Folders
 #TODO test full Showbiz pipeline
 #TODO move to postgres
+#TODO populate PO items in monday with Dropbox Folders
 #TODO add webhook CRUD from Xero and Monday
 #TODO connect AI Agent to Monday / POSTGRES
+#TODO add tokens to database instead of .env
 
 
 
@@ -45,10 +45,10 @@ def transform_detail_item(item):
       - Other keys ("vendor", "payment_type", "state", "description", "rate", "quantity", "ot", "fringes")
         are retained as provided.
 
-    Unwanted keys ("detail_item_id", "total", "OT") are removed if present.
+    Unwanted keys ("detail_item_id", "total", "ot") are removed if present.
     """
     # Remove unwanted fields if they exist
-    for key in ("detail_item_id", "total", "OT"):
+    for key in ("detail_item_id", "total"):
         item.pop(key, None)
 
     transformed = {}
@@ -196,8 +196,8 @@ def prepare_contact_update_dict(db_contact: dict, new_data: dict) -> dict:
             # empty => skip
             continue
         db_val = (db_contact.get(field) or "").strip()
-        if new_val.lower() != db_val.lower():
-            updates[field] = new_val
+        if str(new_val.lower()) != str(db_val.lower()):
+            updates[field] = str(new_val)
 
     # 3.2) Handle integer fields
     for field in CONTACT_FIELDS_INT:
@@ -528,28 +528,29 @@ class BudgetService(metaclass=SingletonMeta):
                             po_records_info.append(existing)
                         else:
                             self.logger.info(f"🏳️‍🌈 No changes to PO ID={po_id}; already in Monday.")
+                session.flush()
                 # endregion
             # endregion
 
             self.logger.info("[PO Aggregator] All PO items processed.")
 
             # region 2.3.3: Monday Upsert for POs
-            for po_record in po_records_info:
-                self.monday_service.buffered_upsert_po(po_record)
-
-            created_POs = self.monday_service.execute_batch_upsert_pos()
-
-            if created_POs:
-                for po_obj in created_POs:
-                    if 'column_values' in po_obj and isinstance(po_obj['column_values'], list):
-                        po_obj['column_values'] = {col['id']: col for col in po_obj['column_values']}
-                        project_number = po_obj["column_values"]["project_id"]["text"]
-                        po_number = po_obj["column_values"]["numeric__1"]["text"]
-                        pulse_id = po_obj["id"]
-                        self.db_ops.update_purchase_order_by_keys(project_number=project_number, po_number=po_number,
-                                                                  pulse_id=pulse_id, session=session)
+            # for po_record in po_records_info:
+            #     self.monday_service.buffered_upsert_po(po_record)
+            #
+            # created_POs = self.monday_service.execute_batch_upsert_pos()
+            #
+            # if created_POs:
+            #     for po_obj in created_POs:
+            #         if 'column_values' in po_obj and isinstance(po_obj['column_values'], list):
+            #             po_obj['column_values'] = {col['id']: col for col in po_obj['column_values']}
+            #             project_number = po_obj["column_values"]["project_id"]["text"]
+            #             po_number = po_obj["column_values"]["numeric__1"]["text"]
+            #             pulse_id = po_obj["id"]
+            #             self.db_ops.update_purchase_order_by_keys(project_number=project_number, po_number=po_number,
+            #                                                       pulse_id=pulse_id, session=session)
             # endregion
-
+            session.commit()
             self.logger.info("[PO Aggregator] PO processing complete.")
         except Exception as e:
             self.logger.error(f"❌ Error in PO aggregator: {str(e)}")
@@ -600,7 +601,7 @@ class BudgetService(metaclass=SingletonMeta):
 
                 d_item["detail_number"] = detail_number
                 d_item["line_number"] = line_number
-                d_item["ot"] = d_item["OT"]
+                d_item["ot"] = d_item["ot"]
                 detail_items_input.append(d_item)
                 detail_item_keys.append({
                     "project_number": project_number,
@@ -653,7 +654,7 @@ class BudgetService(metaclass=SingletonMeta):
                 self.logger.info(f"💳 Bulk fetching receipts for {len(receipt_keys)} keys.")
                 receipt_list = self.db_ops.batch_search_receipts_by_keys(list(receipt_keys), session=session)
                 for r in receipt_list:
-                    rk = (r.get("project_number"), r.get("po_number"), r.get("detail_number"))
+                    rk = (r.get("project_number"), r.get("po_number"), r.get("detail_number"), r.get("line_number"))
                     receipt_map_OG[rk] = r
             else:
                 self.logger.info("💳 No receipt keys to fetch.")
@@ -825,7 +826,8 @@ class BudgetService(metaclass=SingletonMeta):
                     key = (
                         int(d_item["project_number"]),
                         int(d_item["po_number"]),
-                        int(d_item["detail_number"])
+                        int(d_item["detail_number"]),
+                        int(d_item["line_number"]),
                     )
                     sub_total = float(d_item.get("total") or 0.0)
                     if key in receipt_map_updated:
@@ -1038,7 +1040,6 @@ class BudgetService(metaclass=SingletonMeta):
                                 "line_number": s.get("line_number"),
                                 "transaction_date": earliest_date,
                                 "due_date": latest_due,
-                                "_bill_identifier": key
                             }
                             line_items.append(line_item)
 
@@ -1054,15 +1055,20 @@ class BudgetService(metaclass=SingletonMeta):
                             differences_found = True
                         parent_po = po_map_updated.get((int(d_item["project_number"]), int(d_item["po_number"])))
                         contact_xero_id = existing_bill.get("contact_xero_id")
-                        if parent_po and parent_po.get("contact_id") and contact_xero_id != parent_po["contact_id"]:
-                            differences_found = True
+                        existing_contact_record = None
+                        if parent_po and parent_po.get("contact_id"):
+                            existing_contact_record = self.db_ops.search_contacts(["id"], [parent_po["contact_id"]], session=session)
+                            if isinstance(existing_contact_record, list):
+                                existing_contact_record = existing_contact_record[0]
+                            if contact_xero_id != existing_contact_record["xero_id"]:
+                                differences_found = True
                         if bill_status in ["DRAFT", "SUBMITTED FOR APPROVAL", "PAID"]:
                             if differences_found:
                                 self.logger.info(f"[XeroBill: UPDATE] Updating Xero Bill for key {key}.")
                                 existing_bill["transaction_date"] = earliest_date
                                 existing_bill["due_date"] = latest_due
-                                if parent_po and parent_po.get("contact_id"):
-                                    existing_bill["contact_xero_id"] = parent_po["contact_id"]
+                                if existing_contact_record and existing_contact_record.get("xero_id"):
+                                    existing_bill["contact_xero_id"] = existing_contact_record["xero_id"]
                             else:
                                 self.logger.debug(f"[XeroBill: NO-UPDATE] No changes for key {key}.")
                         elif bill_status in ["RECONCILED", "APPROVED", "AUTHORIZED"]:
@@ -1072,7 +1078,7 @@ class BudgetService(metaclass=SingletonMeta):
                                     f"Setting details to ISSUE for key {key}."
                                 )
                                 for s in siblings:
-                                    s["state"] = "PO MISMATCH"
+                                    s["state"] = "ISSUE"
                             else:
                                 self.logger.debug(
                                     f"[XeroBill: RECONCILED or APPROVED match] Marking details RECONCILED for key {key}."
@@ -1103,6 +1109,32 @@ class BudgetService(metaclass=SingletonMeta):
                 updated_xero_bill_line_items.extend(line_items)
             # Add new Xero Bill Line Items accumulated during processing
             updated_xero_bill_line_items.extend(new_xero_bill_line_items)
+
+            # 2.4.3.7.5: Assign missing line numbers to Xero Bill Line Items from matching detail items
+            for d_item in detail_items_input:
+                # Only consider invoice-type detail items for this matching
+                if d_item.get("payment_type") in ["INV", "PROF", "PROJ"]:
+                    composite_key = (
+                        int(d_item["project_number"]),
+                        int(d_item["po_number"]),
+                        int(d_item["detail_number"])
+                    )
+                    # Proceed only if the detail item has a non-zero line number
+                    if d_item.get("line_number"):
+                        detail_line_number = int(d_item["line_number"])
+                        detail_total = float(d_item.get("total") or 0.0)
+                        for xbl in updated_xero_bill_line_items:
+                            if (
+                                int(xbl.get("project_number", 0)) == composite_key[0] and
+                                int(xbl.get("po_number", 0)) == composite_key[1] and
+                                int(xbl.get("detail_number", 0)) == composite_key[2]
+                            ):
+                                # If the Xero Bill Line Item doesn't have a line number yet, try to match by total amount
+                                if not xbl.get("line_number"):
+                                    xbl_line_amount = float(xbl.get("line_amount") or 0.0)
+                                    if abs(detail_total - xbl_line_amount) < 0.0001:
+                                        xbl["line_number"] = detail_line_number
+                                        self.logger.info(f"[XeroBill Line Item] Assigned line number {detail_line_number} for {composite_key} based on matching total.")
 
             # 2.4.3.8: Prepare Data for Invoice and Receipt List Update
             updated_invoices = list(invoice_map_updated.values())
@@ -1190,9 +1222,11 @@ class BudgetService(metaclass=SingletonMeta):
                 session.rollback()
                 raise
             xero_bills_to_upload = []
-            if xero_bills_to_create and xero_bills_to_update:
-                xero_bills_to_upload.extend(created_xero_bills_db)
-                xero_bills_to_upload.extend(updated_xero_bills_db)
+            if xero_bills_to_create:
+                xero_bills_to_upload.extend(xero_bills_to_create)
+            if xero_bills_to_update:
+                xero_bills_to_upload.extend(xero_bills_to_update)
+
             # After Xero Bills insertion, map their composite keys to IDs
             bill_id_map = {}
             for bill in created_xero_bills_db:
@@ -1204,15 +1238,14 @@ class BudgetService(metaclass=SingletonMeta):
 
             # Now, update each Xero Bill Line Item dict to set the proper parent_id
             for li in updated_xero_bill_line_items:
-                bill_identifier = li.pop('_bill_identifier', None)
-                if bill_identifier:
-                    parent_id = bill_id_map.get(bill_identifier)
-                    if parent_id is None:
-                        self.logger.warning(
-                            f"No parent Xero Bill found for line item with identifier {bill_identifier}"
-                        )
-                    else:
-                        li["parent_id"] = parent_id
+                key = (li["project_number"], li["po_number"], li["detail_number"])
+                parent_id = bill_id_map.get(key)
+                if parent_id is None:
+                    self.logger.warning(
+                        f"No parent Xero Bill found for line item with identifier {key}"
+                    )
+                else:
+                    li["parent_id"] = parent_id
 
             # --- Xero Bill Line Items ---
             xero_bill_line_items_to_create = {}
@@ -1254,6 +1287,12 @@ class BudgetService(metaclass=SingletonMeta):
                 session.rollback()
                 raise
 
+            xero_bill_line_items_to_upload = []
+            if xero_bill_line_items_to_create:
+                xero_bill_line_items_to_upload.extend(xero_bill_line_items_to_create)
+            if xero_bill_line_items_to_update:
+                xero_bill_line_items_to_upload.extend(xero_bill_line_items_to_update)
+
             # --- Invoices ---
             invoices_to_update = []
             for inv in updated_invoices:
@@ -1275,7 +1314,7 @@ class BudgetService(metaclass=SingletonMeta):
             # --- Receipts ---
             receipts_to_update = []
             for rec in updated_receipts:
-                key = (rec["project_number"], rec["po_number"], rec["detail_number"])
+                key = (rec["project_number"], rec["po_number"], rec["detail_number"], rec["line_number"])
                 if key in original_receipt_map:
                     db_rec = original_receipt_map[key]
                     if are_dicts_different(rec, db_rec):
@@ -1325,95 +1364,98 @@ class BudgetService(metaclass=SingletonMeta):
             # endregion
 
             # region 2.4.6: Monday Upsert for Detail Items
-            receipt_map = receipt_map_OG
-            invoice_map = invoice_map_OG
-            try:
-                self.logger.info("[Detail Aggregator] Starting Monday upsert for detail items.")
-                self.logger.debug(f"Created/updated items count: {len(updated_detail_items)}")
-                monday_items = []
-
-                # region 2.4.6.1: Add External Links to Detail Items
-                for di in updated_detail_items:
-                    file_link = None
-                    xero_link = None
-
-                    if di.get("payment_type") in ["CC", "PC"]:
-                        key = (
-                            int(di.get("project_number")),
-                            int(di.get("po_number")),
-                            int(di.get("detail_number"))
-                        )
-                        if key in receipt_map:
-                            file_link = receipt_map[key].get("file_link")
-                        # TODO get spend money links
-
-                    elif di.get("payment_type") in ["INV", "PROF"]:
-                        key = (
-                            int(di.get("project_number")),
-                            int(di.get("po_number")),
-                            int(di.get("detail_number"))
-                        )
-                        if key in invoice_map:
-                            file_link = invoice_map[key].get("file_link")
-                        # TODO get xero link from xero_bills
-
-                    detail_dict = {
-                        'id': di.get('id'),
-                        'parent_pulse_id': di.get('parent_pulse_id'),
-                        'pulse_id': di.get('pulse_id'),
-                        'project_number': di.get('project_number'),
-                        'po_number': di.get('po_number'),
-                        'detail_number': di.get('detail_number'),
-                        'line_number': di.get('line_number'),
-                        'description': di.get('description'),
-                        'quantity': di.get('quantity'),
-                        'vendor': di.get("vendor"),
-                        'rate': di.get('rate'),
-                        'transaction_date': di.get('date'),
-                        'due_date': di.get('due date'),
-                        'account_code': di.get('account'),
-                        'file_link': file_link,
-                        'xero_link': xero_link,
-                        'ot': di.get('ot'),
-                        'fringes': di.get('fringes'),
-                        'state': di.get('state')
-                    }
-                    self.logger.debug(f"Prepared Monday item (updated): {detail_dict}")
-                    monday_items.append(detail_dict)
-                # endregion
-
-                self.logger.info(f"📤 Total Monday items prepared: {len(monday_items)}")
-                for chunk in chunk_list(monday_items, 500):
-                    self.logger.debug(f"Processing Monday chunk with {len(chunk)} items.")
-                    for detail_dict in chunk:
-                        self.logger.debug(f"Buffering Monday upsert: {detail_dict}")
-                        self.monday_service.buffered_upsert_detail_item(detail_dict)
-                    self.logger.debug("Executing batch upsert for current Monday chunk.")
-                    created_subitems, updated_subitems = self.monday_service.execute_batch_upsert_detail_items()
-                    self.logger.debug(
-                        f"Monday batch upsert returned: created_subitems={created_subitems}, "
-                        f"updated_subitems={updated_subitems}"
-                    )
-                    if created_subitems:
-                        for subitem_obj in created_subitems:
-                            self.logger.debug(f"Processing Monday created subitem: {subitem_obj}")
-                            db_sub_item = subitem_obj.get("db_sub_item")
-                            monday_sub_id = subitem_obj.get("monday_item_id")
-                            if db_sub_item and db_sub_item.get("id") and monday_sub_id:
-                                # Process mapping if needed
-                                pass
-
-            except Exception:
-                self.logger.exception("Exception during Monday upsert for detail items.", exc_info=True)
+            # receipt_map = receipt_map_OG
+            # invoice_map = invoice_map_OG
+            # try:
+            #     self.logger.info("[Detail Aggregator] Starting Monday upsert for detail items.")
+            #     self.logger.debug(f"Created/updated items count: {len(updated_detail_items)}")
+            #     monday_items = []
+            #
+            #     # region 2.4.6.1: Add External Links to Detail Items
+            #     for di in updated_detail_items:
+            #         file_link = None
+            #         xero_link = None
+            #
+            #         if di.get("payment_type") in ["CC", "PC"]:
+            #             key = (
+            #                 int(di.get("project_number")),
+            #                 int(di.get("po_number")),
+            #                 int(di.get("detail_number")),
+            #                 int(di.get("line_number"))
+            #             )
+            #             if key in receipt_map:
+            #                 file_link = receipt_map[key].get("file_link")
+            #             if key in spend_money_map_updated:
+            #                 xero_link = spend_money_map_updated[key].get("xero_link")
+            #
+            #         elif di.get("payment_type") in ["INV", "PROF"]:
+            #             key = (
+            #                 int(di.get("project_number")),
+            #                 int(di.get("po_number")),
+            #                 int(di.get("detail_number"))
+            #             )
+            #             if key in invoice_map:
+            #                 file_link = invoice_map[key].get("file_link")
+            #             if key in xero_bill_map_updated:
+            #                 xero_link = xero_bill_map_updated[key].get("xero_link")
+            #
+            #
+            #         detail_dict = {
+            #             'id': di.get('id'),
+            #             'parent_pulse_id': di.get('parent_pulse_id'),
+            #             'pulse_id': di.get('pulse_id'),
+            #             'project_number': di.get('project_number'),
+            #             'po_number': di.get('po_number'),
+            #             'detail_number': di.get('detail_number'),
+            #             'line_number': di.get('line_number'),
+            #             'description': di.get('description'),
+            #             'quantity': di.get('quantity'),
+            #             'vendor': di.get("vendor"),
+            #             'rate': di.get('rate'),
+            #             'transaction_date': di.get('date'),
+            #             'due_date': di.get('due date'),
+            #             'account_code': di.get('account'),
+            #             'file_link': file_link,
+            #             'xero_link': xero_link,
+            #             'ot': di.get('ot'),
+            #             'fringes': di.get('fringes'),
+            #             'state': di.get('state')
+            #         }
+            #         self.logger.debug(f"Prepared Monday item (updated): {detail_dict}")
+            #         monday_items.append(detail_dict)
+            #     # endregion
+            #
+            #     self.logger.info(f"📤 Total Monday items prepared: {len(monday_items)}")
+            #     for chunk in chunk_list(monday_items, 500):
+            #         self.logger.debug(f"Processing Monday chunk with {len(chunk)} items.")
+            #         for detail_dict in chunk:
+            #             self.logger.debug(f"Buffering Monday upsert: {detail_dict}")
+            #             self.monday_service.buffered_upsert_detail_item(detail_dict)
+            #         self.logger.debug("Executing batch upsert for current Monday chunk.")
+            #         created_subitems, updated_subitems = self.monday_service.execute_batch_upsert_detail_items()
+            #         self.logger.debug(
+            #             f"Monday batch upsert returned: created_subitems={created_subitems}, "
+            #             f"updated_subitems={updated_subitems}"
+            #         )
+            #         if created_subitems:
+            #             for subitem_obj in created_subitems:
+            #                 self.logger.debug(f"Processing Monday created subitem: {subitem_obj}")
+            #                 db_sub_item = subitem_obj.get("db_sub_item")
+            #                 monday_sub_id = subitem_obj.get("monday_item_id")
+            #                 if db_sub_item and db_sub_item.get("id") and monday_sub_id:
+            #                     # Process mapping if needed
+            #                     pass
+            #
+            # except Exception:
+            #     self.logger.exception("Exception during Monday upsert for detail items.", exc_info=True)
             # endregion
 
             # region 2.4.7: Xero Upsert for Xero Bill, Xero Bill Line Item, Spend Money Item
             try:
                 self.logger.info("🔄 Starting Xero Upsert for Xero Bills and associated line items.")
                 # Sync Xero Bills (and implicitly their line items via the bill creation process)
-                #xero_bill_results = xero_services.handle_xero_bill_create_bulk(xero_bills_to_upload, session)
-                #self.logger.info(f"✅ Synced {len(xero_bill_results)} Xero Bills.")
-
+                xero_bill_results = xero_services.handle_xero_bill_create_bulk(xero_bills_to_upload, xero_bill_line_items_to_upload, session)
+                self.logger.info(f"✅ Synced {len(xero_bill_results)} Xero Bills.")
                 self.logger.info("🔄 Starting Xero Upsert for Spend Money items.")
                 spend_money_results = xero_services.handle_spend_money_create_bulk(updated_spend_money, session)
                 self.logger.info(f"✅ Synced {len(spend_money_results)} Spend Money items.")
@@ -1434,17 +1476,17 @@ class BudgetService(metaclass=SingletonMeta):
     # region 2.8: Helper Methods
     def parse_po_log_data(self, po_log: dict) -> list[Any] | dict[str, Any]:
         try:
-            po_log_db_path = po_log["db_path"]
+            #po_log_db_path = po_log["db_path"]
             po_log_filename = po_log["filename"]
             project_number = po_log["project_number"]
             temp_file_path = f'../temp_files/{os.path.basename(po_log_filename)}'
             self.PROJECT_NUMBER = project_number
-            if not os.path.exists(temp_file_path):
-                self.logger.info('🛠 Not using local temp files? Attempting Dropbox download...')
-                if not self.dropbox_service.download_file_from_dropbox((po_log_db_path + po_log_filename),
-                                                                       temp_file_path):
-                    return []
-                self.logger.info(f'📝 Received PO Log file from Dropbox: {po_log_filename}')
+            # if not os.path.exists(temp_file_path):
+            #     self.logger.info('🛠 Not using local temp files? Attempting Dropbox download...')
+            #     if not self.dropbox_service.download_file_from_dropbox((po_log_db_path + po_log_filename),
+            #                                                            temp_file_path):
+            #         return []
+            #    self.logger.info(f'📝 Received PO Log file from Dropbox: {po_log_filename}')
             self.logger.info('🔧 Passing parsed PO log data to DB aggregator...')
             main_items, detail_items, contacts = self.dropbox_service.extract_data_from_po_log(temp_file_path,
                                                                                                project_number)

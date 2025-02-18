@@ -945,22 +945,6 @@ class XeroAPI(metaclass=SingletonMeta):
             self.logger.error(f'- Unexpected error while retrieving SPEND transactions: {e}')
             return []
 
-        try:
-            raw_filter = f'Type=="SPEND" AND Reference!=null AND Reference.Contains("{reference_str}")'
-            self.logger.debug(f'Using raw filter: {raw_filter}')
-            spend_transactions = self._retry_on_unauthorized(self.xero.banktransactions.filter, raw=raw_filter)
-            if not spend_transactions:
-                self.logger.info(
-                    f'- No SPEND transactions found for Reference="{reference_str}". Returning [].')
-                return []
-            results = [tx for tx in spend_transactions if tx.get('Status', '').upper() != 'VOIDED']
-            self.logger.debug(
-                f'- Found {len(results)} SPEND transaction(s) for Reference="{reference_str}".')
-            return results
-        except Exception as e:
-            self.logger.error(f'- Unexpected error while retrieving SPEND transactions: {e}')
-            return []
-
 
     # region 7️⃣ Concurrency Example
     def create_spend_money_in_batch(self, session, detail_item_ids: list[int]):

@@ -9,6 +9,19 @@ from database.database_util import DatabaseOperations
 from files_xero.xero_api import xero_api
 from utilities.singleton import SingletonMeta
 
+#TODO add tax code, date, and description to Spend Item sync
+
+def parse_reference(reference):
+    parts = reference.split("_")
+    if len(parts) == 3:
+        parts.append("1")
+    elif len(parts) != 4:
+        raise ValueError(
+            f"Expected 3 or 4 segments separated by underscores, got {len(parts)} segments: {parts}")
+
+    project_str, po_str, detail_str, line_number = parts
+    return project_str, po_str, detail_str, line_number
+
 
 class XeroServices(metaclass=SingletonMeta):
     """
@@ -188,39 +201,42 @@ class XeroServices(metaclass=SingletonMeta):
     # ─────────────────────────────────────────────────────────────
     #                XERO BILLS (CREATE/UPDATE/DELETE)
     # ─────────────────────────────────────────────────────────────
-    def handle_xero_bill_create_bulk(self, new_bills: list, session):
+    def handle_xero_bill_create_bulk(self, new_bills: list, new_bill_line_items: list, session):
         self.logger.info(f"Pushing {len(new_bills)} bills to Xero.")
         payloads = []
         for bill in new_bills:
             # Build basic payload
             project_number = bill.get("project_number")
             po_number = bill.get("po_number")
-            po_record = self.db_ops.search_purchase_order_by_keys(project_number=project_number, po_number=po_number)
             detail_number = bill.get("detail_number")
-            if isinstance(po_record, list):
-                po_record = po_record[0]
-            if not po_record:
-                self.logger.warning(
-                    f"Failed to find Purchase Order record for project_number={project_number} and po_number={po_number}"
-                )
-                continue
-
-            contact_id = po_record.get("contact_id")
-            contact_record = self.db_ops.search_contacts(["id"], [contact_id])
-            if isinstance(contact_record, list):
-                contact_record = contact_record[0]
-            if not contact_record:
-                self.logger.warning(f"Failed to find Contact record for contact_id={contact_id}")
-                continue
-
-            xero_contact_id = contact_record.get("xero_id")
-            if not xero_contact_id:
-                self.logger.warning(f"Contact record lacks Xero ID for contact_id={contact_id}")
-                self.logger.info(f"Creating Contact in Xero for contact_id={contact_id}")
-                xero_contact_id = self.xero_api.create_contact(contact_record)
-                if not xero_contact_id:
-                    self.logger.warning("Failed to create Contact in Xero.")
+            if bill.get("contact_xero_id"):
+                contact_xero_id = bill.get("contact_xero_id")
+            else:
+                po_record = self.db_ops.search_purchase_order_by_keys(project_number=project_number, po_number=po_number)
+                if isinstance(po_record, list):
+                    po_record = po_record[0]
+                if not po_record:
+                    self.logger.warning(
+                        f"Failed to find Purchase Order record for project_number={project_number} and po_number={po_number}"
+                    )
                     continue
+
+                contact_id = po_record.get("contact_id")
+                contact_record = self.db_ops.search_contacts(["id"], [contact_id])
+                if isinstance(contact_record, list):
+                    contact_record = contact_record[0]
+                if not contact_record:
+                    self.logger.warning(f"Failed to find Contact record for contact_id={contact_id}")
+                    continue
+
+                contact_xero_id = contact_record.get("xero_id")
+                if not contact_xero_id:
+                    self.logger.warning(f"Contact record lacks Xero ID for contact_id={contact_id}")
+                    self.logger.info(f"Creating Contact in Xero for contact_id={contact_id}")
+                    contact_xero_id = self.xero_api.create_contact(contact_record)
+                    if not contact_xero_id:
+                        self.logger.warning("Failed to create Contact in Xero.")
+                        continue
 
             # Convert the stored strings/dates to date objects
             due_date_raw = bill.get("due_date")
@@ -247,7 +263,7 @@ class XeroServices(metaclass=SingletonMeta):
                 "InvoiceNumber": bill.get("xero_reference_number"),
                 "Date": parsed_transaction_date,
                 "DueDate": parsed_due_date,
-                "Contact": {"ContactID": xero_contact_id},
+                "Contact": {"ContactID": contact_xero_id},
             }
 
             # Fetch raw line items and transform them for Xero
@@ -261,7 +277,7 @@ class XeroServices(metaclass=SingletonMeta):
                         'Description': li.get('description'),
                         'Quantity': li.get('quantity', Decimal('1')),
                         'UnitAmount': li.get('unit_amount', Decimal('0')),
-                        'AccountCode': str(li.get('account_code', '0000')),
+                        'AccountCode': str(li.get('tax_code', '0000')),
                         'LineAmount': li.get('line_amount', Decimal('0')),
                     })
                 payload["LineItems"] = xero_line_items
@@ -506,7 +522,7 @@ class XeroServices(metaclass=SingletonMeta):
                 description = li.get("Description", "")
                 quantity = li.get("Quantity", 1)
                 unit_amount = Decimal(li.get("UnitAmount", 0)).quantize(Decimal("0.00"), rounding=ROUND_HALF_UP)
-                account_code = li.get("AccountCode", "")
+                tax_code = li.get("AccountCode", "")
 
                 # Attempt to find a matching detail item using project, PO, detail number, unit amount, and description.
                 matching_detail_item = self.db_ops.search_detail_items(
@@ -521,18 +537,18 @@ class XeroServices(metaclass=SingletonMeta):
                         matching_detail_item['id'],
                         xero_id=line_item_id,
                     )
-                    self.logger.info(
+                    self.logger.debug(
                         f"Updated detail item ID {matching_detail_item['id']} with xero_id {line_item_id} "
                     )
+                    line_number = matching_detail_item["line_number"]
+
                 else:
-                    self.logger.warning(
+                    self.logger.debug(
                         f"No matching detail item found for project {local_project_number}, PO {local_po_number}, "
                         f"detail {detail_number}, unit_amount {unit_amount}"
                     )
-                    continue
+                    line_number = None
 
-                breakpoint()
-                line_number = matching_detail_item["line_number"]
 
                 # Process the corresponding Xero bill line item.
                 local_li = self.db_ops.search_xero_bill_line_item_by_keys(
@@ -542,21 +558,23 @@ class XeroServices(metaclass=SingletonMeta):
                     line_number
                 )
                 if local_li:
-                    if isinstance(local_li, list):
-                        local_li = local_li[0]
-                    self.db_ops.update_xero_bill_line_item(
-                        local_li['id'],
-                        description=description,
-                        quantity=quantity,
-                        unit_amount=unit_amount,
-                        account_code=account_code,
-                        xero_bill_line_id=line_item_id,
-                        parent_xero_id=xero_invoice_id
-                    )
-                    self.logger.info(
-                        f"Updated local bill line item ID {local_li['id']} with xero_bill_line_id {line_item_id} "
-                        f"and parent_xero_id {xero_invoice_id} for bill Reference {reference}"
-                    )
+                    if not isinstance(local_li, list):
+                        local_li = [local_li]
+                    for li_ in local_li:
+                        self.db_ops.update_xero_bill_line_item(
+                            li_['id'],
+                            description=description,
+                            quantity=quantity,
+                            unit_amount=unit_amount,
+                            tax_code=tax_code,
+                            xero_bill_line_id=line_item_id,
+                            parent_xero_id=xero_invoice_id,
+                            line_number=line_number
+                        )
+                        self.logger.info(
+                            f"Updated local bill line item ID {li_['id']} with xero_bill_line_id {line_item_id} "
+                            f"and parent_xero_id {xero_invoice_id} for bill Reference {reference}"
+                        )
                 else:
                     self.db_ops.create_xero_bill_line_item_by_keys(
                         parent_id=local_bill_id,
@@ -567,7 +585,7 @@ class XeroServices(metaclass=SingletonMeta):
                         description=description,
                         quantity=quantity,
                         unit_amount=unit_amount,
-                        account_code=account_code,
+                        tax_code=tax_code,
                         xero_bill_line_id=line_item_id,
                         parent_xero_id=xero_invoice_id
                     )
@@ -606,27 +624,25 @@ class XeroServices(metaclass=SingletonMeta):
             self.logger.debug(f'existing_spend => {existing_spend}')
             # Build the kwargs for record creation or update.
             # These keys should match the SpendMoney model fields.
-
-            # Extract the reference string from the tx variable (e.g., "2416_02_01")
+            # Extract the reference string from the tx variable (e.g., "2416_02_01_01")
             reference = tx.get("Reference", "")
-
             try:
                 # Split the reference by underscores into three parts
-                project_str, po_str, detail_str = reference.split("_")
+                project_str, po_str, detail_str, line_number = parse_reference(reference)
 
                 # Convert the parts to integers (this removes any leading zeros)
                 project_number = int(project_str)
                 po_number = int(po_str)
                 detail_number = int(detail_str)
+                line_number = int(line_number)
+
             except ValueError:
                 # In case the reference is missing or not properly formatted,
                 # you might want to set defaults or handle the error appropriately.
-                project_number = None
-                po_number = None
-                detail_number = None
+                #skip this spend money receipt
+                continue
 
-            # Assume line number is always 1
-            line_number = 1
+
 
             # Attempt to find the contact based on the Xero contact ID
             contact_record = self.db_ops.search_contacts(["xero_id"], [tx["Contact"]["ContactID"]])

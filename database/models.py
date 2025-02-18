@@ -582,10 +582,10 @@ class Receipt(Base):
 class SpendMoney(Base):
     __tablename__ = 'spend_money'
     id = Column(MYSQL_BIGINT(unsigned=True), primary_key=True, autoincrement=True)
-    project_number = Column(MYSQL_INTEGER(unsigned=True), nullable=True)
-    po_number = Column(MYSQL_BIGINT(unsigned=True), nullable=True)
-    detail_number = Column(MYSQL_INTEGER(unsigned=True), nullable=True)
-    line_number = Column(MYSQL_INTEGER(unsigned=True), nullable=True)
+    project_number = Column(MYSQL_INTEGER(unsigned=True), nullable=False)
+    po_number = Column(MYSQL_BIGINT(unsigned=True), nullable=False)
+    detail_number = Column(MYSQL_INTEGER(unsigned=True), nullable=False)
+    line_number = Column(MYSQL_INTEGER(unsigned=True), nullable=False)
     description = Column(String(255), nullable=True)
     contact_id = Column(MYSQL_BIGINT(unsigned=True), nullable=True)
     date = Column(DateTime, nullable=True)
