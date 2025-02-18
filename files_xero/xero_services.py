@@ -9,6 +9,7 @@ from database.database_util import DatabaseOperations
 from files_xero.xero_api import xero_api
 from utilities.singleton import SingletonMeta
 
+#TODO new bill line items need to be full dicts not just IDs
 #TODO add tax code, date, and description to Spend Item sync
 
 def parse_reference(reference):
@@ -257,33 +258,43 @@ class XeroServices(metaclass=SingletonMeta):
             else:
                 parsed_transaction_date = None
 
+            #build reference number
+            bill_reference_number = bill.get("xero_reference_number")
+            if not bill_reference_number:
+                bill_reference_number = f"{project_number}_{po_number}_{detail_number}"
+                self.logger.debug(f"Bill ID {bill['id']}: Setting Xero reference number to {bill_reference_number}")
+
             # Basic invoice payload
             payload = {
                 "Type": "ACCPAY",
-                "InvoiceNumber": bill.get("xero_reference_number"),
+                "InvoiceNumber": bill_reference_number,
                 "Date": parsed_transaction_date,
                 "DueDate": parsed_due_date,
                 "Contact": {"ContactID": contact_xero_id},
             }
 
             # Fetch raw line items and transform them for Xero
-            line_items_raw = self.db_ops.search_xero_bill_line_items(["project_number", "po_number", "detail_number"], [project_number, po_number, detail_number])
+            line_items_raw = new_bill_line_items
             if line_items_raw:
                 if isinstance(line_items_raw, dict):
                     line_items_raw = [line_items_raw]
                 xero_line_items = []
                 for li in line_items_raw:
-                    xero_line_items.append({
-                        'Description': li.get('description'),
-                        'Quantity': li.get('quantity', Decimal('1')),
-                        'UnitAmount': li.get('unit_amount', Decimal('0')),
-                        'AccountCode': str(li.get('tax_code', '0000')),
-                        'LineAmount': li.get('line_amount', Decimal('0')),
-                    })
+                    #make sure line item matches bill key
+                    if (li["project_number"], li["po_number"], li["detail_number"]) == (project_number, po_number, detail_number):
+                        xero_line_items.append({
+                            'Description': li.get('description'),
+                            'Quantity': li.get('quantity', Decimal('1')),
+                            'UnitAmount': li.get('unit_amount', Decimal('0')),
+                            'AccountCode': str(li.get('tax_code', '0000')),
+                            'LineAmount': li.get('line_amount', Decimal('0')),
+                        })
                 payload["LineItems"] = xero_line_items
-                self.logger.debug(f"Bill ID {bill['id']}: Including {len(xero_line_items)} line items in payload.")
+                if len(xero_line_items) == 0:
+                    self.logger.debug(f"No LineItems to add to bill item {project_number}_{po_number}_{detail_number}.")
+                self.logger.debug(f"Bill ID {bill_reference_number}: Including {len(xero_line_items)} line items in payload.")
             else:
-                self.logger.warning(f"Bill ID {bill['id']}: No line items found in DB.")
+                self.logger.warning(f"Bill ID {bill_reference_number}: No line items found in DB.")
 
             payloads.append(payload)
 

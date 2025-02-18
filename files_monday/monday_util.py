@@ -499,7 +499,7 @@ class MondayUtil(metaclass=SingletonMeta):
             due_date=None,
             account_number=None,
             link=None,
-            OT=None,
+            ot=None,
             fringes=None,
             xero_link=None,
     ):
@@ -532,13 +532,13 @@ class MondayUtil(metaclass=SingletonMeta):
                 )
                 column_values[self.SUBITEM_RATE_COLUMN_ID] = None
 
-        if OT is not None:
+        if ot is not None:
             try:
-                cleaned_OT = float(str(OT).replace(",", "").strip())
-                column_values[self.SUBITEM_OT_COLUMN_ID] = cleaned_OT
+                cleaned_ot = float(str(ot).replace(",", "").strip())
+                column_values[self.SUBITEM_OT_COLUMN_ID] = cleaned_ot
             except ValueError as e:
                 self.logger.error(
-                    f"Invalid OT '{OT}': {e}"
+                    f"Invalid ot '{ot}': {e}"
                 )
                 column_values[self.SUBITEM_OT_COLUMN_ID] = None
 

@@ -726,6 +726,7 @@ class BudgetService(metaclass=SingletonMeta):
                 xero_bill_line_items_list = self.db_ops.batch_search_xero_bill_line_items_by_xero_bill_ids(
                     xero_bill_ids, session=session
                 )
+
                 for xbl in xero_bill_line_items_list:
                     xb_id = xbl.get("xero_bill_id")
                     if xb_id:
@@ -1288,10 +1289,10 @@ class BudgetService(metaclass=SingletonMeta):
                 raise
 
             xero_bill_line_items_to_upload = []
-            if xero_bill_line_items_to_create:
-                xero_bill_line_items_to_upload.extend(xero_bill_line_items_to_create)
-            if xero_bill_line_items_to_update:
-                xero_bill_line_items_to_upload.extend(xero_bill_line_items_to_update)
+            for items in xero_bill_line_items_to_create.values():
+                xero_bill_line_items_to_upload.extend(items)
+            for items in xero_bill_line_items_to_update.values():
+                xero_bill_line_items_to_upload.extend(items)
 
             # --- Invoices ---
             invoices_to_update = []
@@ -1364,105 +1365,105 @@ class BudgetService(metaclass=SingletonMeta):
             # endregion
 
             # region 2.4.6: Monday Upsert for Detail Items
-            # receipt_map = receipt_map_OG
-            # invoice_map = invoice_map_OG
-            # try:
-            #     self.logger.info("[Detail Aggregator] Starting Monday upsert for detail items.")
-            #     self.logger.debug(f"Created/updated items count: {len(updated_detail_items)}")
-            #     monday_items = []
-            #
-            #     # region 2.4.6.1: Add External Links to Detail Items
-            #     for di in updated_detail_items:
-            #         file_link = None
-            #         xero_link = None
-            #
-            #         if di.get("payment_type") in ["CC", "PC"]:
-            #             key = (
-            #                 int(di.get("project_number")),
-            #                 int(di.get("po_number")),
-            #                 int(di.get("detail_number")),
-            #                 int(di.get("line_number"))
-            #             )
-            #             if key in receipt_map:
-            #                 file_link = receipt_map[key].get("file_link")
-            #             if key in spend_money_map_updated:
-            #                 xero_link = spend_money_map_updated[key].get("xero_link")
-            #
-            #         elif di.get("payment_type") in ["INV", "PROF"]:
-            #             key = (
-            #                 int(di.get("project_number")),
-            #                 int(di.get("po_number")),
-            #                 int(di.get("detail_number"))
-            #             )
-            #             if key in invoice_map:
-            #                 file_link = invoice_map[key].get("file_link")
-            #             if key in xero_bill_map_updated:
-            #                 xero_link = xero_bill_map_updated[key].get("xero_link")
-            #
-            #
-            #         detail_dict = {
-            #             'id': di.get('id'),
-            #             'parent_pulse_id': di.get('parent_pulse_id'),
-            #             'pulse_id': di.get('pulse_id'),
-            #             'project_number': di.get('project_number'),
-            #             'po_number': di.get('po_number'),
-            #             'detail_number': di.get('detail_number'),
-            #             'line_number': di.get('line_number'),
-            #             'description': di.get('description'),
-            #             'quantity': di.get('quantity'),
-            #             'vendor': di.get("vendor"),
-            #             'rate': di.get('rate'),
-            #             'transaction_date': di.get('date'),
-            #             'due_date': di.get('due date'),
-            #             'account_code': di.get('account'),
-            #             'file_link': file_link,
-            #             'xero_link': xero_link,
-            #             'ot': di.get('ot'),
-            #             'fringes': di.get('fringes'),
-            #             'state': di.get('state')
-            #         }
-            #         self.logger.debug(f"Prepared Monday item (updated): {detail_dict}")
-            #         monday_items.append(detail_dict)
-            #     # endregion
-            #
-            #     self.logger.info(f"📤 Total Monday items prepared: {len(monday_items)}")
-            #     for chunk in chunk_list(monday_items, 500):
-            #         self.logger.debug(f"Processing Monday chunk with {len(chunk)} items.")
-            #         for detail_dict in chunk:
-            #             self.logger.debug(f"Buffering Monday upsert: {detail_dict}")
-            #             self.monday_service.buffered_upsert_detail_item(detail_dict)
-            #         self.logger.debug("Executing batch upsert for current Monday chunk.")
-            #         created_subitems, updated_subitems = self.monday_service.execute_batch_upsert_detail_items()
-            #         self.logger.debug(
-            #             f"Monday batch upsert returned: created_subitems={created_subitems}, "
-            #             f"updated_subitems={updated_subitems}"
-            #         )
-            #         if created_subitems:
-            #             for subitem_obj in created_subitems:
-            #                 self.logger.debug(f"Processing Monday created subitem: {subitem_obj}")
-            #                 db_sub_item = subitem_obj.get("db_sub_item")
-            #                 monday_sub_id = subitem_obj.get("monday_item_id")
-            #                 if db_sub_item and db_sub_item.get("id") and monday_sub_id:
-            #                     # Process mapping if needed
-            #                     pass
-            #
-            # except Exception:
-            #     self.logger.exception("Exception during Monday upsert for detail items.", exc_info=True)
+            receipt_map = receipt_map_OG
+            invoice_map = invoice_map_OG
+            try:
+                self.logger.info("[Detail Aggregator] Starting Monday upsert for detail items.")
+                self.logger.debug(f"Created/updated items count: {len(updated_detail_items)}")
+                monday_items = []
+
+                # region 2.4.6.1: Add External Links to Detail Items
+                for di in updated_detail_items:
+                    file_link = None
+                    xero_link = None
+
+                    if di.get("payment_type") in ["CC", "PC"]:
+                        key = (
+                            int(di.get("project_number")),
+                            int(di.get("po_number")),
+                            int(di.get("detail_number")),
+                            int(di.get("line_number"))
+                        )
+                        if key in receipt_map:
+                            file_link = receipt_map[key].get("file_link")
+                        if key in spend_money_map_updated:
+                            xero_link = spend_money_map_updated[key].get("xero_link")
+
+                    elif di.get("payment_type") in ["INV", "PROF"]:
+                        key = (
+                            int(di.get("project_number")),
+                            int(di.get("po_number")),
+                            int(di.get("detail_number"))
+                        )
+                        if key in invoice_map:
+                            file_link = invoice_map[key].get("file_link")
+                        if key in xero_bill_map_updated:
+                            xero_link = xero_bill_map_updated[key].get("xero_link")
+
+
+                    detail_dict = {
+                        'id': di.get('id'),
+                        'parent_pulse_id': di.get('parent_pulse_id'),
+                        'pulse_id': di.get('pulse_id'),
+                        'project_number': di.get('project_number'),
+                        'po_number': di.get('po_number'),
+                        'detail_number': di.get('detail_number'),
+                        'line_number': di.get('line_number'),
+                        'description': di.get('description'),
+                        'quantity': di.get('quantity'),
+                        'vendor': di.get("vendor"),
+                        'rate': di.get('rate'),
+                        'transaction_date': di.get('date'),
+                        'due_date': di.get('due date'),
+                        'account_code': di.get('account'),
+                        'file_link': file_link,
+                        'xero_link': xero_link,
+                        'ot': di.get('ot'),
+                        'fringes': di.get('fringes'),
+                        'state': di.get('state')
+                    }
+                    self.logger.debug(f"Prepared Monday item (updated): {detail_dict}")
+                    monday_items.append(detail_dict)
+                # endregion
+
+                self.logger.info(f"📤 Total Monday items prepared: {len(monday_items)}")
+                for chunk in chunk_list(monday_items, 500):
+                    self.logger.debug(f"Processing Monday chunk with {len(chunk)} items.")
+                    for detail_dict in chunk:
+                        self.logger.debug(f"Buffering Monday upsert: {detail_dict}")
+                        self.monday_service.buffered_upsert_detail_item(detail_dict)
+                    self.logger.debug("Executing batch upsert for current Monday chunk.")
+                    created_subitems, updated_subitems = self.monday_service.execute_batch_upsert_detail_items()
+                    self.logger.debug(
+                        f"Monday batch upsert returned: created_subitems={created_subitems}, "
+                        f"updated_subitems={updated_subitems}"
+                    )
+                    if created_subitems:
+                        for subitem_obj in created_subitems:
+                            self.logger.debug(f"Processing Monday created subitem: {subitem_obj}")
+                            db_sub_item = subitem_obj.get("db_sub_item")
+                            monday_sub_id = subitem_obj.get("monday_item_id")
+                            if db_sub_item and db_sub_item.get("id") and monday_sub_id:
+                                # Process mapping if needed
+                                pass
+
+            except Exception:
+                self.logger.exception("Exception during Monday upsert for detail items.", exc_info=True)
             # endregion
 
             # region 2.4.7: Xero Upsert for Xero Bill, Xero Bill Line Item, Spend Money Item
-            try:
-                self.logger.info("🔄 Starting Xero Upsert for Xero Bills and associated line items.")
-                # Sync Xero Bills (and implicitly their line items via the bill creation process)
-                xero_bill_results = xero_services.handle_xero_bill_create_bulk(xero_bills_to_upload, xero_bill_line_items_to_upload, session)
-                self.logger.info(f"✅ Synced {len(xero_bill_results)} Xero Bills.")
-                self.logger.info("🔄 Starting Xero Upsert for Spend Money items.")
-                spend_money_results = xero_services.handle_spend_money_create_bulk(updated_spend_money, session)
-                self.logger.info(f"✅ Synced {len(spend_money_results)} Spend Money items.")
-            except Exception:
-                self.logger.exception("Error during Xero Upsert for bills and spend money items.", exc_info=True)
-                session.rollback()
-                raise
+            # try:
+            #     self.logger.info("🔄 Starting Xero Upsert for Xero Bills and associated line items.")
+            #     # Sync Xero Bills (and implicitly their line items via the bill creation process)
+            #     xero_bill_results = xero_services.handle_xero_bill_create_bulk(xero_bills_to_upload, xero_bill_line_items_to_upload, session)
+            #     self.logger.info(f"✅ Synced {len(xero_bill_results)} Xero Bills.")
+            #     self.logger.info("🔄 Starting Xero Upsert for Spend Money items.")
+            #     spend_money_results = xero_services.handle_spend_money_create_bulk(updated_spend_money, session)
+            #     self.logger.info(f"✅ Synced {len(spend_money_results)} Spend Money items.")
+            # except Exception:
+            #     self.logger.exception("Error during Xero Upsert for bills and spend money items.", exc_info=True)
+            #     session.rollback()
+            #     raise
             # endregion
 
         except Exception:

@@ -964,9 +964,10 @@ class DatabaseOperations:
         """
         if not xero_bill_ids:
             return []
-        query = session.query(XeroBillLineItem).filter(XeroBillLineItem.parent_xero_id.in_(xero_bill_ids))
-        records = query.all()
-        return [self._serialize_record(r) for r in records]
+
+        result = self._search_records(XeroBillLineItem,["parent_id"], [xero_bill_ids], session=session)
+
+        return result
     # endregion
 
     # region 🧾 INVOICE

@@ -448,9 +448,9 @@ class MondayAPI(metaclass=SingletonMeta):
                 due_date=db_sub_item.get("due_date"),
                 account_number=db_sub_item.get("account_code"),
                 link=db_sub_item.get("file_link"),
-                OT=db_sub_item.get("ot"),
+                ot=db_sub_item.get("ot"),
                 fringes=db_sub_item.get("fringes"),
-                xero_link=db_sub_item.get("xero_link"),
+                #xero_link=db_sub_item.get("xero_link"),
                 status=db_sub_item.get("state")
             )
             escaped_values = column_values.replace('"', '\\"')
