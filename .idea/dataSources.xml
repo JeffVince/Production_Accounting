@@ -8,5 +8,12 @@
       <jdbc-url>jdbc:mysql://localhost:3306/virtual_pm</jdbc-url>
       <working-dir>$ProjectFileDir$</working-dir>
     </data-source>
+    <data-source source="LOCAL" name="defaultdb@olivine-db-main-do-user-11898912-0.l.db.ondigitalocean.com" uuid="e16dd60a-0b03-4941-a944-3bc9bd8f0126">
+      <driver-ref>postgresql</driver-ref>
+      <synchronize>true</synchronize>
+      <jdbc-driver>org.postgresql.Driver</jdbc-driver>
+      <jdbc-url>jdbc:postgresql://olivine-db-main-do-user-11898912-0.l.db.ondigitalocean.com:25060/defaultdb</jdbc-url>
+      <working-dir>$ProjectFileDir$</working-dir>
+    </data-source>
   </component>
 </project>

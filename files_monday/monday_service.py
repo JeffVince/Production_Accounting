@@ -158,6 +158,7 @@ class MondayService(metaclass=SingletonMeta):
     # endregion
 
     # region 2.3: Upsert Detail Subitem Methods
+    # region 2.3: Upsert Detail Subitem Methods
     def upsert_detail_subitem_in_monday(self, detail_item: dict):
         """
         Upserts a detail item as a Monday subitem.
@@ -193,71 +194,116 @@ class MondayService(metaclass=SingletonMeta):
     def execute_batch_upsert_detail_items(self):
         """
         Batch upserts detail subitems in Monday.
-        Returns a tuple: (created_results, updated_results)
+        This method separates detail items in the _detail_upsert_queue into two groups:
+          - Items with a pulse_id are updated.
+          - Items without a pulse_id are created.
+        It then processes both batches and returns the consolidated results.
         """
         self.logger.info("🌀 Processing batch subitem upserts...")
         if not self._detail_upsert_queue:
             self.logger.info("🌀 No detail items queued for upsert.")
-            return
+            return []
 
         items_to_create = []
         items_to_update = []
 
+        # Separate items based on pulse_id.
         for di in self._detail_upsert_queue:
-            subitem_id = di.get('pulse_id')
             parent_id = di.get('parent_pulse_id')
             col_vals = self.build_subitem_column_values(di)
-            if not subitem_id:
+            if di.get('pulse_id'):
+                items_to_update.append({
+                    'db_sub_item': di,
+                    'column_values': col_vals,
+                    'parent_id': parent_id,
+                    'monday_item_id': di.get('pulse_id')
+                })
+            else:
                 items_to_create.append({
                     'db_sub_item': di,
                     'column_values': col_vals,
                     'parent_id': parent_id
                 })
-            else:
-                items_to_update.append({
-                    'db_sub_item': di,
-                    'column_values': col_vals,
-                    'parent_id': parent_id,
-                    'monday_item_id': subitem_id
-                })
 
-        self.logger.info(f"🌀 Creating: {len(items_to_create)}; Updating: {len(items_to_update)}")
-        created_results = []
-        updated_results = []
+        self.logger.info(f"🌀 Items to create: {len(items_to_create)}; items to update: {len(items_to_update)}")
+
+        monday_results = []
+        # Process creations.
         if items_to_create:
             created_results = self.monday_api.batch_create_or_update_subitems(
                 subitems_batch=items_to_create,
                 create=True
             )
+            monday_results.extend(created_results)
+
+        # Process updates.
         if items_to_update:
             updated_results = self.monday_api.batch_create_or_update_subitems(
                 subitems_batch=items_to_update,
                 create=False
             )
-        self._detail_upsert_queue.clear()
-        total = len(created_results) + len(updated_results)
-        self.logger.info(f"🌀 Processed {total} subitems.")
-        for item in created_results:
-            # remove the item from the list if it's a dict of 3 keys, after, before, query. If it's a dict of just 1 key, ID, then it can stay
-            if isinstance(item, dict) and len(item.keys()) == 3:
-                    created_results.remove(item)
-        for item in updated_results:
-            if isinstance(item, dict) and len(item.keys()) == 3:
-                    created_results.remove(item)
+            monday_results.extend(updated_results)
 
-        return created_results, updated_results
+        results = []
+        # Build a mapping for matching responses to the original detail items.
+        detail_mapping = {}
+        for item in items_to_create + items_to_update:
+            db_item = item['db_sub_item']
+            key = (
+                str(db_item.get('project_number', '')).strip(),
+                str(db_item.get('po_number', '')).strip(),
+                str(db_item.get('detail_number', '')).strip(),
+                str(db_item.get('line_number', '')).strip(),
+            )
+            detail_mapping[key] = db_item
+
+        # Process each Monday API response.
+        def flatten(item):
+            if isinstance(item, dict):
+                yield item
+            elif isinstance(item, list):
+                for sub in item:
+                    yield from flatten(sub)
+
+        for response in monday_results:
+            for sub_response in flatten(response):
+                try:
+                    col_vals = sub_response.get("column_values", {})
+                    if isinstance(col_vals, list):
+                        col_vals = {col.get("id"): col for col in col_vals if "id" in col}
+                    project_id = str(
+                        col_vals.get(self.monday_util.SUBITEM_PROJECT_ID_COLUMN_ID, {}).get("text", "")).strip()
+                    po_number = str(col_vals.get(self.monday_util.SUBITEM_PO_COLUMN_ID, {}).get("text", "")).strip()
+                    detail_number = str(
+                        col_vals.get(self.monday_util.SUBITEM_DETAIL_NUMBER_COLUMN_ID, {}).get("text", "")).strip()
+                    line_number = str(
+                        col_vals.get(self.monday_util.SUBITEM_LINE_NUMBER_COLUMN_ID, {}).get("text", "")).strip()
+                except Exception as e:
+                    self.logger.error(f"Error extracting identifiers from Monday response: {e}")
+                    continue
+
+                key = (project_id, po_number, detail_number, line_number)
+                if key in detail_mapping:
+                    results.append({
+                        'db_sub_item': detail_mapping[key],
+                        'monday_item': sub_response
+                    })
+                else:
+                    self.logger.warning(f"No matching detail item found for Monday response with key {key}")
+
+        self.logger.info(f"🌀 Processed {len(results)} subitems.")
+        self._detail_upsert_queue.clear()
+        return results
 
     def buffered_upsert_detail_item(self, detail_item: dict):
         """
         Stages a detail item for later batch upsert to Monday.com.
-
-        This method appends the provided detail item to the internal queue (_detail_upsert_queue)
-        which will be processed in batch via execute_batch_upsert_detail_items().
         """
         self.logger.debug(f"Buffering detail item for Monday upsert: {detail_item}")
         self._detail_upsert_queue.append(detail_item)
 
     # endregion
+
 
     # region 2.4: Contact Aggregator Methods
     def buffered_upsert_contact(self, contact_record: dict):

@@ -2,7 +2,7 @@
 """
 vector_ingestion.py
 
-This script ingests key files (e.g., database/models.py and scratch_files/tree.txt)
+This script ingests key files (e.g., database/models_pg.py and scratch_files/tree.txt)
 into a FAISS vector store using the DocumentIngestor class. The resulting index and
 metadata are saved to disk for later retrieval by the main agent.
 """
@@ -23,7 +23,7 @@ def main():
 
     # List the files to ingest.
     files_to_ingest = [
-        "../database/models.py",
+        "../database/models_pg.py",
         "../scratch files/tree.txt"
     ]
 

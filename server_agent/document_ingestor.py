@@ -2,7 +2,7 @@
 """
 document_ingestor.py
 
-Reads large text files (e.g., database/models.py, scratch_files/tree.txt),
+Reads large text files (e.g., database/models_pg.py, scratch_files/tree.txt),
 splits them into chunks, creates embeddings, and stores them in a FAISS index.
 """
 

@@ -36,7 +36,10 @@ class MondayUtil(metaclass=SingletonMeta):
 
     SUBITEM_NOTES_COLUMN_ID = "payment_notes__1"
     SUBITEM_STATUS_COLUMN_ID = "status4"
-    SUBITEM_ID_COLUMN_ID = "numeric__1"
+    SUBITEM_DETAIL_NUMBER_COLUMN_ID = "numeric__1"
+    SUBITEM_LINE_NUMBER_COLUMN_ID = "numbers_Mjj5uYts"
+    SUBITEM_PO_COLUMN_ID = "numbers_Mjj60Olh"
+    SUBITEM_PROJECT_ID_COLUMN_ID = "numbers_Mjj8k8Yt"
     SUBITEM_DESCRIPTION_COLUMN_ID = "text98"
     SUBITEM_QUANTITY_COLUMN_ID = "numbers0"
     SUBITEM_RATE_COLUMN_ID = "numbers9"
@@ -46,9 +49,6 @@ class MondayUtil(metaclass=SingletonMeta):
     SUBITEM_LINK_COLUMN_ID = "link"
     SUBITEM_OT_COLUMN_ID = "numbers0__1"
     SUBITEM_FRINGE_COLUMN_ID = "numbers9__1"
-    SUBITEM_LINE_NUMBER_COLUMN_ID = "numbers_Mjj5uYts"
-    SUBITEM_PO_COLUMN_ID = "numbers_Mjj60Olh"
-    SUBITEM_PROJECT_ID_COLUMN_ID = "numbers_Mjj8k8Yt"
     SUBITEM_XERO_LINK_COLUMN_ID = "link_mkm0s83t"
 
     CONTACT_NAME = "name"
@@ -81,7 +81,7 @@ class MondayUtil(metaclass=SingletonMeta):
 
     SUB_ITEM_COLUMN_ID_TO_DB_FIELD = {
         SUBITEM_STATUS_COLUMN_ID: "state",
-        SUBITEM_ID_COLUMN_ID: "detail_number",
+        SUBITEM_DETAIL_NUMBER_COLUMN_ID: "detail_number",
         SUBITEM_DESCRIPTION_COLUMN_ID: "description",
         SUBITEM_QUANTITY_COLUMN_ID: "quantity",
         SUBITEM_RATE_COLUMN_ID: "rate",
@@ -624,12 +624,12 @@ class MondayUtil(metaclass=SingletonMeta):
 
         if detail_number is not None:
             try:
-                column_values[self.SUBITEM_ID_COLUMN_ID] = int(str(detail_number).strip())
+                column_values[self.SUBITEM_DETAIL_NUMBER_COLUMN_ID] = int(str(detail_number).strip())
             except ValueError as e:
                 self.logger.error(
                     f"Invalid detail_number '{detail_number}': {e}"
                 )
-                column_values[self.SUBITEM_ID_COLUMN_ID] = None
+                column_values[self.SUBITEM_DETAIL_NUMBER_COLUMN_ID] = None
 
         if line_number is not None:
             try:
@@ -1058,7 +1058,7 @@ class MondayUtil(metaclass=SingletonMeta):
                 "field": "detail_number",
                 "db_value": safe_str(db_sub_item.get("detail_number")),
                 "monday_value": safe_str(
-                    col_vals.get(self.SUBITEM_ID_COLUMN_ID)["text"]
+                    col_vals.get(self.SUBITEM_DETAIL_NUMBER_COLUMN_ID)["text"]
                 ),
             },
             {
@@ -1153,7 +1153,7 @@ class MondayUtil(metaclass=SingletonMeta):
 
         project_id = safe_int(float(col_vals[self.SUBITEM_PROJECT_ID_COLUMN_ID]["text"]))
         po_number = safe_int(float(col_vals[self.SUBITEM_PO_COLUMN_ID]["text"]))
-        detail_num = safe_int(float(col_vals[self.SUBITEM_ID_COLUMN_ID]["text"]))
+        detail_num = safe_int(float(col_vals[self.SUBITEM_DETAIL_NUMBER_COLUMN_ID]["text"]))
         line_number = safe_int(float(col_vals[self.SUBITEM_LINE_NUMBER_COLUMN_ID]["text"]))
 
         if (

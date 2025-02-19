@@ -51,9 +51,9 @@ def apply_sql_script(sql_script: str):
                     raise
         session.commit()
 
-def update_sqlalchemy_models(table_name: str, columns_or_updates: Any, create=False, delete=False, models_file_path: str='../database/models.py'):
+def update_sqlalchemy_models(table_name: str, columns_or_updates: Any, create=False, delete=False, models_file_path: str='../database/models_pg.py'):
     """
-    - If create=True, insert a new class into models.py (at bottom).
+    - If create=True, insert a new class into models_pg.py (at bottom).
     - If delete=True, remove existing definition for that table.
     - Otherwise, do partial updates.
     """

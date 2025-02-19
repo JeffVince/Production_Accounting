@@ -338,7 +338,7 @@ class MondayAPI(metaclass=SingletonMeta):
                 data = resp.get("data", {})
                 for key in sorted(data.keys()):
                     results.append(data[key])
-        self.logger.info(f"Completed with {len(results)} submutations.")
+        self.logger.info(f"Completed with uploading submutations.")
         return results
 
     def _build_batch_item_mutation(self, batch: list, create: bool) -> str:
@@ -465,6 +465,11 @@ class MondayAPI(metaclass=SingletonMeta):
                     column_values: {column_values_arg}
                 ) {{
                     id
+                    column_values {{
+                        id
+                        text
+                        value
+                    }}
                 }}
                 '''
             else:
@@ -476,6 +481,11 @@ class MondayAPI(metaclass=SingletonMeta):
                     column_values: {column_values_arg}
                 ) {{
                     id
+                    column_values {{
+                        id
+                        text
+                        value
+                    }}
                 }}
                 '''
             mutations.append(mutation.strip())

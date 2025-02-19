@@ -23,6 +23,7 @@ from database.models import (
 )
 
 
+# noinspection PyTypeChecker
 class DatabaseOperations:
     """
     Provides methods to create, read, update, delete, and check changes
@@ -1695,53 +1696,71 @@ class DatabaseOperations:
                     self.logger.error(f"Error in bulk create for {model.__name__}: {e}", exc_info=True)
                     return []
 
-    def bulk_update_records(self, model, updates: List[Dict[str, Any]], session: Session = None) -> List[Dict[str, Any]]:
+    def bulk_update_records(self, model, updates: List[Dict[str, Any]], session: Session = None) -> List[
+        Dict[str, Any]]:
         """
-        Updates multiple records in bulk.
-        Each item in updates should have an 'id' key and the fields to update.
-        Returns a list of updated record dicts.
+        Updates multiple records in bulk via a direct SQL update,
+        bypassing the need to load ORM model objects.
+
+        Each dict in `updates` must have:
+          {
+            "id": <primary_key_of_the_record>,
+            "column_to_update": <new_value>,
+            ...
+          }
+
+        Returns a list of updated record dicts (re-fetched from the DB).
+        If a record id does not exist, it is skipped with a warning.
         """
+
         updated_records = []
-        if session is not None:
-            try:
-                for item in updates:
-                    record_id = item.get("id")
-                    if not record_id:
-                        continue
-                    record = session.query(model).get(record_id)
-                    if not record:
-                        continue
-                    for key, value in item.items():
-                        if key != "id" and hasattr(record, key):
-                            setattr(record, key, value)
-                    updated_records.append(record)
-                session.flush()
-                return [self._serialize_record(r) for r in updated_records]
-            except Exception as e:
-                self.logger.error(f"Error in bulk update for {model.__name__}: {e}", exc_info=True)
-                session.rollback()
-                return []
-        else:
+
+        # If no session is provided, create a new one for the entire batch.
+        if session is None:
+            from database.db_util import get_db_session
             with get_db_session() as new_session:
-                try:
-                    for item in updates:
-                        record_id = item.get("id")
-                        if not record_id:
-                            continue
-                        record = new_session.query(model).get(record_id)
-                        if not record:
-                            continue
-                        for key, value in item.items():
-                            if key != "id" and hasattr(record, key):
-                                setattr(record, key, value)
-                        updated_records.append(record)
-                    new_session.flush()
-                    new_session.commit()
-                    return [self._serialize_record(r) for r in updated_records]
-                except Exception as e:
-                    new_session.rollback()
-                    self.logger.error(f"Error in bulk update for {model.__name__}: {e}", exc_info=True)
-                    return []
+                return self.bulk_update_records(model, updates, session=new_session)
+
+        try:
+            # Process each update dict
+            for item in updates:
+                record_id = item.get("id")
+                if not record_id:
+                    continue  # skip if there's no primary key
+
+                # Build a dictionary of fields to update (excluding 'id')
+                data_to_update = {k: v for k, v in item.items() if k != "id"}
+                if not data_to_update:
+                    continue
+
+                # Issue the direct update (one SQL statement):
+                result = (
+                    session.query(model)
+                    .filter(model.id == record_id)
+                    .update(data_to_update, synchronize_session=False)
+                )
+
+                # If result == 0, no row was matched (missing item)
+                if result == 0:
+                    self.logger.warning(
+                        f"bulk_update_records: No '{model.__name__}' found with id={record_id}"
+                    )
+                else:
+                    # Re-fetch the record to return its updated state as a dict
+                    updated_obj = session.query(model).get(record_id)
+                    updated_records.append(self._serialize_record(updated_obj))
+
+            session.flush()
+            session.commit()
+            return updated_records
+
+        except Exception as e:
+            self.logger.error(
+                f"Error in bulk_update_records for {model.__name__}: {e}",
+                exc_info=True
+            )
+            session.rollback()
+            return []
 
     def bulk_delete_records(self, model, record_ids: List[int], session: Session = None) -> bool:
         """

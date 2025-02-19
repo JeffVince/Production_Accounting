@@ -262,7 +262,7 @@ class XeroServices(metaclass=SingletonMeta):
             bill_reference_number = bill.get("xero_reference_number")
             if not bill_reference_number:
                 bill_reference_number = f"{project_number}_{po_number}_{detail_number}"
-                self.logger.debug(f"Bill ID {bill['id']}: Setting Xero reference number to {bill_reference_number}")
+                self.logger.debug(f"Bill ID {bill_reference_number}: Setting Xero reference number to {bill_reference_number}")
 
             # Basic invoice payload
             payload = {
@@ -287,7 +287,7 @@ class XeroServices(metaclass=SingletonMeta):
                             'Quantity': li.get('quantity', Decimal('1')),
                             'UnitAmount': li.get('unit_amount', Decimal('0')),
                             'AccountCode': str(li.get('tax_code', '0000')),
-                            'LineAmount': li.get('line_amount', Decimal('0')),
+                            'LineAmount': li.get('quantity', Decimal('1')) * li.get('unit_amount', Decimal('0')),
                         })
                 payload["LineItems"] = xero_line_items
                 if len(xero_line_items) == 0:

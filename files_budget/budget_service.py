@@ -12,7 +12,7 @@ from utilities.singleton import SingletonMeta
 # endregion
 
 
-#TODO get xero bills to sync and make sure to check DB for changes first (add a diff flag?)
+#TODO get xero bills to sync and make sure to check DB for changes first
 #TODO make sure we don't sync contacts with APIs if they aren't different from DB
 #TODO test full Showbiz pipeline
 #TODO move to postgres
@@ -44,7 +44,7 @@ def transform_detail_item(item):
       - "due date" is renamed and parsed as "due_date".
       - Other keys ("vendor", "payment_type", "state", "description", "rate", "quantity", "ot", "fringes")
         are retained as provided.
-
+      - If present, "pulse_id" is also preserved.
     Unwanted keys ("detail_item_id", "total", "ot") are removed if present.
     """
     # Remove unwanted fields if they exist
@@ -101,6 +101,10 @@ def transform_detail_item(item):
     transformed["quantity"] = item.get("quantity")
     transformed["ot"] = item.get("ot")
     transformed["fringes"] = item.get("fringes")
+
+    # Preserve pulse_id if present so that subsequent updates know this record exists in Monday
+    if "pulse_id" in item:
+        transformed["pulse_id"] = item["pulse_id"]
 
     return transformed
 
@@ -535,20 +539,20 @@ class BudgetService(metaclass=SingletonMeta):
             self.logger.info("[PO Aggregator] All PO items processed.")
 
             # region 2.3.3: Monday Upsert for POs
-            # for po_record in po_records_info:
-            #     self.monday_service.buffered_upsert_po(po_record)
-            #
-            # created_POs = self.monday_service.execute_batch_upsert_pos()
-            #
-            # if created_POs:
-            #     for po_obj in created_POs:
-            #         if 'column_values' in po_obj and isinstance(po_obj['column_values'], list):
-            #             po_obj['column_values'] = {col['id']: col for col in po_obj['column_values']}
-            #             project_number = po_obj["column_values"]["project_id"]["text"]
-            #             po_number = po_obj["column_values"]["numeric__1"]["text"]
-            #             pulse_id = po_obj["id"]
-            #             self.db_ops.update_purchase_order_by_keys(project_number=project_number, po_number=po_number,
-            #                                                       pulse_id=pulse_id, session=session)
+            for po_record in po_records_info:
+                self.monday_service.buffered_upsert_po(po_record)
+
+            created_POs = self.monday_service.execute_batch_upsert_pos()
+
+            if created_POs:
+                for po_obj in created_POs:
+                    if 'column_values' in po_obj and isinstance(po_obj['column_values'], list):
+                        po_obj['column_values'] = {col['id']: col for col in po_obj['column_values']}
+                        project_number = po_obj["column_values"]["project_id"]["text"]
+                        po_number = po_obj["column_values"]["numeric__1"]["text"]
+                        pulse_id = po_obj["id"]
+                        self.db_ops.update_purchase_order_by_keys(project_number=project_number, po_number=po_number,
+                                                                  pulse_id=pulse_id, session=session)
             # endregion
             session.commit()
             self.logger.info("[PO Aggregator] PO processing complete.")
@@ -1158,42 +1162,118 @@ class BudgetService(metaclass=SingletonMeta):
                     original_xero_bill_line_items_map[key] = item
 
             def are_dicts_different(d1, d2):
+                # Compare everything except the DB 'id', which is an internal key
                 d1_copy = {k_: v for k_, v in d1.items() if k_ != "id"}
                 d2_copy = {k_: v for k_, v in d2.items() if k_ != "id"}
                 return d1_copy != d2_copy
 
-            # --- Detail Items ---
             detail_items_to_create = []
             detail_items_to_update = []
+            detail_items_unchanged = []  # We'll handle these if they have no pulse_id
+
             for d_item in updated_detail_items:
+                # Build a key from (project, po, detail#, line#)
                 key = (
-                    int(d_item.get("project_number")),
-                    int(d_item.get("po_number")),
+                    int(d_item["project_number"]),
+                    int(d_item["po_number"]),
                     d_item.get("detail_number"),
                     d_item.get("line_number")
                 )
                 if key in original_detail_map:
+                    # It's an existing DB record => check for differences
                     db_item = original_detail_map[key]
                     if are_dicts_different(d_item, db_item):
+                        # We plan to update in DB
                         detail_items_to_update.append(transform_detail_item(d_item))
+                    else:
+                        # no difference in DB => keep track in detail_items_unchanged
+                        # We'll see if it has pulse_id or not
+                        # But we also need to transform so we have consistent fields
+                        unchanged_transformed = transform_detail_item(d_item)
+                        # Make sure we carry over DB 'id' from the existing record
+                        unchanged_transformed["id"] = db_item["id"]
+                        detail_items_unchanged.append(unchanged_transformed)
                 else:
+                    # Not in DB => we'll create
                     detail_items_to_create.append(transform_detail_item(d_item))
 
+            # --- Actually insert/update in DB ---
+            created_detail_items_db = []
             if detail_items_to_create:
-                created_detail_items = []
                 for chunk in chunk_list(detail_items_to_create, chunk_size):
                     self.logger.debug(f"Creating chunk of {len(chunk)} detail items.")
                     created_sub = self.db_ops.bulk_create_detail_items(chunk, session=session)
-                    created_detail_items.extend(created_sub)
+                    created_detail_items_db.extend(created_sub)
                     session.flush()
 
+            updated_detail_items_db = []
             if detail_items_to_update:
-                updated_detail_items_db = []
                 for chunk in chunk_list(detail_items_to_update, chunk_size):
                     self.logger.debug(f"Updating chunk of {len(chunk)} detail items.")
                     updated_sub = self.db_ops.bulk_update_detail_items(chunk, session=session)
                     updated_detail_items_db.extend(updated_sub)
                     session.flush()
+
+            # Build a map so we can retrieve the DB 'id' for newly created or updated items
+            id_map = {}
+            for record in created_detail_items_db:
+                key = (
+                    int(record["project_number"]),
+                    int(record["po_number"]),
+                    record["detail_number"],
+                    record["line_number"]
+                )
+                id_map[key] = record["id"]
+
+            for record in updated_detail_items_db:
+                key = (
+                    int(record["project_number"]),
+                    int(record["po_number"]),
+                    record["detail_number"],
+                    record["line_number"]
+                )
+                id_map[key] = record["id"]
+
+            # Update the 'id' field in those same dicts
+            for record in created_detail_items_db:
+                key = (
+                    int(record["project_number"]),
+                    int(record["po_number"]),
+                    record["detail_number"],
+                    record["line_number"]
+                )
+                record["id"] = id_map[key]
+
+            for record in updated_detail_items_db:
+                key = (
+                    int(record["project_number"]),
+                    int(record["po_number"]),
+                    record["detail_number"],
+                    record["line_number"]
+                )
+                record["id"] = id_map[key]
+
+            # The items in 'detail_items_unchanged' also need their correct DB 'id'.
+            # Because they had no difference, we rely on the original DB item
+            for record in detail_items_unchanged:
+                key = (
+                    int(record["project_number"]),
+                    int(record["po_number"]),
+                    record["detail_number"],
+                    record["line_number"]
+                )
+                if key in original_detail_map:
+                    record["id"] = original_detail_map[key]["id"]
+
+            try:
+                session.commit()
+                self.logger.info("💾 DB Bulk Create/Update complete for all items. Commit successful.")
+            except Exception:
+                session.rollback()
+                self.logger.exception("Error during DB Bulk Create/Update commit.", exc_info=True)
+                raise
+
+            # endregion
 
             # --- Xero Bills ---
             created_xero_bills_db = []
@@ -1364,43 +1444,74 @@ class BudgetService(metaclass=SingletonMeta):
 
             # endregion
 
+            # -------------------------------------------------------------
+            # region 2.4.5: Prepare "monday_upsert_list" for Subitems
+            #
+            # We'll unify:
+            #   1) newly-created DB items,
+            #   2) updated DB items,
+            #   3) unchanged items that have no pulse_id yet
+            # Any item that already had a pulse_id and is unchanged => we skip.
+            #
+            # The "updated_detail_items_db" and "created_detail_items_db" lists contain
+            # the final DB records after create/update. For unchanged items, we have them in
+            # detail_items_unchanged.
+            # -------------------------------------------------------------
+            monday_upsert_list = []
+
+            # 1) newly-created DB items => always at least create in Monday
+            for rec in created_detail_items_db:
+                monday_upsert_list.append(rec)
+
+            # 2) updated DB items => we want to push to Monday. If they have pulse_id => update
+            #    if they do not => create
+            for rec in updated_detail_items_db:
+                monday_upsert_list.append(rec)
+
+            # 3) unchanged items that have no pulse_id => still need to create in Monday
+            for rec in detail_items_unchanged:
+                if not rec.get("pulse_id"):
+                    monday_upsert_list.append(rec)
+
+            # If there's absolutely no difference and has a pulse_id,
+            # we skip. That means it's already in Monday and unchanged.
+
             # region 2.4.6: Monday Upsert for Detail Items
-            receipt_map = receipt_map_OG
-            invoice_map = invoice_map_OG
             try:
                 self.logger.info("[Detail Aggregator] Starting Monday upsert for detail items.")
-                self.logger.debug(f"Created/updated items count: {len(updated_detail_items)}")
-                monday_items = []
+                self.logger.debug(f"Total items to upsert in Monday: {len(monday_upsert_list)}")
 
-                # region 2.4.6.1: Add External Links to Detail Items
-                for di in updated_detail_items:
+                # Build final "monday_items" from each record
+                monday_items = []
+                for di in monday_upsert_list:
+                    # Rebuild external links logic here
                     file_link = None
                     xero_link = None
-
-                    if di.get("payment_type") in ["CC", "PC"]:
+                    pay_type = di.get("payment_type")
+                    if pay_type in ["CC", "PC"]:
                         key = (
                             int(di.get("project_number")),
                             int(di.get("po_number")),
                             int(di.get("detail_number")),
                             int(di.get("line_number"))
                         )
-                        if key in receipt_map:
-                            file_link = receipt_map[key].get("file_link")
+                        if key in receipt_map_OG:
+                            file_link = receipt_map_OG[key].get("file_link")
                         if key in spend_money_map_updated:
                             xero_link = spend_money_map_updated[key].get("xero_link")
 
-                    elif di.get("payment_type") in ["INV", "PROF"]:
+                    elif pay_type in ["INV", "PROF"]:
                         key = (
                             int(di.get("project_number")),
                             int(di.get("po_number")),
                             int(di.get("detail_number"))
                         )
-                        if key in invoice_map:
-                            file_link = invoice_map[key].get("file_link")
+                        if key in invoice_map_OG:
+                            file_link = invoice_map_OG[key].get("file_link")
                         if key in xero_bill_map_updated:
                             xero_link = xero_bill_map_updated[key].get("xero_link")
 
-
+                    # Construct the dict for Monday
                     detail_dict = {
                         'id': di.get('id'),
                         'parent_pulse_id': di.get('parent_pulse_id'),
@@ -1413,57 +1524,72 @@ class BudgetService(metaclass=SingletonMeta):
                         'quantity': di.get('quantity'),
                         'vendor': di.get("vendor"),
                         'rate': di.get('rate'),
-                        'transaction_date': di.get('date'),
-                        'due_date': di.get('due date'),
-                        'account_code': di.get('account'),
+                        'transaction_date': di.get('transaction_date'),  # DB field
+                        'due_date': di.get('due_date'),  # DB field
+                        'account_code': di.get('account_code'),
                         'file_link': file_link,
                         'xero_link': xero_link,
                         'ot': di.get('ot'),
                         'fringes': di.get('fringes'),
                         'state': di.get('state')
                     }
-                    self.logger.debug(f"Prepared Monday item (updated): {detail_dict}")
                     monday_items.append(detail_dict)
-                # endregion
 
-                self.logger.info(f"📤 Total Monday items prepared: {len(monday_items)}")
+                self.logger.info(f"📤 Sending {len(monday_items)} items to Monday upsert in chunks...")
                 for chunk in chunk_list(monday_items, 500):
-                    self.logger.debug(f"Processing Monday chunk with {len(chunk)} items.")
+                    self.logger.debug(f"Buffering chunk of {len(chunk)} detail items for Monday upsert.")
                     for detail_dict in chunk:
-                        self.logger.debug(f"Buffering Monday upsert: {detail_dict}")
                         self.monday_service.buffered_upsert_detail_item(detail_dict)
-                    self.logger.debug("Executing batch upsert for current Monday chunk.")
-                    created_subitems, updated_subitems = self.monday_service.execute_batch_upsert_detail_items()
-                    self.logger.debug(
-                        f"Monday batch upsert returned: created_subitems={created_subitems}, "
-                        f"updated_subitems={updated_subitems}"
-                    )
-                    if created_subitems:
-                        for subitem_obj in created_subitems:
-                            self.logger.debug(f"Processing Monday created subitem: {subitem_obj}")
-                            db_sub_item = subitem_obj.get("db_sub_item")
-                            monday_sub_id = subitem_obj.get("monday_item_id")
-                            if db_sub_item and db_sub_item.get("id") and monday_sub_id:
-                                # Process mapping if needed
-                                pass
+
+                    # Execute batch upsert for subitems
+                    results = self.monday_service.execute_batch_upsert_detail_items()
+                    if not results:
+                        continue
+
+                    # Collect new pulse_ids from the results
+                    pulse_updates = []
+                    for subitem_obj in results:
+                        db_sub_item = subitem_obj.get("db_sub_item")
+                        _monday_item = subitem_obj.get("monday_item")
+                        if db_sub_item and db_sub_item.get("id") and _monday_item:
+                            self.logger.debug(
+                                f"Processing Monday created/updated subitem: DB ID={db_sub_item['id']}, Monday ID={_monday_item['id']}"
+                            )
+                            pulse_updates.append(
+                                {
+                                    "id": db_sub_item.get("id"),
+                                    "pulse_id": _monday_item["id"],
+                                    "parent_pulse_id": db_sub_item["parent_pulse_id"],
+                                }
+                            )
+                        else:
+                            self.logger.warning(
+                                f"No DB Sub Item or Monday Item found for subitem: {subitem_obj.get('db_sub_item')}"
+                            )
+
+                    # Update the DB with the new pulse_ids
+                    if pulse_updates:
+                        self.db_ops.bulk_update_detail_items(updates=pulse_updates, session=session)
+                        session.commit()
 
             except Exception:
                 self.logger.exception("Exception during Monday upsert for detail items.", exc_info=True)
             # endregion
+            # -------------------------------------------------------------
 
             # region 2.4.7: Xero Upsert for Xero Bill, Xero Bill Line Item, Spend Money Item
-            # try:
-            #     self.logger.info("🔄 Starting Xero Upsert for Xero Bills and associated line items.")
-            #     # Sync Xero Bills (and implicitly their line items via the bill creation process)
-            #     xero_bill_results = xero_services.handle_xero_bill_create_bulk(xero_bills_to_upload, xero_bill_line_items_to_upload, session)
-            #     self.logger.info(f"✅ Synced {len(xero_bill_results)} Xero Bills.")
-            #     self.logger.info("🔄 Starting Xero Upsert for Spend Money items.")
-            #     spend_money_results = xero_services.handle_spend_money_create_bulk(updated_spend_money, session)
-            #     self.logger.info(f"✅ Synced {len(spend_money_results)} Spend Money items.")
-            # except Exception:
-            #     self.logger.exception("Error during Xero Upsert for bills and spend money items.", exc_info=True)
-            #     session.rollback()
-            #     raise
+            try:
+                self.logger.info("🔄 Starting Xero Upsert for Xero Bills and associated line items.")
+                # Sync Xero Bills (and implicitly their line items via the bill creation process)
+                xero_bill_results = xero_services.handle_xero_bill_create_bulk(xero_bills_to_upload, xero_bill_line_items_to_upload, session)
+                self.logger.info(f"✅ Synced {len(xero_bill_results)} Xero Bills.")
+                self.logger.info("🔄 Starting Xero Upsert for Spend Money items.")
+                spend_money_results = xero_services.handle_spend_money_create_bulk(updated_spend_money, session)
+                self.logger.info(f"✅ Synced {len(spend_money_results)} Spend Money items.")
+            except Exception:
+                self.logger.exception("Error during Xero Upsert for bills and spend money items.", exc_info=True)
+                session.rollback()
+                raise
             # endregion
 
         except Exception:
