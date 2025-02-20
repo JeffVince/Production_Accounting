@@ -7,7 +7,7 @@ load_dotenv()
 class Config:
     USE_TEMP = True
     SKIP_MAIN = False
-    USE_LOCAL = True
+    USE_LOCAL = False
 
     APP_DEBUG = True
     if sys.gettrace():
@@ -40,7 +40,7 @@ class Config:
     XERO_TENANT_ID = os.getenv('XERO_TENANT_ID')
     OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
     MY_EMAIL = os.getenv('MY_EMAIL')
-    DATABASE_URL = os.getenv('DATABASE_URL', 'mysql+pymysql://root:z //55gohi@localhost:3306/virtual_pm')
+    DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://doadmin:AVNS_wxTAj-nNJrpMakwsi--@olivine-db-main-do-user-11898912-0.l.db.ondigitalocean.com:25060/defaultdb?sslmode=require')
 
     @staticmethod
     def load_configuration():
@@ -64,7 +64,7 @@ class Config:
         if local:
             return {'url': os.getenv('DATABASE_URL', 'mysql+pymysql://root:z //55gohi@localhost:3306/virtual_pm')}
         else:
-            return {'url': os.getenv('DATABASE_URL', 'mysql+pymysql://admin:HPp5TpbvAa0On7HbDq6A@virtualpm.cx8csckg86eo.us-east-2.rds.amazonaws.com:3306/virtual_pm')}
+            return {'url': os.getenv('DATABASE_URL', 'postgresql://doadmin:AVNS_wxTAj-nNJrpMakwsi--@olivine-db-main-do-user-11898912-0.l.db.ondigitalocean.com:25060/defaultdb?sslmode=require')}
 
     import os
     import sys
@@ -98,6 +98,7 @@ class Config:
         OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
         MY_EMAIL = os.getenv('MY_EMAIL')
         DATABASE_URL = os.getenv('DATABASE_URL', 'mysql+pymysql://root:z //55gohi@localhost:3306/virtual_pm')
+        DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://doadmin:AVNS_wxTAj-nNJrpMakwsi--@olivine-db-main-do-user-11898912-0.l.db.ondigitalocean.com:25060/defaultdb?sslmode=require')
 
         @staticmethod
         def load_configuration():
@@ -144,7 +145,7 @@ class Config:
                 return {'url': os.getenv('DATABASE_URL', 'mysql+pymysql://root:z //55gohi@localhost:3306/virtual_pm')}
             else:
                 return {'url': os.getenv('DATABASE_URL',
-                                         'mysql+pymysql://admin:HPp5TpbvAa0On7HbDq6A@virtualpm.cx8csckg86eo.us-east-2.rds.amazonaws.com:3306/virtual_pm')}
+                                         'postgresql://doadmin:AVNS_wxTAj-nNJrpMakwsi--@olivine-db-main-do-user-11898912-0.l.db.ondigitalocean.com:25060/defaultdb?sslmode=require')}
 
         @staticmethod
         def we_in_debug_mode():

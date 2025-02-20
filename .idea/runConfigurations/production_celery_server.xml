@@ -9,6 +9,7 @@
     <log_file alias="PO LOG" path="$PROJECT_DIR$/server_celery/logs/po_log.log" skipped="false" />
     <log_file alias="INVOICE" path="$PROJECT_DIR$/server_celery/logs/invoice.log" skipped="false" />
     <module name="Dropbox Listener" />
+    <option name="ENV_FILES" value="" />
     <option name="INTERPRETER_OPTIONS" value="" />
     <option name="PARENT_ENVS" value="true" />
     <envs>
@@ -21,7 +22,7 @@
     <option name="ADD_SOURCE_ROOTS" value="true" />
     <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
     <option name="SCRIPT_NAME" value="$USER_HOME$/Documents/Dropbox Listener/bin/celery" />
-    <option name="PARAMETERS" value="-A celery_server:celery_app worker -l info" />
+    <option name="PARAMETERS" value="-A celery_server:celery_app worker -l info --pool=threads" />
     <option name="SHOW_COMMAND_LINE" value="false" />
     <option name="EMULATE_TERMINAL" value="false" />
     <option name="MODULE_MODE" value="false" />

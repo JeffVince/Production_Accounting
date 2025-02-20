@@ -258,11 +258,11 @@ class MondayService(metaclass=SingletonMeta):
             detail_mapping[key] = db_item
 
         # Process each Monday API response.
-        def flatten(item):
-            if isinstance(item, dict):
-                yield item
-            elif isinstance(item, list):
-                for sub in item:
+        def flatten(item_):
+            if isinstance(item_, dict):
+                yield item_
+            elif isinstance(item_, list):
+                for sub in item_:
                     yield from flatten(sub)
 
         for response in monday_results:
@@ -405,58 +405,85 @@ class MondayService(metaclass=SingletonMeta):
     # endregion
 
     # region 2.11: Purchase Order Aggregator Methods
-    def buffered_upsert_po(self, po_record: dict):
+    def buffered_upsert_po(self, po_record: dict, db_record: dict = None):
         """
         Stages a Purchase Order for eventual upsert to Monday.
         Enqueues the PO record if no pulse_id exists or if changes are detected.
+        If a pre-fetched db_record is provided, it uses that for change detection.
         """
-        self.logger.info("🌀 [buffered_upsert_po] - Staging PO for upsert...")
+        self.logger.info("🌀Staging PO for upsert...")
         if not po_record:
-            self.logger.warning("🌀 [buffered_upsert_po] - No PO record provided; skipping.")
+            self.logger.warning("🌀No PO record provided; skipping.")
             return
 
         pulse_id = po_record.get('pulse_id')
-        # Check for changes using the DatabaseOperations method.
-        has_changes = self.db_ops.purchase_order_has_changes(
-            record_id=po_record.get('id'),
-            project_number=po_record.get('project_number'),
-            po_number=po_record.get('po_number'),
-            description=po_record.get('description'),
-            folder_link=po_record.get('folder_link')
-        )
+
+        # If we already have the DB record, perform in-memory comparison.
+        if db_record:
+            # Compare only the relevant fields.
+            has_changes = self.has_diff(db_record, po_record)
+        else:
+            # Fall back to the existing method that performs a DB call.
+            has_changes = self.db_ops.purchase_order_has_changes(
+                record_id=po_record.get('id'),
+                project_number=po_record.get('project_number'),
+                po_number=po_record.get('po_number'),
+                description=po_record.get('description'),
+                folder_link=po_record.get('folder_link')
+            )
+
         if not pulse_id or has_changes:
-            self.logger.info("🆕 [buffered_upsert_po] - Enqueuing PO for upsert.")
+            self.logger.info("🆕 Enqueuing PO for upsert.")
             self._po_upsert_queue.append(po_record)
         else:
-            self.logger.info("🌀 [buffered_upsert_po] - No changes detected; skipping upsert.")
+            self.logger.info("🌀 No changes detected; skipping upsert.")
 
     # endregion
 
     # region 2.11.1: Execute Batch Upsert for POs
-    def execute_batch_upsert_pos(self):
+    def execute_batch_upsert_pos(self, provided_contacts=None):
         """
         Processes all buffered Purchase Order upserts in Monday.
-        It takes the PO records in the _po_upsert_queue and uses MondayAPI's
-        batch mutation method to create or update them. After processing, it clears the queue.
-
-        Returns:
-            list: A list of created (or updated) PO results from Monday.
+        Accepts a list of "merged contacts", each having:
+          - project_number, po_number
+          - pulse_id (if known)
+        So we can line up each PO's contact_id with the correct contact's pulse_id.
         """
         self.logger.info("🌀 Starting batch upsert of PO records.")
         if not self._po_upsert_queue:
             self.logger.info("🌀 No PO records to upsert.")
             return []
 
+        # Build dict => key = (project_number, po_number), val = contact dict
+        contact_map = {}
+        if provided_contacts:
+            self.logger.info(f"🔎 Received {len(provided_contacts)} provided contacts for matching.")
+            for c in provided_contacts:
+                pno = c.get("project_number")
+                pono = c.get("po_number")
+                if pno is not None and pono is not None:
+                    key = (int(pno), int(pono))
+                    contact_map[key] = c
+        else:
+            self.logger.info("🌀 No provided contacts; skipping contact->PO matching logic.")
+
         items_to_create = []
         items_to_update = []
 
-        # For each PO record, determine if it needs creation or update.
+        # Loop over each PO in queue
         for po in self._po_upsert_queue:
             pulse_id = po.get('pulse_id')
-            contact_record = self.db_ops.search_contacts(["id"], [po.get("contact_id")])
-            if isinstance(contact_record, list) and contact_record:
-                contact_record = contact_record[0]
-            contact_pulse_id = contact_record.get("pulse_id") if contact_record else None
+            project_no = po.get('project_number')
+            po_no = po.get('po_number')
+
+            # Try to find a matching contact from (project_no, po_no)
+            contact_pulse_id = None
+            if (project_no is not None) and (po_no is not None):
+                match_key = (int(project_no), int(po_no))
+                if match_key in contact_map:
+                    # The merged contact dict has the DB contact's pulse_id
+                    contact_obj = contact_map[match_key]
+                    contact_pulse_id = contact_obj.get("pulse_id")
 
             if not pulse_id:
                 items_to_create.append({
@@ -472,9 +499,13 @@ class MondayService(metaclass=SingletonMeta):
                 })
 
         self.logger.info(
-            f"🌀 Preparing to create {len(items_to_create)} items and update {len(items_to_update)} items.")
+            f"🌀 Preparing to create {len(items_to_create)} items and update {len(items_to_update)} items."
+        )
+
         created_results = []
         updated_results = []
+
+        # For grouping in Monday, pick a project from the create batch, if any
         project_id = items_to_create[0]['db_item'].get('project_number') if items_to_create else None
 
         if items_to_create:
@@ -483,16 +514,21 @@ class MondayService(metaclass=SingletonMeta):
                 project_id=project_id or "Unknown",
                 create=True
             )
+
         if items_to_update:
             updated_results = self.monday_api.batch_create_or_update_items(
                 batch=items_to_update,
                 project_id=project_id or "Unknown",
                 create=False
             )
+
         total_processed = len(created_results) + len(updated_results)
         self.logger.info(f"🌀 Processed {total_processed} PO records.")
         self._po_upsert_queue.clear()
+
+        # Return the newly created results if you need them
         return created_results
+
     # endregion
 
     # region 3.7: Build Subitem Column Values
@@ -522,6 +558,29 @@ class MondayService(metaclass=SingletonMeta):
         )
         return json.loads(formatted)
     # endregion
+
+    def has_diff(self, dict1: dict, dict2: dict) -> bool:
+        """
+        Compares two dictionaries and returns True if any of the fields
+        that are present in both dictionaries have different values.
+
+        Only the common keys between the two dictionaries are compared.
+
+        Args:
+            dict1 (dict): The first dictionary.
+            dict2 (dict): The second dictionary.
+
+        Returns:
+            bool: True if a difference is found among the common keys, False otherwise.
+        """
+        # Find the intersection of keys from both dictionaries.
+        common_keys = set(dict1.keys()) & set(dict2.keys())
+
+        # Check for any differences in the values of common keys.
+        for key in common_keys:
+            if dict1[key] != dict2[key]:
+                return True
+        return False
 
 # endregion
 

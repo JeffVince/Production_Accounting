@@ -1,9 +1,11 @@
 #region 🚀 Imports
 import logging
 from sqlalchemy import (
-    Column, String, DateTime, ForeignKey, Enum, UniqueConstraint, Index,
+    Column, String, DateTime, ForeignKey, UniqueConstraint, Index,
     text, Date, Integer, Numeric, BigInteger
 )
+
+from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 
@@ -19,14 +21,15 @@ class Contact(Base):
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     name = Column(String(255), nullable=False, index=True)
     vendor_status = Column(
-        Enum('PENDING', 'TO VERIFY', 'APPROVED', 'ISSUE', 'VERIFIED', name='vendor_status_enum'),
+        ENUM('PENDING', 'TO VERIFY', 'APPROVED', 'ISSUE', 'VERIFIED', name='vendor_status_enum'),
         nullable=False,
-        server_default='PENDING'
+        server_default=text("'PENDING'::vendor_status_enum")
     )
     payment_details = Column(String(255), nullable=False, server_default='PENDING')
     vendor_type = Column(
-        Enum('VENDOR', 'CC', 'PC', 'INDIVIDUAL', 'S-CORP', 'C-CORP', name='vendor_type_enum'),
-        nullable=True
+        ENUM('VENDOR', 'CC', 'PC', 'INDIVIDUAL', 'S-CORP', 'C-CORP', name='vendor_type_enum'),
+        nullable=True,
+        server_default = text("'VENDOR'::vendor_type_enum")
     )
     email = Column(String(100), nullable=True)
     phone = Column(String(45), nullable=True)
@@ -293,7 +296,7 @@ class XeroBill(Base):
     transaction_date = Column(Date, nullable=True)
     due_date = Column(Date, nullable=True)
     contact_xero_id = Column(String(255), nullable=True)
-    xero_reference_number = Column(String(50), nullable=True)  # removed Computed(...)
+    xero_reference_number = Column(String(50), nullable=True)
 
     xero_id = Column(String(255), nullable=True)
     xero_link = Column(String(255), nullable=True)
@@ -332,7 +335,7 @@ class XeroBillLineItem(Base):
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     project_number = Column(Integer, nullable=True)
     po_number = Column(Integer, nullable=True)
-    detail_number = Column(Integer, nullable=True)
+    detail_number = Column(Integer, nullable=False)
     line_number = Column(Integer, nullable=True)
     description = Column(String(255), nullable=True)
     transaction_date = Column(Date, nullable=True)
@@ -382,9 +385,9 @@ class PoLog(Base):
     filename = Column(String(255), nullable=False)
     db_path = Column(String(255), nullable=False)
     status = Column(
-        Enum('PENDING', 'STARTED', 'COMPLETED', 'FAILED', name='po_log_status_enum'),
+        ENUM('PENDING', 'STARTED', 'COMPLETED', 'FAILED', name='po_log_status_enum'),
         nullable=False,
-        server_default='PENDING'
+        server_default=text("'PENDING'::po_log_status_enum")
     )
     created_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
     updated_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'), onupdate=text('CURRENT_TIMESTAMP'))
@@ -402,6 +405,15 @@ class PoLog(Base):
 #endregion
 
 #region 🗂 Project, PurchaseOrder & DetailItem (Parent/Child)
+# Extract the ENUM definition for DetailItem state and disable creation
+detail_state_enum = ENUM(
+    'PENDING', 'OVERDUE', 'REVIEWED', 'ISSUE', 'RTP',
+    'RECONCILED', 'PAID', 'APPROVED', 'SUBMITTED', 'PO MISMATCH', 'VERIFIED',
+    name='detail_state_enum',
+    schema='public',
+    create_type=False  # Prevent SQLAlchemy from attempting to re-create the type
+)
+
 class DetailItem(Base):
     __tablename__ = 'detail_item'
     id = Column(BigInteger, primary_key=True, autoincrement=True)
@@ -413,14 +425,9 @@ class DetailItem(Base):
     vendor = Column(String(255), nullable=True)
     payment_type = Column(String(45), nullable=True)
     state = Column(
-        Enum(
-            'PENDING', 'OVERDUE', 'REVIEWED', 'ISSUE', 'RTP',
-            'RECONCILED', 'PAID', 'APPROVED', 'SUBMITTED',
-            'PO MISMATCH', 'VERIFIED',
-            name='detail_state_enum'
-        ),
+        detail_state_enum,
         nullable=False,
-        server_default='PENDING'
+        server_default=text("'PENDING'::detail_state_enum")
     )
     description = Column(String(255), nullable=True)
     transaction_date = Column(DateTime, nullable=True)
@@ -429,10 +436,7 @@ class DetailItem(Base):
     quantity = Column(Numeric(15, 2), nullable=False, server_default='1.00')
     ot = Column(Numeric(15, 2), nullable=True, server_default='0.00')
     fringes = Column(Numeric(15, 2), nullable=True, server_default='0.00')
-
-    # Removed the Computed(...) for sub_total, making it a normal column
     sub_total = Column(Numeric(15, 2), nullable=True)
-
     pulse_id = Column(BigInteger, nullable=True)
     xero_id = Column(String(100), nullable=True)
     parent_pulse_id = Column(BigInteger, nullable=True)
@@ -473,9 +477,9 @@ class Project(Base):
     project_number = Column(Integer, nullable=True)
     name = Column(String(100), nullable=False)
     status = Column(
-        Enum('Active', 'Closed', name='project_status_enum'),
+        ENUM('Active', 'Closed', name='project_status_enum'),
         nullable=False,
-        server_default='Active'
+        server_default=text("'Active'::project_status_enum")
     )
     tax_ledger = Column(String(45), nullable=True)
     budget_map_id = Column(String(45), nullable=True)
@@ -552,8 +556,9 @@ class Invoice(Base):
     total = Column(Numeric(15, 2), nullable=True, server_default='0.00')
     transaction_date = Column(DateTime, nullable=True)
     status = Column(
-        Enum('PENDING', 'VERIFIED', 'REJECTED', name='invoice_status_enum'),
-        nullable=True
+        ENUM('PENDING', 'VERIFIED', 'REJECTED', name='invoice_status_enum'),
+        nullable=True,
+        server_default=text("'PENDING'::invoice_status_enum")
     )
     file_link = Column(String(255), nullable=True)
     created_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
@@ -585,9 +590,11 @@ class Receipt(Base):
     receipt_description = Column(String(255), nullable=True)
     total = Column(Numeric(15, 2), nullable=True, server_default='0.00')
     status = Column(
-        Enum('PENDING', 'VERIFIED', 'REJECTED', name='receipt_status_enum'),
-        nullable=True
+        ENUM('PENDING', 'VERIFIED', 'REJECTED', name='receipt_status_enum'),
+        nullable=True,
+        server_default=text("'PENDING'::receipt_status_enum")
     )
+
     purchase_date = Column(DateTime, nullable=True)
     dropbox_path = Column(String(255), nullable=True)
     file_link = Column(String(255), nullable=False)
@@ -625,10 +632,7 @@ class SpendMoney(Base):
     contact_id = Column(BigInteger, nullable=True)
     date = Column(DateTime, nullable=True)
     xero_spend_money_id = Column(String(100), nullable=True)
-
-    # Remove Computed(...), so it's just a normal column
     xero_spend_money_reference_number = Column(String(50), nullable=True, unique=True)
-
     xero_link = Column(String(255), nullable=True)
     amount = Column(Numeric(15, 2), nullable=False)
     tax_code = Column(Integer, nullable=True)
@@ -663,20 +667,20 @@ class SysTable(Base):
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     name = Column(String(100), nullable=False)
     type = Column(
-        Enum('SYSTEM', 'PARENT/CHILD', 'PARENT', 'CHILD', 'SINGLE', name='sys_table_type_enum'),
+        ENUM('SYSTEM', 'PARENT/CHILD', 'PARENT', 'CHILD', 'SINGLE', name='sys_table_type_enum'),
         nullable=False,
-        server_default='SINGLE'
+        server_default=text("'SINGLE'::sys_table_type_enum")
     )
     integration_name = Column(String(45), nullable=True)
     integration_type = Column(
-        Enum('PARENT', 'CHILD', 'SINGLE', name='integration_type_enum'),
+        ENUM('PARENT', 'CHILD', 'SINGLE', name='integration_type_enum'),
         nullable=False,
-        server_default='SINGLE'
+        server_default=text("'SINGLE'::integration_type_enum")
     )
     integration_connection = Column(
-        Enum('NONE', '1to1', '1toMany', 'Manyto1', 'ManytoMany', name='integration_conn_enum'),
+        ENUM('NONE', '1to1', '1toMany', 'Manyto1', 'ManytoMany', name='integration_conn_enum'),
         nullable=False,
-        server_default='NONE'
+        server_default=text("'NONE'::integration_conn_enum")
     )
     created_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
     updated_at = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
@@ -698,10 +702,11 @@ class SysTable(Base):
 class TaxForm(Base):
     __tablename__ = 'tax_form'
     id = Column(BigInteger, primary_key=True, autoincrement=True)
-    type = Column(Enum('W9', 'W8-BEN', 'W8-BEN-E', name='tax_form_type_enum'))
+    type = Column(ENUM('W9', 'W8-BEN', 'W8-BEN-E', name='tax_form_type_enum')
+ )
     status = Column(
-        Enum('VERIFIED', 'INVALID', 'PENDING', name='tax_form_status_enum'),
-        server_default='PENDING'
+        ENUM('VERIFIED', 'INVALID', 'PENDING', name='tax_form_status_enum'),
+        server_default=text("'PENDING'::tax_form_status_enum")
     )
     entity_name = Column(String(100), unique=True, nullable=False)
     filename = Column(String(100))

@@ -8,13 +8,13 @@ Run from PyCharm or CLI. Adjust user/pw/host/DB names as needed.
 
 import sys
 import logging
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 # ---------------------------------------------------
 # 1) Import your MySQL (old) models
 # ---------------------------------------------------
-from database.models import (
+from database_pg.models_pg import (
     Base as OldBase,
     Contact as OldContact,
     User as OldUser,
@@ -80,22 +80,22 @@ def main():
         "defaultdb?sslmode=require&user=doadmin&password=AVNS_wxTAj-nNJrpMakwsi--"
     )
 
-    # 2) Create engines and sessions
+    # Create engines/sessions
     mysql_engine = create_engine(mysql_uri, echo=False)
-    MySQLSession = sessionmaker(bind=mysql_engine)
-    mysql_session = MySQLSession()
+    mysql_session = sessionmaker(bind=mysql_engine)()
 
     pg_engine = create_engine(postgres_uri, echo=False)
-    PGSession = sessionmaker(bind=pg_engine)
-    pg_session = PGSession()
+    pg_session = sessionmaker(bind=pg_engine)()
 
-    # --- DROP all Postgres tables first ---
-    logger.info("Dropping all existing tables in Postgres...")
-    NewBase.metadata.drop_all(pg_engine)
+    logger.info("Dropping all existing tables in Postgres (DROP SCHEMA CASCADE)...")
+    with pg_engine.connect() as conn:
+        conn.execute(text("DROP SCHEMA IF EXISTS public CASCADE;"))
+        conn.execute(text("CREATE SCHEMA public;"))
+        conn.execute(text("SET search_path TO public;"))
 
-    # Then re-create them from the Postgres models
-    logger.info("Creating Postgres tables from model definitions...")
+    logger.info("Re-creating Postgres tables from model definitions...")
     NewBase.metadata.create_all(pg_engine)
+
 
     try:
         # MIGRATION ORDER

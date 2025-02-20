@@ -31,6 +31,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="/scratch files/mysql_exports/receipt.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/scratch files/mysql_exports/table.csv">
           <value>
             <Attribute>

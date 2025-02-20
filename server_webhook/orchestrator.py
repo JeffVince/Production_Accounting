@@ -155,16 +155,14 @@ class Orchestrator:
             if po_records:
                 if isinstance(po_records, dict):
                     po_records = [po_records]
-                for record in po_records:
-                    if db_ops.delete_purchase_order(record["id"], session=session):
-                        count_po += 1
+                po_ids = [record["id"] for record in po_records]
+                db_ops.bulk_delete_purchase_orders(po_ids, session=session)
 
             if di_records:
                 if isinstance(di_records, dict):
                     di_records = [di_records]
-                for record in di_records:
-                    if db_ops.delete_detail_item(record["id"], session=session):
-                        count_di += 1
+                di_ids = [record["id"] for record in di_records]
+                db_ops.bulk_delete_detail_items(di_ids, session=session)
 
             session.commit()
 

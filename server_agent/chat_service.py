@@ -147,7 +147,7 @@ class ChatService:
         """
         Maps table_name to the actual SQLAlchemy model.
         """
-        from database.models import (
+        from database_pg.models_pg import (
             Project, Contact, PurchaseOrder, DetailItem, Invoice, AuditLog, XeroBill,
             BankTransaction, AccountCode, TaxAccount, Receipt, SpendMoney, User, TaxLedger, BudgetMap
         )

@@ -1,7 +1,7 @@
 import json
 from datetime import datetime
 from sqlalchemy.exc import SQLAlchemyError
-from database.models import PurchaseOrder
+from database_pg.models_pg import PurchaseOrder
 from database.db_util import get_db_session
 import logging
 from files_monday.monday_util import SUBITEM_RATE_COLUMN_ID, SUBITEM_QUANTITY_COLUMN_ID

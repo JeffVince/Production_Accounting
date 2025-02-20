@@ -3,7 +3,7 @@ import logging
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from utilities.config import Config
 from database.db_util import get_db_session, initialize_database
-from database.models import AccountCode, TaxAccount
+from database_pg.models_pg import AccountCode, TaxAccount
 
 def main(csv_file_path: str):
     """

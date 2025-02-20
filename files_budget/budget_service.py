@@ -105,6 +105,8 @@ def transform_detail_item(item):
     # Preserve pulse_id if present so that subsequent updates know this record exists in Monday
     if "pulse_id" in item:
         transformed["pulse_id"] = item["pulse_id"]
+    if "parent_pulse_id" in item:
+        transformed["parent_pulse_id"] = item["parent_pulse_id"]
 
     return transformed
 
@@ -400,10 +402,21 @@ class BudgetService(metaclass=SingletonMeta):
 
     # endregion
 
-    # region 2.3: Process Purchase Orders Aggregator
+    # region 2.3: Process Purchase Orders Aggregator (Bulk Approach)
     def process_aggregator_pos(self, po_data: dict, session):
         """
-        Aggregator for PURCHASE ORDERS with a single commit at the end.
+        Aggregator for PURCHASE ORDERS with bulk DB operations.
+
+        Steps:
+          1) Gather all needed data from po_data["main_items"].
+          2) Merge po_data["contacts"] with DB contacts (fuzzy matching) so each contact
+             has project_number, po_number, and DB pulse_id (if found).
+          3) Perform a single bulk fetch for existing projects and POs.
+          4) Handle contact matching in-memory (fetch all DB contacts once).
+          5) Determine which POs need creation or updates in memory.
+          6) Bulk create/update them, then commit once.
+          7) Finally, upsert each new/updated PO to Monday with the merged contact list
+             (contacts_for_monday) and persist any new pulse_ids in DB.
         """
         try:
             self.logger.info("🚀 START => Processing PO aggregator data.")
@@ -411,35 +424,104 @@ class BudgetService(metaclass=SingletonMeta):
                 self.logger.info("🤷 No main_items provided; nothing to do.")
                 return
 
-            po_records_info = []
-            self.logger.info("[PO Aggregator] Creating/updating POs in DB.")
+            main_items = po_data["main_items"]
+            self.logger.info(f"Received {len(main_items)} main_items to process for POs.")
 
-            # region 2.3.1: Fetch Contacts for Fuzzy Matching
-            all_contacts = self.db_ops.search_contacts(session=session)
-            # endregion
+            ###################################################################
+            # 1) Merge po_data["contacts"] with DB contacts via fuzzy matching
+            ###################################################################
+            raw_contacts = po_data.get("contacts", [])
+            self.logger.info(f"Found {len(raw_contacts)} raw contacts from log data (containing project/PO).")
 
-            # region 2.3.2: Process Each PO Item
-            for item in po_data["main_items"]:
-                if not item:
-                    continue
+            # 1a) Pull all DB contacts (or partial fetch if you prefer).
+            try:
+                all_db_contacts = self.db_ops.search_contacts(session=session)
+            except Exception:
+                self.logger.exception("Error fetching all contacts for fuzzy matching.", exc_info=True)
+                all_db_contacts = []
 
-                project_number = item.get("project_number")
-                po_number = item.get("po_number")
-                raw_po_type = item.get("po type", "INV")
-                description = item.get("description", "")
-                vendor_name = item.get("contact_name")
+            # 1b) Build a merged list of contacts that includes the relevant DB info
+            contacts_for_monday = []
+            for raw_ct in raw_contacts:
+                c_name = (raw_ct.get("name") or "").strip()
+                if not c_name:
+                    continue  # skip if no name
 
-                if not po_number:
-                    self.logger.warning("🤔 Missing po_number; skipping item.")
-                    continue
+                # Fuzzy match
+                matched_db_contact = None
+                try:
+                    fuzzy_matches = self.db_ops.find_contact_close_match(c_name, all_db_contacts)
+                    if fuzzy_matches:
+                        matched_db_contact = fuzzy_matches[0]
+                except Exception:
+                    self.logger.exception("Fuzzy match failed for contact", exc_info=True)
 
-                po_type = "INV" if raw_po_type == "PROJ" else raw_po_type
+                # Merge
+                if matched_db_contact:
+                    merged_contact = {
+                        "id": matched_db_contact.get("id"),
+                        "name": matched_db_contact.get("name"),
+                        "pulse_id": matched_db_contact.get("pulse_id"),  # existing pulse_id if any
+                        "xero_id": matched_db_contact.get("xero_id"),
 
-                # region 2.3.2.1: Ensure Project Exists
-                project_record = self.db_ops.search_projects(["project_number"], [project_number], session=session)
-                if not project_record:
+                        # from the raw contact (carrying project & PO)
+                        "project_number": raw_ct.get("project_number"),
+                        "po_number": raw_ct.get("po_number"),
+                    }
+                else:
+                    # If no DB match found, create a minimal record
+                    merged_contact = {
+                        "id": None,
+                        "name": c_name,
+                        "pulse_id": None,
+                        "xero_id": None,
+                        "project_number": raw_ct.get("project_number"),
+                        "po_number": raw_ct.get("po_number"),
+                    }
+
+                contacts_for_monday.append(merged_contact)
+
+            self.logger.info(f"Constructed {len(contacts_for_monday)} merged contacts for Monday PO matching.")
+
+            ###################################################################
+            # 2) Gather unique (project_number) & (project_number, po_number)
+            ###################################################################
+            unique_projects = set()
+            po_keys = set()
+            for item in main_items:
+                pno = item.get("project_number")
+                pono = item.get("po_number")
+                if pno:
+                    unique_projects.add(pno)
+                if pno and pono:
+                    po_keys.add((int(pno), int(pono)))
+            self.logger.info(f"Unique project numbers: {unique_projects}")
+            self.logger.info(f"Unique (project_number, po_number) pairs: {po_keys}")
+
+            ###################################################################
+            # 3) Bulk fetch existing projects
+            ###################################################################
+            existing_projects_map = {}
+            if unique_projects:
+                try:
+                    fetched_projects = self.db_ops.search_projects(["project_number"], list(unique_projects),
+                                                                   session=session)
+                    if fetched_projects and not isinstance(fetched_projects, list):
+                        fetched_projects = [fetched_projects]
+                    if not fetched_projects:
+                        fetched_projects = []
+                    for proj in fetched_projects:
+                        existing_projects_map[int(proj["project_number"])] = proj
+                except Exception:
+                    self.logger.exception("Error searching for existing projects in bulk.", exc_info=True)
+
+            # 3.1) Create missing projects if needed
+            newly_created_projects = {}
+            for project_number in unique_projects:
+                pno_int = int(project_number)
+                if pno_int not in existing_projects_map:
                     self.logger.warning(f"⚠️ Project {project_number} not found; creating new project.")
-                    project_record = self.db_ops.create_project(
+                    new_proj = self.db_ops.create_project(
                         session=session,
                         project_number=project_number,
                         name=f"{project_number}_untitled",
@@ -448,120 +530,207 @@ class BudgetService(metaclass=SingletonMeta):
                         tax_ledger=14,
                         budget_map_id=1
                     )
-                    if not project_record:
-                        self.logger.warning("❌ Could not create project; skipping PO.")
-                        continue
-                    else:
-                        self.logger.info(f"🌱 Created Project ID={project_record['id']}")
-                if isinstance(project_record, list) and project_record:
-                    project_record = project_record[0]
-                project_id = project_record["id"]
-                # endregion
+                    if new_proj:
+                        existing_projects_map[pno_int] = new_proj
+                        newly_created_projects[pno_int] = new_proj
+                        self.logger.info(f"🌱 Created Project ID={new_proj['id']} for project_number={project_number}")
 
-                # region 2.3.2.2: Lookup or Fuzzy Match Contact
+            session.flush()
+
+            ###################################################################
+            # 4) Bulk fetch existing POs
+            ###################################################################
+            existing_pos_map = {}
+            if po_keys:
+                # we'll assume db_ops has batch_search_purchase_orders_by_keys
+                existing_pos = self.db_ops.batch_search_purchase_orders_by_keys(list(po_keys), session=session)
+                if existing_pos and not isinstance(existing_pos, list):
+                    existing_pos = [existing_pos]
+                if not existing_pos:
+                    existing_pos = []
+                for po in existing_pos:
+                    pk = (int(po["project_number"]), int(po["po_number"]))
+                    existing_pos_map[pk] = po
+                self.logger.info(f"Found {len(existing_pos_map)} existing POs in DB.")
+
+            ###################################################################
+            # 5) Determine which POs to create or update
+            ###################################################################
+            pos_to_create = []
+            pos_to_update = []
+            pos_no_change_but_missing_pulse = []
+            po_records_info = []
+
+            def are_pos_different(db_po, incoming_dict):
+                """
+                Compare fields of existing DB PO vs. the new dict from main_items.
+                Return True if there's a difference that requires DB update.
+                """
+                check_fields = ["description", "po_type", "contact_id", "project_id", "vendor_name"]
+                for f in check_fields:
+                    if db_po.get(f) != incoming_dict.get(f):
+                        return True
+                return False
+
+            for item in main_items:
+                pno = item.get("project_number")
+                pono = item.get("po_number")
+                if not (pno and pono):
+                    self.logger.warning("PO aggregator skipping item missing project_number or po_number.")
+                    continue
+
+                pno_int = int(pno)
+                pono_int = int(pono)
+
+                raw_po_type = item.get("po type", "INV")
+                if raw_po_type == "PROJ":
+                    po_type = "INV"
+                else:
+                    po_type = raw_po_type
+
+                description = item.get("description", "")
+                vendor_name = item.get("contact_name", "")
+
+                # We could do fuzzy match here too, but in this aggregator we just store the contact_id
+                # from earlier logic or we rely on the aggregator. Typically you did all fuzzy matches for contact aggregator.
                 contact_id = None
-                if vendor_name:
-                    found_contact = self.db_ops.search_contacts(["name"], [vendor_name], session=session)
-                    if found_contact:
-                        if isinstance(found_contact, list) and found_contact:
-                            found_contact = found_contact[0]
-                        contact_id = found_contact.get("id")
-                    else:
-                        fuzzy_matches = self.db_ops.find_contact_close_match(vendor_name, all_contacts)
+                if vendor_name.strip():
+                    # Quick fuzzy
+                    try:
+                        fuzzy_matches = self.db_ops.find_contact_close_match(vendor_name, all_db_contacts)
                         if fuzzy_matches:
-                            best_match = fuzzy_matches[0]
-                            self.logger.warning(
-                                f"⚠️ Fuzzy matched contact '{vendor_name}' to '{best_match.get('name')}'")
-                            contact_id = best_match.get("id")
+                            contact_id = fuzzy_matches[0]['id']
+                            self.logger.debug(f"✅ Fuzzy matched contact ID={contact_id} for vendor='{vendor_name}'")
+                    except Exception:
+                        self.logger.exception("Exception during fuzzy matching for contact.", exc_info=True)
+
+                if pno_int not in existing_projects_map:
+                    self.logger.warning(f"Cannot find or create a project for project_number={pno_int}; skipping PO.")
+                    continue
+
+                project_id = existing_projects_map[pno_int]["id"]
+                incoming_po_dict = {
+                    "project_number": pno_int,
+                    "po_number": pono_int,
+                    "description": description,
+                    "po_type": po_type,
+                    "contact_id": contact_id,
+                    "project_id": project_id,
+                    "vendor_name": vendor_name.strip()
+                }
+
+                existing_po = existing_pos_map.get((pno_int, pono_int))
+                if not existing_po:
+                    pos_to_create.append(incoming_po_dict)
                 else:
-                    self.logger.warning("⚠️ No contact_name provided; using default naming.")
-                    vendor_name = "PO LOG Naming Error"
-                # endregion
-
-                # region 2.3.2.3: Create or Update PO
-                existing = self.db_ops.search_purchase_order_by_keys(project_number, po_number, session=session)
-                if not existing:
-                    self.logger.info("🌱 Creating new PO in DB.")
-                    new_po = self.db_ops.create_purchase_order_by_keys(
-                        project_number=project_number,
-                        po_number=po_number,
-                        session=session,
-                        description=description,
-                        po_type=po_type,
-                        contact_id=contact_id,
-                        project_id=project_id,
-                        vendor_name=vendor_name
-                    )
-                    if new_po:
-                        self.logger.info(f"✅ Created PO ID={new_po['id']}")
-                        po_records_info.append(new_po)
+                    if are_pos_different(existing_po, incoming_po_dict):
+                        incoming_po_dict["id"] = existing_po["id"]
+                        pos_to_update.append(incoming_po_dict)
                     else:
-                        self.logger.warning("❌ Failed to create PO.")
-                else:
-                    if isinstance(existing, list) and existing:
-                        existing = existing[0]
-                    po_id = existing["id"]
-                    if self.db_ops.purchase_order_has_changes(
-                            project_number=project_number,
-                            po_number=po_number,
-                            session=session,
-                            description=description,
-                            po_type=po_type,
-                            contact_id=contact_id,
-                            project_id=project_id,
-                            vendor_name=vendor_name
-                    ):
-                        self.logger.info(f"🔄 Updating PO ID={po_id}.")
-                        updated_po = self.db_ops.update_purchase_order(
-                            po_id,
-                            session=session,
-                            description=description,
-                            po_type=po_type,
-                            contact_id=contact_id,
-                            project_id=project_id,
-                            vendor_name=vendor_name
-                        )
-                        if updated_po:
-                            self.logger.info(f"🔄 Updated PO ID={updated_po['id']}")
-                            po_records_info.append(updated_po)
-                        else:
-                            self.logger.warning("❌ Failed to update PO.")
-                    else:
-                        if not existing.get("pulse_id"):
-                            self.logger.info(f"🆕 PO ID={po_id} missing pulse_id; upserting to Monday.")
-                            po_records_info.append(existing)
-                        else:
-                            self.logger.info(f"🏳️‍🌈 No changes to PO ID={po_id}; already in Monday.")
-                session.flush()
-                # endregion
-            # endregion
+                        if not existing_po.get("pulse_id"):
+                            pos_no_change_but_missing_pulse.append(existing_po)
 
-            self.logger.info("[PO Aggregator] All PO items processed.")
+            ###################################################################
+            # 6) Bulk create / update in DB
+            ###################################################################
+            created_pos_db = []
+            updated_pos_db = []
 
-            # region 2.3.3: Monday Upsert for POs
+            try:
+                if pos_to_create:
+                    self.logger.info(f"Bulk-creating {len(pos_to_create)} new POs...")
+                    for chunk in chunk_list(pos_to_create, 500):
+                        created_batch = self.db_ops.bulk_create_purchase_orders(chunk, session=session)
+                        created_pos_db.extend(created_batch)
+                    session.flush()
+
+                if pos_to_update:
+                    self.logger.info(f"Bulk-updating {len(pos_to_update)} POs...")
+                    for chunk in chunk_list(pos_to_update, 500):
+                        updated_batch = self.db_ops.bulk_update_purchase_orders(chunk, session=session)
+                        updated_pos_db.extend(updated_batch)
+                    session.flush()
+
+                session.commit()
+            except Exception:
+                self.logger.exception("Error performing bulk create/update for POs.", exc_info=True)
+                session.rollback()
+                raise
+
+            po_records_info.extend(created_pos_db)
+            po_records_info.extend(updated_pos_db)
+            po_records_info.extend(pos_no_change_but_missing_pulse)
+
+            if not po_records_info:
+                self.logger.info("No POs to send to Monday.")
+                return
+
+            ###################################################################
+            # 7) Upsert to Monday (using contacts_for_monday for contact->PO match)
+            ###################################################################
+            self.logger.info("[PO Aggregator] Upserting created/updated POs to Monday.")
             for po_record in po_records_info:
-                self.monday_service.buffered_upsert_po(po_record)
+                key = (po_record.get('project_number'), po_record.get('po_number'))
+                db_record = existing_pos_map.get(key)
+                self.monday_service.buffered_upsert_po(po_record, db_record=db_record)
 
-            created_POs = self.monday_service.execute_batch_upsert_pos()
+            created_POs = self.monday_service.execute_batch_upsert_pos(provided_contacts=contacts_for_monday)
+            self.logger.info("[PO Aggregator] Monday upsert completed.")
 
+            # 7.1) Update DB with newly assigned pulse_id
+             # region 2.3.7.1: Update DB with newly assigned pulse_id
             if created_POs:
+                # Build a mapping from (project_number, po_number) to the latest DB record
+                updated_pos_map = {}
+                for po_record in po_records_info:
+                    try:
+                        key = (int(po_record.get('project_number')), int(po_record.get('po_number')))
+                        updated_pos_map[key] = po_record
+                    except Exception:
+                        self.logger.exception(
+                            "Error building updated_pos_map: could not parse project_number or po_number as int.")
+
+                pulse_updates = []
                 for po_obj in created_POs:
-                    if 'column_values' in po_obj and isinstance(po_obj['column_values'], list):
-                        po_obj['column_values'] = {col['id']: col for col in po_obj['column_values']}
-                        project_number = po_obj["column_values"]["project_id"]["text"]
-                        po_number = po_obj["column_values"]["numeric__1"]["text"]
+                    if 'column_values' in po_obj and isinstance(po_obj['column_values'], list) and po_obj.get('id'):
+                        # Convert column_values array to dict so we can read them easily
+                        cv_map = {c['id']: c for c in po_obj['column_values']}
+                        project_number = cv_map.get("project_id", {}).get("text")
+                        po_number = cv_map.get("numeric__1", {}).get("text")
                         pulse_id = po_obj["id"]
-                        self.db_ops.update_purchase_order_by_keys(project_number=project_number, po_number=po_number,
-                                                                  pulse_id=pulse_id, session=session)
-            # endregion
-            session.commit()
+                        if project_number and po_number:
+                            try:
+                                key = (int(project_number), int(po_number))
+                                db_po = updated_pos_map.get(key)
+                                if db_po and db_po.get("id"):
+                                    # Append update containing the DB record ID and the new pulse_id
+                                    pulse_updates.append({
+                                        "id": db_po["id"],
+                                        "pulse_id": pulse_id
+                                    })
+                                else:
+                                    self.logger.warning(
+                                        f"No DB record found for project_number {project_number} and po_number {po_number}")
+                            except Exception:
+                                self.logger.exception("Could not parse project_number or po_number as int.")
+
+                if pulse_updates:
+                    try:
+                        for chunk in chunk_list(pulse_updates, 500):
+                            self.db_ops.bulk_update_purchase_orders(chunk, session=session)
+                        session.commit()
+                    except Exception:
+                        self.logger.exception("Error updating pulse_ids for POs.", exc_info=True)
+                        session.rollback()
+                        raise
+
             self.logger.info("[PO Aggregator] PO processing complete.")
+
         except Exception as e:
             self.logger.error(f"❌ Error in PO aggregator: {str(e)}")
-            session.rollback()
+            if session:
+                session.rollback()
             raise
-
-    # endregion
 
     # region 2.4: Process Detail Item Aggregator
     def process_aggregator_detail_items(self, po_log_data: dict, session, chunk_size: int = 500):

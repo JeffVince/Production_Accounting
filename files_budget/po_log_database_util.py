@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timedelta
 from database.database_util import DatabaseOperations
 from database.db_util import get_db_session
-from database.models import Contact, PurchaseOrder, DetailItem, Project
+from database_pg.models_pg import Contact, PurchaseOrder, DetailItem, Project
 from utilities.singleton import SingletonMeta
 
 class PoLogDatabaseUtil(metaclass=SingletonMeta):

@@ -138,7 +138,7 @@ class MondayDatabaseUtil(metaclass=SingletonMeta):
         if isinstance(found_po, list):
             found_po = found_po[0]
         from database.db_util import get_db_session
-        from database.models import PurchaseOrder
+        from database_pg.models_pg import PurchaseOrder
         with get_db_session() as session:
             po_obj = session.query(PurchaseOrder).get(found_po['id'])
             if not po_obj:
@@ -160,7 +160,7 @@ class MondayDatabaseUtil(metaclass=SingletonMeta):
         if isinstance(found_sub, list):
             found_sub = found_sub[0]
         from database.db_util import get_db_session
-        from database.models import DetailItem
+        from database_pg.models_pg import DetailItem
         with get_db_session() as session:
             d_obj = session.query(DetailItem).get(found_sub['id'])
             if not d_obj:

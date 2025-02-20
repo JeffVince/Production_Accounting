@@ -27,7 +27,7 @@ def initialize_database(connection_string):
         pool_recycle=3600
     )
     SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
-    Base.metadata.create_all(engine)
+    #Base.metadata.create_all(engine, checkfirst=True)
     logger.debug(f"Database initialized with connection string: {connection_string}")
 
 @contextmanager

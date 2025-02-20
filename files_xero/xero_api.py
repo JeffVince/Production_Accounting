@@ -12,7 +12,7 @@ from xero.exceptions import (
     XeroRateLimitExceeded
 )
 
-from database.models import DetailItem
+from database_pg.models_pg import DetailItem
 from utilities.singleton import SingletonMeta
 
 # Configure a logger for Xero operations
@@ -149,7 +149,7 @@ class XeroAPI(metaclass=SingletonMeta):
     def _get_tax_code_for_detail_item(self, session, detail_item: DetailItem) -> str:
         tax_code = 'TAX001'
         try:
-            from database.models import AccountCode  # local import to avoid cyclical references
+            from database_pg.models_pg import AccountCode  # local import to avoid cyclical references
             acct_code = session.query(AccountCode).filter_by(
                 id=detail_item.account_code_id
             ).first()
