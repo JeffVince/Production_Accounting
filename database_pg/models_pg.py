@@ -8,7 +8,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
-
+#TEST
 logging.getLogger('sqlalchemy.engine.Engine').setLevel(logging.ERROR)
 logging.getLogger('sqlalchemy.pool').setLevel(logging.ERROR)
 
